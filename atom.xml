@@ -1,73 +1,26 @@
-<!DOCTYPE HTML>
-<html>
-<head>
-  <meta charset="utf-8">
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title><![CDATA[Siddon's Blog]]></title>
+  <subtitle><![CDATA[My thought for program]]></subtitle>
+  <link href="/atom.xml" rel="self"/>
+  <link href="http://siddontang.com/"/>
+  <updated>2014-08-09T09:36:05.832Z</updated>
+  <id>http://siddontang.com/</id>
   
-  <title>go | Siddon&#39;s Blog</title>
-  <meta name="author" content="SiddonTang">
+  <author>
+    <name><![CDATA[SiddonTang]]></name>
+    <email><![CDATA[siddontang@gmail.com]]></email>
+  </author>
   
-  <meta name="description" content="My thought for program">
+  <generator uri="http://zespia.tw/hexo/">Hexo</generator>
   
-  
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-
-  
-  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
-
-  
-    <meta property="og:image" content="undefined"/>
-  
-
-  <link href="/favicon.png" rel="icon">
-  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
-  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
-  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
-  
-
-</head>
-
-
-<body>
-  <header id="header" class="inner"><div class="alignleft">
-  <h1><a href="/">Siddon&#39;s Blog</a></h1>
-  <h2><a href="/">My thought for program</a></h2>
-</div>
-<nav id="main-nav" class="alignright">
-  <ul>
-    
-      <li><a href="/">Home</a></li>
-    
-      <li><a href="/Presentations">Presentations</a></li>
-    
-      <li><a href="/About">About</a></li>
-    
-  </ul>
-  <div class="clearfix"></div>
-</nav>
-<div class="clearfix"></div></header>
-  <div id="content" class="inner">
-    <div id="main-col" class="alignleft"><div id="wrapper">
-<h2 class="archive-title tag">go</h2>
-
-
-  
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-07-28T16:01:01.000Z"><a href="/2014/07/29/gopkg-introduction/">07-29-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/07/29/gopkg-introduction/">使用gopkg进行Go包管理</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>在使用go的过程中，我们有时候会引入一些第三方库来使用，而通常的方式就是使用 <strong>go get</strong> ，但是这种方式有一个很严重的问题，如果第三方库更新了相关接口，很有可能你就无法使用了，所以我们一套很好地包管理机制。</p>
+  <entry>
+    <title><![CDATA[使用gopkg进行Go包管理]]></title>
+    <link href="http://siddontang.com/2014/07/29/gopkg-introduction/"/>
+    <id>http://siddontang.com/2014/07/29/gopkg-introduction/</id>
+    <published>2014-07-28T16:01:01.000Z</published>
+    <updated>2014-08-09T07:11:47.000Z</updated>
+    <content type="html"><![CDATA[<p>在使用go的过程中，我们有时候会引入一些第三方库来使用，而通常的方式就是使用 <strong>go get</strong> ，但是这种方式有一个很严重的问题，如果第三方库更新了相关接口，很有可能你就无法使用了，所以我们一套很好地包管理机制。</p>
 <p>在<a href="http://blog.csdn.net/siddontang/article/details/25601611" target="_blank" rel="external">读生产环境下go语言最佳实践有感</a>一文中，我介绍过soundcloud公司的做法，直接将第三库的代码check下来，放到自己工程的vendor目录里面，或者使用godep。</p>
 <p>不过现在，我发现了一种更好的包管理方式<a href="http://labix.org/gopkg.in" target="_blank" rel="external">gopkg</a>。它通过约定使用带有版本号的url来让go tool去check指定的版本库，虽然现在只支持github的go repositories，但是我觉得已经足够强大。</p>
 <p>一个很简单的例子，我们通过如下方式获取go的yaml包</p>
@@ -113,39 +66,223 @@ gopkg.in/user/pkg.v3 → github.com/user/pkg   (branch/tag v3, v3.N, or v3.N.M)
 <p>更加详细的信息，请直接查看<a href="http://labix.org/gopkg.in" target="_blank" rel="external">gopkg</a></p>
 <p>可以看到，gopkg使用了一种很简单地方式让我们方便的对go pakcage进行版本管理。于是我也依葫芦画瓢，给我的log package做了一个v1版本的，你可以直接</p>
 <pre><code>go get gopkg.in/siddontang/go-log.v1/log
-</code></pre>
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
+</code></pre>]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="gopkg" scheme="http://siddontang.com/tags/gopkg/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-    <article class="post">
+  <entry>
+    <title><![CDATA[LeetCode程序员面试技巧]]></title>
+    <link href="http://siddontang.com/2014/07/22/leetcode-interview-tips-for-programmers/"/>
+    <id>http://siddontang.com/2014/07/22/leetcode-interview-tips-for-programmers/</id>
+    <published>2014-07-22T15:01:29.000Z</published>
+    <updated>2014-08-08T16:11:39.000Z</updated>
+    <content type="html"><![CDATA[<h2 id="起因">起因</h2>
+<p>写在开头，脑袋铁定秀逗了，历时20多天，刷完了leetcode上面151道题目（当然很多是google的），感觉自己对算法和数据结构算是入门了，但仍然还有很多不清楚的地方，于是有了对于每道题目写分析的冲动。不过在看到leetcode上面的文章之后，决定先从翻译入手，顺带再写写自己做题的心得体会。今天是第一篇：程序员面试技巧。</p>
+<p>如果你主修计算机科学，那么在你工作的时候会碰到很多有难度的编程问题。当你去找工作的时候，你会有很多的面试，而面试官通常很喜欢问你很多技术性的问题，以下就是三类主要的题型：</p>
+<ul>
+<li>算法/数据结构</li>
+<li>特定编程语言/通用的计算机知识</li>
+<li>脑筋急转弯</li>
+</ul>
+<p>后续我将详细的讨论上面这几点：</p>
+<h2 id="算法/数据结构">算法/数据结构</h2>
+<p>你必须深刻的理解以下几种数据结构：数组，链表，二叉树，哈希表等。你必须明确地知道什么时候该使用数组或者链表，譬如在实现一个列表翻转的时候。</p>
+<p>面试官通常会问你一些算法问题用以检验你的编程解决问题能力，一些算法问题如下：</p>
+<ul>
+<li>在一个句子里面反转单词。</li>
+<li>在一个单词里面反转字母。（尝试使用迭代或者递归解决）</li>
+<li>如何在一个列表里面找到重复的数字。</li>
+<li>生成数字n的全排列。（小提示：递归）</li>
+<li>找到两个排好序数组的中间值。（小提示：分治法）</li>
+<li>如何进行拼写检查并验证单词。（小提示：编辑距离）</li>
+</ul>
+<p>（译者吐槽，说句实话，上面几个问题如果没做题大部分我还真答不出来。）</p>
+<h2 id="特定编程语言/通用的计算机知识">特定编程语言/通用的计算机知识</h2>
+<p>如果你应聘的是C++职位，需要准备好应对很多C++的问题，其它编程语言也一样。如果你应聘的职位不需要特定的编程语言，那么你可能会被问到通用的计算机知识，譬如在堆和栈上面创建对象的区别。</p>
+<p>我经常碰到的一些C++问题如下：</p>
+<ul>
+<li>什么是虚函数？怎么实现的？使用虚函数会有啥性能问题？</li>
+<li>什么是虚析构函数？为什么需要他们？如果你不实现成虚析构会出现什么问题？</li>
+<li>什么是拷贝构造函数？它什么时候被调用？</li>
+<li>malloc和new的区别是什么？</li>
+</ul>
+<p>（译者吐槽，上面这些感觉还算靠谱，至少没问虚拟继承是啥！我面试的时候通常还会问很多STL的东西，毕竟这在C++里面已经是很基础的了。Template这些的就算了，有时候都能把自己绕晕，还是别坑面试者了。）</p>
+<h2 id="脑筋急转弯">脑筋急转弯</h2>
+<p>一些面试官很喜欢用一个脑筋急转弯来结束面试。这个其实很坑爹的，不过还是老老实实的准备一些吧。</p>
+<p>一些经典的问题：</p>
+<ul>
+<li><p>两个鸡蛋问题：</p>
+<p>  你有两个相同的鸡蛋，然后还有100层楼等你去爬。你需要知道最高到哪一层扔下鸡蛋，鸡蛋不会摔碎。（鸡蛋语录：为啥受伤的总是蛋蛋？）。很有可能第一层就碎了，也可能到了100层才碎。你需要知道最多尝试几次就能找到答案。</p>
+</li>
+<li><p>尽可能快的在一个byte里面反转bit。</p>
+</li>
+<li><p>你有5个相同的罐子，都装着球，其中有4个里面每个球都是重10g，另一个灌每个球重9g，你有一台电子称，只称一次，找到那个重9g球的罐子。</p>
+</li>
+</ul>
+<p>（译者吐槽，上面这些脑筋急转弯问题感觉就是算法问题，哪里是脑筋急转弯，明显的忽悠！）</p>
+<h2 id="总结">总结</h2>
+<p>当然这是译者自己的，原文在上面就结束了，可以看到，作为一个程序员，我们其实是幸运的，因为我们能够接触如此多的挑战，并不断提升自己。可我们同时也是郁闷的，很多时候往往都有这样的错觉，数据结构和算法在很多工作中并不用到，但是为啥偏偏就面这个，linus貌似说过：“Bad programmers worry about the code. Good programmers worry about data structures and their relationships”，而在《大教堂与集市》这本书里面，作者直接说明“Smart data structures and dumb code works a lot better than the other way around”。有时候当写程序写多了，自然就发现算法和数据结构的重要性了。</p>
+<p>另外，现在无论哪个公司，除非你是大牛级别的，面试几乎不会脱离上面那些东西，所以还是老老实实的学习吧，骚年。</p>
+]]></content>
+    
+    
+      <category term="leetcode" scheme="http://siddontang.com/tags/leetcode/"/>
+    
+      <category term="algorithm" scheme="http://siddontang.com/tags/algorithm/"/>
+    
+      <category term="leetcode" scheme="http://siddontang.com/categories/leetcode/"/>
+    
+  </entry>
   
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-06-22T13:29:26.000Z"><a href="/2014/06/22/program-lang-experience/">06-22-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/06/22/program-lang-experience/">我的编程语言经历</a></h1>
-  
+  <entry>
+    <title><![CDATA[celery最佳实践]]></title>
+    <link href="http://siddontang.com/2014/07/20/celery-best-practices/"/>
+    <id>http://siddontang.com/2014/07/20/celery-best-practices/</id>
+    <published>2014-07-20T11:03:19.000Z</published>
+    <updated>2014-08-09T07:12:29.000Z</updated>
+    <content type="html"><![CDATA[<p>作为一个Celery使用重度用户，看到<a href="https://denibertovic.com/posts/celery-best-practices/" target="_blank" rel="external">Celery Best Practices</a>这篇文章，不由得菊花一紧。干脆翻译出来，同时也会加入我们项目中celery的实战经验。</p>
+<p>通常在使用Django的时候，你可能需要执行一些长时间的后台任务，没准你可能需要使用一些能排序的任务队列，那么Celery将会是一个非常好的选择。</p>
+<p>当把Celery作为一个任务队列用于很多项目中后，作者积累了一些最佳实践方式，譬如如何用合适的方式使用Celery，以及一些Celery提供的但是还未充分使用的特性。</p>
+<h2 id="1，不要使用数据库作为你的AMQP_Broker">1，不要使用数据库作为你的AMQP Broker</h2>
+<p>数据库并不是天生设计成能用于AMQP broker的，在生产环境下，它很有可能在某时候当机（PS，当掉这点我觉得任何系统都不能保证不当吧！！！）。</p>
+<p>作者猜想为啥很多人使用数据库作为broker主要是因为他们已经有一个数据库用来给web app提供数据存储了，于是干脆直接拿来使用，设置成Celery的broker是很容易的，并且不需要再安装其他组件（譬如RabbitMQ）。</p>
+<p>假设有如下场景：你有4个后端workers去获取并处理放入到数据库里面的任务，这意味着你有4个进程为了获取最新任务，需要频繁地去轮询数据库，没准每个worker同时还有多个自己的并发线程在干这事情。</p>
+<p>某一天，你发现因为太多的任务产生，4个worker不够用了，处理任务的速度已经大大落后于生产任务的速度，于是你不停去增加worker的数量。突然，你的数据库因为大量进程轮询任务而变得响应缓慢，磁盘IO一直处于高峰值状态，你的web应用也开始受到影响。这一切，都因为workers在不停地对数据库进行DDOS。</p>
+<p>而当你使用一个合适的AMQP（譬如RabbitMQ）的时候，这一切都不会发生，以RabbitMQ为例，首先，它将任务队列放到内存里面，你不需要去访问硬盘。其次，consumers（也就是上面的worker）并不需要频繁地去轮询因为RabbitMQ能将新的任务推送给consumers。当然，如果RabbitMQ真出现问题了，至少也不会影响到你的web应用。</p>
+<p>这也就是作者说的不用数据库作为broker的原因，而且很多地方都提供了编译好的RabbitMQ镜像，你都能直接使用，譬如<a href="https://registry.hub.docker.com/search?q=rabbitmq" target="_blank" rel="external">这些</a>。</p>
+<p>对于这点，我是深表赞同的。我们系统大量使用Celery处理异步任务，大概平均一天几百万的异步任务，以前我们使用的mysql，然后总会出现任务处理延时太严重的问题，即使增加了worker也不管用。于是我们使用了redis，性能提升了很多。至于为啥使用mysql很慢，我们没去深究，没准也还真出现了DDOS的问题。</p>
+<h2 id="2，使用更多的queue（不要只用默认的）">2，使用更多的queue（不要只用默认的）</h2>
+<p>Celery非常容易设置，通常它会使用默认的queue用来存放任务（除非你显示指定其他queue）。通常写法如下：</p>
+<pre><code>@app.task()
+def my_taskA(a, b, c):
+    print(&quot;doing something here...&quot;)
 
-    </header>
-    <div class="entry">
-      
-        <p>Alan Perlis 说过：“一种不改变你编程的思维方式的语言，不值得去学。”，虽然写了这么多年程序，用了这么多的语言，但我自认还没悟道编程语言如何改变我的思维方式。</p>
+@app.task()
+def my_taskB(x, y):
+    print(&quot;doing something here...&quot;)
+</code></pre><p>这两个任务都会在同一个queue里面执行，这样写其实很有吸引力的，因为你只需要使用一个decorator就能实现一个异步任务。作者关心的是taskA和taskB没准是完全两个不同的东西，或者一个可能比另一个更加重要，那么为什么要把它们放到一个篮子里面呢？（鸡蛋都不能放到一个篮子里面，是吧！）没准taskB其实不怎么重要，但是量太多，以至于重要的taskA反而不能快速地被worker进行处理。增加workers也解决不了这个问题，因为taskA和taskB仍然在一个queue里面执行。</p>
+<h2 id="3，使用具有优先级的workers">3，使用具有优先级的workers</h2>
+<p>为了解决2里面出现的问题，我们需要让taskA在一个队列Q1，而taskB在另一个队列Q2执行。同时指定<strong>x</strong> workers去处理队列Q1的任务，然后使用其它的workers去处理队列Q2的任务。使用这种方式，taskB能够获得足够的workers去处理，同时一些优先级workers也能很好地处理taskA而不需要进行长时间的等待。</p>
+<p>首先手动定义queue</p>
+<pre><code>CELERY_QUEUES = (
+    Queue(&#39;default&#39;, Exchange(&#39;default&#39;), routing_key=&#39;default&#39;),
+    Queue(&#39;for_task_A&#39;, Exchange(&#39;for_task_A&#39;), routing_key=&#39;for_task_A&#39;),
+    Queue(&#39;for_task_B&#39;, Exchange(&#39;for_task_B&#39;), routing_key=&#39;for_task_B&#39;),
+)
+</code></pre><p>然后定义routes用来决定不同的任务去哪一个queue</p>
+<pre><code>CELERY_ROUTES = {
+    &#39;my_taskA&#39;: {&#39;queue&#39;: &#39;for_task_A&#39;, &#39;routing_key&#39;: &#39;for_task_A&#39;},
+    &#39;my_taskB&#39;: {&#39;queue&#39;: &#39;for_task_B&#39;, &#39;routing_key&#39;: &#39;for_task_B&#39;},
+}
+</code></pre><p>最后再为每个task启动不同的workers</p>
+<pre><code>celery worker -E -l INFO -n workerA -Q for_task_A
+celery worker -E -l INFO -n workerB -Q for_task_B
+</code></pre><p>在我们项目中，会涉及到大量文件转换问题，有大量小于1mb的文件转换，同时也有少量将近20mb的文件转换，小文件转换的优先级是最高的，同时不用占用很多时间，但大文件的转换很耗时。如果将转换任务放到一个队列里面，那么很有可能因为出现转换大文件，导致耗时太严重造成小文件转换延时的问题。</p>
+<p>所以我们按照文件大小设置了3个优先队列，并且每个队列设置了不同的workers，很好地解决了我们文件转换的问题。</p>
+<h2 id="4，使用Celery的错误处理机制">4，使用Celery的错误处理机制</h2>
+<p>大多数任务并没有使用错误处理，如果任务失败，那就失败了。在一些情况下这很不错，但是作者见到的多数失败任务都是去调用第三方API然后出现了网络错误，或者资源不可用这些错误，而对于这些错误，最简单的方式就是重试一下，也许就是第三方API临时服务或者网络出现问题，没准马上就好了，那么为什么不试着重试一下呢？</p>
+<pre><code>@app.task(bind=True, default_retry_delay=300, max_retries=5)
+def my_task_A():
+    try:
+        print(&quot;doing stuff here...&quot;)
+    except SomeNetworkException as e:
+        print(&quot;maybe do some clenup here....&quot;)
+        self.retry(e)
+</code></pre><p>作者喜欢给每一个任务定义一个等待多久重试的时间，以及最大的重试次数。当然还有更详细的参数设置，自己看文档去。</p>
+<p>对于错误处理，我们因为使用场景特殊，例如一个文件转换失败，那么无论多少次重试都会失败，所以没有加入重试机制。</p>
+<h2 id="5，使用Flower">5，使用Flower</h2>
+<p><a href="http://celery.readthedocs.org/en/latest/userguide/monitoring.html#flower-real-time-celery-web-monitor" target="_blank" rel="external">Flower</a>是一个非常强大的工具，用来监控celery的tasks和works。</p>
+<p>这玩意我们也没怎么使用，因为多数时候我们都是直接连接redis去查看celery相关情况了。貌似挺傻逼的对不，尤其是celery在redis里面存放的数据并不能方便的取出来。</p>
+<h2 id="6，没事别太关注任务退出状态">6，没事别太关注任务退出状态</h2>
+<p>一个任务状态就是该任务结束的时候成功还是失败信息，没准在一些统计场合，这很有用。但我们需要知道，任务退出的状态并不是该任务执行的结果，该任务执行的一些结果因为会对程序有影响，通常会被写入数据库（例如更新一个用户的朋友列表）。</p>
+<p>作者见过的多数项目都将任务结束的状态存放到sqlite或者自己的数据库，但是存这些真有必要吗，没准可能影响到你的web服务的，所以作者通常设置<strong>CELERY_IGNORE_RESULT = True</strong>去丢弃。</p>
+<p>对于我们来说，因为是异步任务，知道任务执行完成之后的状态真没啥用，所以果断丢弃。</p>
+<h2 id="7，不要给任务传递_Database/ORM_对象">7，不要给任务传递 Database/ORM 对象</h2>
+<p>这个其实就是不要传递Database对象（例如一个用户的实例）给任务，因为没准序列化之后的数据已经是过期的数据了。所以最好还是直接传递一个user id，然后在任务执行的时候实时的从数据库获取。</p>
+<p>对于这个，我们也是如此，给任务只传递相关id数据，譬如文件转换的时候，我们只会传递文件的id，而其它文件信息的获取我们都是直接通过该id从数据库里面取得。</p>
+<h2 id="最后">最后</h2>
+<p>后面就是我们自己的感触了，上面作者提到的Celery的使用，真的可以算是很好地实践方式，至少现在我们的Celery没出过太大的问题，当然小坑还是有的。至于RabbitMQ，这玩意我们是真没用过，效果怎么样不知道，至少比mysql好用吧。</p>
+<p>最后，附上作者的一个Celery Talk <a href="https://denibertovic.com/talks/celery-best-practices/" target="_blank" rel="external">https://denibertovic.com/talks/celery-best-practices/</a>。</p>
+]]></content>
+    
+    
+      <category term="python" scheme="http://siddontang.com/tags/python/"/>
+    
+      <category term="celery" scheme="http://siddontang.com/tags/celery/"/>
+    
+      <category term="python" scheme="http://siddontang.com/categories/python/"/>
+    
+  </entry>
+  
+  <entry>
+    <title><![CDATA[一个Go可变参数问题]]></title>
+    <link href="http://siddontang.com/2014/07/20/golang-func-vargs/"/>
+    <id>http://siddontang.com/2014/07/20/golang-func-vargs/</id>
+    <published>2014-07-20T11:03:19.000Z</published>
+    <updated>2014-08-08T15:58:02.000Z</updated>
+    <content type="html"><![CDATA[<p>几天前纠结了一个蛋疼的问题，在go里面函数式支持可变参数的，譬如…T，go会创建一个slice，用来存放传入的可变参数，那么，如果创建一个slice，例如a，然后以a…这种方式传入，go会不会还会新建一个slice，将a的数据全部拷贝一份过去？</p>
+<p>如果a很大，那么将会造成很严重的性能问题，不过后来想想，可能是自己多虑了，于是查看go的文档，发现如下东西：</p>
+<blockquote>
+<p>Passing arguments to … parameters</p>
+<p>If f is variadic with a final parameter p of type …T, then within f the type of p is equivalent to type []T. If f is invoked with no actual arguments for p, the value passed to p is nil. Otherwise, the value passed is a new slice of type []T with a new underlying array whose successive elements are the actual arguments, which all must be assignable to T. The length and capacity of the slice is therefore the number of arguments bound to p and may differ for each call site.</p>
+<p>Given the function and calls</p>
+<pre><code>func Greeting(prefix string, who ...string)
+Greeting(&quot;nobody&quot;)
+Greeting(&quot;hello:&quot;, &quot;Joe&quot;, &quot;Anna&quot;, &quot;Eileen&quot;)
+</code></pre><p>within Greeting, who will have the value nil in the first call, and []string{“Joe”, “Anna”, “Eileen”} in the second.</p>
+<p>If the final argument is assignable to a slice type []T, it may be passed unchanged as the value for a …T parameter if the argument is followed by …. In this case no new slice is created.</p>
+<p>Given the slice s and call</p>
+<pre><code>s := []string{&quot;James&quot;, &quot;Jasmine&quot;}
+Greeting(&quot;goodbye:&quot;, s...)
+</code></pre><p>within Greeting, who will have the same value as s with the same underlying array.</p>
+</blockquote>
+<p>也就是说，如果我们传入的是slice…这种形式的参数，go不会创建新的slice。写了一个简单的例子验证：</p>
+<pre><code>package main
+
+import &quot;fmt&quot;
+
+func t(args ...int) {
+    fmt.Printf(&quot;%p\n&quot;, args)
+}
+
+func main() {
+    a := []int{1,2,3}
+    b := a[1:]
+
+    t(a...)
+    t(b...)
+
+    fmt.Printf(&quot;%p\n&quot;, a)
+    fmt.Printf(&quot;%p\n&quot;, b)
+}
+
+//output
+0x1052e120
+0x1052e124
+0x1052e120
+0x1052e124
+</code></pre><p>可以看到，可变参数args的地址跟实际外部slice的地址一样，用的同一个slice。</p>
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
+  
+  <entry>
+    <title><![CDATA[我的编程语言经历]]></title>
+    <link href="http://siddontang.com/2014/06/22/program-lang-experience/"/>
+    <id>http://siddontang.com/2014/06/22/program-lang-experience/</id>
+    <published>2014-06-22T13:29:26.000Z</published>
+    <updated>2014-08-09T07:15:37.000Z</updated>
+    <content type="html"><![CDATA[<p>Alan Perlis 说过：“一种不改变你编程的思维方式的语言，不值得去学。”，虽然写了这么多年程序，用了这么多的语言，但我自认还没悟道编程语言如何改变我的思维方式。</p>
 <p>几天前，我需要用python来为<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>写一个客户端，我突然发现，对于c++，go这种语言，我如果需要实现一个功能，首先想到的是问题是代码应该怎么写。但是当我使用python的时候，我首先考虑的问题是在哪里去找一个库用来解决我的问题。可能这就是使用不同语言带给我的不同思考方式吧。</p>
 <p>我的编程语言经历没有那么复杂，没用过很多，但是其实也够我受的了，尤其是在不同语言语法糖之间切换的时候，有种让人崩溃的感觉。没准我应该升级一下我的大脑cpu，使其能够更快速的进行中断处理。</p>
 <h2 id="c">c</h2>
@@ -232,39 +369,28 @@ gopkg.in/user/pkg.v3 → github.com/user/pkg   (branch/tag v3, v3.N, or v3.N.M)
 <h2 id="后记">后记</h2>
 <p>写了这么多，看来随着年岁的增加，越来越啰嗦了。不是有一句古话：吾生也有涯，而知也无涯 。以有涯随无涯，殆已。不过不停地追逐不也是乐趣一件？</p>
 <p>只是，现在我首先要做的就是向我老婆申请资金升级电脑了吧！</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
+]]></content>
+    
+    
+      <category term="c++" scheme="http://siddontang.com/tags/c++/"/>
+    
+      <category term="lua" scheme="http://siddontang.com/tags/lua/"/>
+    
+      <category term="python" scheme="http://siddontang.com/tags/python/"/>
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="program" scheme="http://siddontang.com/categories/program/"/>
+    
+  </entry>
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-06-14T02:47:05.000Z"><a href="/2014/06/14/ledisdb-design-2/">06-14-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/06/14/ledisdb-design-2/">高性能NoSQL LedisDB设计2</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>现在已经支持replication机制，为ledisdb的高可用做出了保障。</p>
+  <entry>
+    <title><![CDATA[高性能NoSQL LedisDB设计2]]></title>
+    <link href="http://siddontang.com/2014/06/14/ledisdb-design-2/"/>
+    <id>http://siddontang.com/2014/06/14/ledisdb-design-2/</id>
+    <published>2014-06-14T02:47:05.000Z</published>
+    <updated>2014-08-08T16:09:57.000Z</updated>
+    <content type="html"><![CDATA[<p><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>现在已经支持replication机制，为ledisdb的高可用做出了保障。</p>
 <h2 id="使用">使用</h2>
 <p>假设master的ip为10.20.187.100，端口6380，slave的ip为10.20.187.101，端口为6380.</p>
 <p>首先我们需要master打开binlog支持，在配置文件中指定：</p>
@@ -316,39 +442,51 @@ ledis-bin.0000002
 <h2 id="总结">总结</h2>
 <p>ledisdb的replication机制才刚刚完成，后续还有很多需要完善，但足以使其成为一个高可用的nosql选择了。</p>
 <p>ledisdb的网址在这里<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">https://github.com/siddontang/ledisdb</a>，希望感兴趣的童鞋共同参与。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="ledisdb" scheme="http://siddontang.com/tags/ledisdb/"/>
+    
+      <category term="nosql" scheme="http://siddontang.com/tags/nosql/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-    <article class="post">
+  <entry>
+    <title><![CDATA[最近几个bug记录]]></title>
+    <link href="http://siddontang.com/2014/06/04/record-bugs/"/>
+    <id>http://siddontang.com/2014/06/04/record-bugs/</id>
+    <published>2014-06-04T08:56:27.000Z</published>
+    <updated>2014-08-08T16:20:13.000Z</updated>
+    <content type="html"><![CDATA[<p>记录最近出的几个bug</p>
+<h2 id="connection_reset_by_peer">connection reset by peer</h2>
+<p>最近服务器经常性的出现connection reset by peer的错误，开始我们只是以为小概率的网络断开导致的，可是随着压力的增大，每隔2分钟开始出现一次，这就不得不引起我们的重视了。</p>
+<p>我们的业务很简单，lvs负责负载均衡（采用的是DR模式），keepalive timeout设置的为2分钟，后面支撑两台推送服务（后面叫做push），客户端首先通过lvs路由到某台push之后，频繁的向其发送推送消息。</p>
+<p>客户端使用的是python request（底层基于urllib3），首先我很差异出了这样的错误竟然没有重试，因为写代码的童鞋告诉我会有重试机制的。于是翻了一下request的代码，竟然发现默认的重试是0，一下子碉堡了。</p>
+<p>不过，即使改了重试，仍然没有解决reset by peer的问题。通常出现这种情况，很大的原因在于客户端使用的是keep alive长连接保活tcp，但是服务器端关闭了该连接。可是我们的服务器实现了定时ping的保活机制，应该也不会出现的。</p>
+<p>然后我将目光投向了lvs，因为它的timeout设置的为2分钟，而reset by peer这个错误也是两分钟一个，所以很有可能就是我们的定时ping机制不起作用，导致lvs直接close掉了连接。</p>
+<p>于是查看push自己的代码，陡然发现我们自己设置的定时ping的时间是3分钟，顿时无语了，于是立刻改成1分钟，重启push，世界清静了。</p>
+<h2 id="ifconfig_overruns">ifconfig overruns</h2>
+<p>push换上新的机器之后，（性能妥妥的强悍），我们竟然发现推送的丢包率竟然上升了，一下子碉堡了，觉得这事情真不应该发生的。通常这种情况发生在cpu处理网络中断响应不过来。但是我们可是妥妥的24核cpu，并且开启了irqbalance。</p>
+<p>好不，用cat /proc/interrupts之后，发现所有的网卡中断都被cpu0处理了，irqbalance完全没有起作用。google之后发现，有些网卡在PCI-MSI模式下面irqbalance无效，而我们的网卡恰好是PCI-MSI模式的。</p>
+<p>没办法，关停irqbalance，手动设置网卡中断的SMP_AFFINITY，一下子世界清静了。</p>
+<h2 id="总结">总结</h2>
+<p>可以发现，最近出的几次蛋疼的事情都是在运维层面上面出现的，实际测试也测不出来，碰到这样的问题，只能通过log这些的慢慢摸索排查了。当然也给了我一个教训，任何error级别的log都应该重视，不应该想当然的忽略。</p>
+]]></content>
+    
+    
+  </entry>
   
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-05-30T04:28:39.000Z"><a href="/2014/05/30/ledisdb-design-1/">05-30-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/05/30/ledisdb-design-1/">高性能NoSQL LedisDB设计1</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>是一个用go实现的基于leveldb的高性能nosql数据库，它提供多种数据结构的支持，网络交互协议参考redis，你可以很方便的将其作为redis的替代品，用来存储大于内存容量的数据（当然你的硬盘得足够大！）。</p>
+  <entry>
+    <title><![CDATA[高性能NoSQL LedisDB设计1]]></title>
+    <link href="http://siddontang.com/2014/05/30/ledisdb-design-1/"/>
+    <id>http://siddontang.com/2014/05/30/ledisdb-design-1/</id>
+    <published>2014-05-30T04:28:39.000Z</published>
+    <updated>2014-08-08T16:09:38.000Z</updated>
+    <content type="html"><![CDATA[<p><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>是一个用go实现的基于leveldb的高性能nosql数据库，它提供多种数据结构的支持，网络交互协议参考redis，你可以很方便的将其作为redis的替代品，用来存储大于内存容量的数据（当然你的硬盘得足够大！）。</p>
 <p>同时ledisdb也提供了丰富的api，你可以在你的go项目中方便嵌入，作为你app的主要数据存储方案。</p>
 <h2 id="与redis的区别">与redis的区别</h2>
 <p>ledisdb提供了类似redis的几种数据结构，包括kv，hash，list以及zset，（set因为我们用的太少现在不予支持，后续可以考虑加入），但是因为其基于leveldb，考虑到操作硬盘的时间消耗铁定大于内存，所以在一些接口上面会跟redis不同。</p>
@@ -412,39 +550,26 @@ key=score:member //&gt;=0
 <p>总的来说，用leveldb来实现redis那些高级的数据结构还算是比较简单的，同时根据我们的压力测试，发现性能还能接受，除了zset的rev相关函数，其余的都能够跟redis保持在同一个数量级上面，具体可以参考ledisdb里面的性能测试报告以及运行ledis-benchmark自己测试。</p>
 <p>后续ledisdb还会持续进行性能优化，同时提供expire以及replication功能的支持，预计6月份我们就会实现。</p>
 <p>ledisdb的代码在这里<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">https://github.com/siddontang/ledisdb</a>，希望感兴趣的童鞋共同参与。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="ledisdb" scheme="http://siddontang.com/tags/ledisdb/"/>
+    
+      <category term="nosql" scheme="http://siddontang.com/tags/nosql/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-05-20T00:44:58.000Z"><a href="/2014/05/20/ledisdb-embed-introduction/">05-20-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/05/20/ledisdb-embed-introduction/">LedisDB嵌入使用介绍</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>ledisdb现在可以支持嵌入式使用。你可以将其作为一个独立的lib（类似leveldb）直接嵌入到你自己的应用中去，而无需在启动单独的服务。</p>
+  <entry>
+    <title><![CDATA[LedisDB嵌入使用介绍]]></title>
+    <link href="http://siddontang.com/2014/05/20/ledisdb-embed-introduction/"/>
+    <id>http://siddontang.com/2014/05/20/ledisdb-embed-introduction/</id>
+    <published>2014-05-20T00:44:58.000Z</published>
+    <updated>2014-08-08T16:10:20.000Z</updated>
+    <content type="html"><![CDATA[<p>ledisdb现在可以支持嵌入式使用。你可以将其作为一个独立的lib（类似leveldb）直接嵌入到你自己的应用中去，而无需在启动单独的服务。</p>
 <p>ledisdb提供的API仍然类似redis接口。首先，你需要创建ledis对象：</p>
 <pre><code>import &quot;github.com/siddontang/ledisdb/ledis&quot;
 
@@ -508,39 +633,26 @@ db.ZRank(key, member1)
 
 db.ZCount(key, member1)
 </code></pre><p>ledisdb的源码在这里<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">https://github.com/siddontang/ledisdb</a>，欢迎反馈。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="ledisdb" scheme="http://siddontang.com/tags/ledisdb/"/>
+    
+      <category term="nosql" scheme="http://siddontang.com/tags/nosql/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-05-13T05:06:27.000Z"><a href="/2014/05/13/golang-in-procution-review/">05-13-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/05/13/golang-in-procution-review/">Go语言最佳实践</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>最近看了一篇关于go产品开发最佳实践的文章，<a href="http://peter.bourgon.org/go-in-production/" target="_blank" rel="external">go-in-procution</a>。作者总结了他们在用go开发过程中的很多实际经验，我们很多其实也用到了，鉴于此，这里就简单的写写读后感，后续我也争取能将这篇文章翻译出来。后面我用soundcloud来指代原作者。</p>
+  <entry>
+    <title><![CDATA[Go语言最佳实践]]></title>
+    <link href="http://siddontang.com/2014/05/13/golang-in-procution-review/"/>
+    <id>http://siddontang.com/2014/05/13/golang-in-procution-review/</id>
+    <published>2014-05-13T05:06:27.000Z</published>
+    <updated>2014-08-08T15:58:31.000Z</updated>
+    <content type="html"><![CDATA[<p>最近看了一篇关于go产品开发最佳实践的文章，<a href="http://peter.bourgon.org/go-in-production/" target="_blank" rel="external">go-in-procution</a>。作者总结了他们在用go开发过程中的很多实际经验，我们很多其实也用到了，鉴于此，这里就简单的写写读后感，后续我也争取能将这篇文章翻译出来。后面我用soundcloud来指代原作者。</p>
 <h2 id="开发环境">开发环境</h2>
 <p>在soundcloud，每个人使用一个独立的GOPATH，并且在GOPATH直接按照go规定的代码路径方式clone代码。</p>
 <pre><code>$ mkdir -p $GOPATH/src/github.com/soundcloud
@@ -704,39 +816,22 @@ test:
 </code></pre><p>应用程序的发布采用最原始的scp到目标机器在重启的方式，不过现在正在测试使用salt来发布应用。而对于应用程序的启动，停止这些，我们则使用supervisor来进行管理。</p>
 <h2 id="总结">总结</h2>
 <p>总的来说，这篇文章很详细的讲解了用go进行产品开发过程中的很多经验，希望对大家有帮助。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-05-10T08:52:53.000Z"><a href="/2014/05/10/ledisdb-introduction/">05-10-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/05/10/ledisdb-introduction/">高性能NoSQL LedisDB介绍</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h2 id="起因">起因</h2>
+  <entry>
+    <title><![CDATA[高性能NoSQL LedisDB介绍]]></title>
+    <link href="http://siddontang.com/2014/05/10/ledisdb-introduction/"/>
+    <id>http://siddontang.com/2014/05/10/ledisdb-introduction/</id>
+    <published>2014-05-10T08:52:53.000Z</published>
+    <updated>2014-08-08T16:10:49.000Z</updated>
+    <content type="html"><![CDATA[<h2 id="起因">起因</h2>
 <p><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>是一个参考ssdb，采用go实现，底层基于leveldb，类似redis的高性能nosql数据库，提供了kv，list，hash以及zset数据结构的支持。</p>
 <p>我们现在的应用极大的依赖redis，但随着我们用户量越来越大，redis的内存越来越不够用，并且replication可能还会导致超时问题。虽然后续我们可以通过添加多台机器来解决，但是在现有机器配置下面，我们仍希望单台机器承载更多的用户。另外，因为业务的特性，我们其实并不需要将所有的数据放到内存，只需要存放当前活跃用户。</p>
 <p>经过我们的调研，发现ssdb已经很好的帮我们解决了这个问题，它提供了跟redis一致的接口（当然有些地方还是稍微不同），但是底层采用leveldb进行存储。根据其官网的描述，性能已经接近甚至超越了redis。</p>
@@ -855,39 +950,63 @@ MSET (10 keys): 21881.84 requests per second
 <h2 id="Todo。。。。。。">Todo。。。。。。</h2>
 <p><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>还是一个非常新的项目，比起ssdb已经在生产环境中用了很久，还有很多路要走，还有一些重要的功能需要实现，譬如replication等。</p>
 <p>欢迎有兴趣的童鞋一起参与进来，在漫漫程序开发路上有一些好基友可是很幸运的。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="ledisdb" scheme="http://siddontang.com/tags/ledisdb/"/>
+    
+      <category term="nosql" scheme="http://siddontang.com/tags/nosql/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-    <article class="post">
+  <entry>
+    <title><![CDATA[谈谈自己造轮子]]></title>
+    <link href="http://siddontang.com/2014/04/30/make-wheel/"/>
+    <id>http://siddontang.com/2014/04/30/make-wheel/</id>
+    <published>2014-04-30T00:29:09.000Z</published>
+    <updated>2014-08-08T16:15:43.000Z</updated>
+    <content type="html"><![CDATA[<p>写下这篇文章，主要是对我近段时间工作的反思。</p>
+<h1 id="为啥要造轮子">为啥要造轮子</h1>
+<p>对于一些程序员来说，喜欢自己造轮子可算是一个很平常的事情，我想可能有如下原因：</p>
+<ul>
+<li>对于一些小的功能，不需要借助外部库，直接能够自己写完搞定。</li>
+<li>对于一些大的功能，很多外部库不能很好的与自己项目整合，有时候还不如自己写一个。</li>
+<li>有时候即使能用的外部库，因为程序员相轻的思想，就觉得自己写的nb，不用。</li>
+<li>还有可能就是想深入学习某一个知识点，自己动手造一个。</li>
+</ul>
+<p>我不觉得造轮子不好，曾今很长一段时间我都认为造轮子是体现自己能力很好的一种方式，但是现在越来越觉得，不要过分的去造轮子。</p>
+<h1 id="造轮子的教训">造轮子的教训</h1>
+<p>昨天，我需要对接amazon s3的存储，官方没有go语言的sdk，所以我就动了自己写一个的想法，即使我知道铁定有第三方的实现。</p>
+<p>amazon s3的接口因为都是restful形式，同时签名机制已经非常熟悉（国内的存储服务接口几乎都按照这套设计的，除了几个奇葩的公司），所以我就开始写了，写完了之后，我在看一个第三方的<a href="https://launchpad.net/goamz" target="_blank" rel="external">goamz</a>实现，发现跟我相差不了多少，一下子碉堡了。</p>
+<p>我真的叫做没屁事了，这么浪费时间。</p>
+<h1 id="造还是不造？">造还是不造？</h1>
+<p>很多时候，我们要克服自己造轮子的冲动。</p>
+<p>对于一个需要实现的功能，我觉得首先可以考虑该需求是否有成熟的解决方案，如果有，使用的成本有多大？</p>
+<p>譬如对于python来说，如果我们现在需要一套web框架，如果自己去写，而不用成熟的tornado，django这些的，我真觉得蛋疼了。而对于go来说，我到现在还没发现我们用起来趁手的web框架，所以就有了自己造的<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>。</p>
+<p>如果项目进度有压力，多数时候我都倾向于通过集成外部解决方案来实现，而不是费时的自己去造轮子，因为这时候体现你能力的不是你写了多少nb的东西，而是将程序运行起来，提供服务。当然，你也不能找太挫的，或者完全无法驾驭的程序，那样后面就够你疼了。</p>
+<p>即使真的需要自己去写一个轮子，还需要不停的问自己：我这个轮子稳定性如何，能否高效的运行，后续随着需求的变更我能不能很容易的掌控？如果发现自己搞不定，还是求助一下别人比较好。</p>
+<p>如果我对某一个知识点特别有兴趣，想去深入研究并且有时间，那我觉得自己造几个轮子也算是很不错的事情。譬如我前段时间想重新深入了解网络编程，虽然有libev这些好用的开源库，我也基于他们封装了很多东西，譬如<a href="https://github.com/siddontang/tnet" target="_blank" rel="external">tnet</a>，<a href="https://github.com/siddontang/tpush" target="_blank" rel="external">tpush</a>，但是我仍然自己写了一个<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>，写完了，我才有“啊哈，原来是这样“这种豁然开朗的感觉。</p>
+<h1 id="写在后面">写在后面</h1>
+<p>随着现在github这类网站的流行，找到高质量的第三方实现已经变成一件很容易的事情，作为一个程序员，不能固步自封，总认为我自己写的才是好的，有时候“自己动手，丰衣足食”这种想法反而会累死自己。</p>
+<p>今天刚好看到了一篇文章<a href="http://it.deepinmind.com/%E5%85%B6%E5%AE%83/2014/04/29/knowing-the-bits.html" target="_blank" rel="external">一位码农的几点思考</a>，里面的观点我很赞同，与大家共勉。</p>
+]]></content>
+    
+    
+      <category term="program" scheme="http://siddontang.com/categories/program/"/>
+    
+  </entry>
   
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-04-27T06:08:47.000Z"><a href="/2014/04/27/golang-why-go/">04-27-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/04/27/golang-why-go/">为什么使用Go</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>这里，我并不打算引起语言争论的口水仗，我并不是什么大牛，对语言的造诣也不深，只是想通过自己实际的经历，来说说为什么我在项目中选择go。</p>
+  <entry>
+    <title><![CDATA[为什么使用Go]]></title>
+    <link href="http://siddontang.com/2014/04/27/golang-why-go/"/>
+    <id>http://siddontang.com/2014/04/27/golang-why-go/</id>
+    <published>2014-04-27T06:08:47.000Z</published>
+    <updated>2014-08-08T16:06:45.000Z</updated>
+    <content type="html"><![CDATA[<p>这里，我并不打算引起语言争论的口水仗，我并不是什么大牛，对语言的造诣也不深，只是想通过自己实际的经历，来说说为什么我在项目中选择go。</p>
 <h1 id="其他语言的经历">其他语言的经历</h1>
 <h2 id="C++">C++</h2>
 <p>在接触go之前，我已经有多年的c++开发经验。主要用在游戏服务端引擎开发以及P2P上面，那可是一段痛并快乐的时期，以至于我看到任何的程序钉子问题都觉得可以用c++这把锤子给敲定。但是对于互联网项目开发来说，除非你的团队整体的c++技术水平nb，并且有很强的代码规范，不然真可能是一场灾难，更别说我们现有团队几乎没其他人会这玩意了。</p>
@@ -947,39 +1066,28 @@ MSET (10 keys): 21881.84 requests per second
 <h1 id="写到后面">写到后面</h1>
 <p>在使用的时候，我们需要知道go到底适用在什么地方，譬如我们现在也就将API服务使用go重构，我们可没傻到用go去替换openresty。</p>
 <p>总之，go是一门很新的语言，国内也已经有很多公司开始吃这个螃蟹，也有成功的例子了，而我们也正开始了这段旅程。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="c++" scheme="http://siddontang.com/tags/c++/"/>
+    
+      <category term="lua" scheme="http://siddontang.com/tags/lua/"/>
+    
+      <category term="python" scheme="http://siddontang.com/tags/python/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-04-24T05:46:41.000Z"><a href="/2014/04/24/golang-moonmq-example/">04-24-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/04/24/golang-moonmq-example/">Go MoonMQ使用说明</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>在上一篇moonmq的介绍中（<a href="http://blog.csdn.net/siddontang/article/details/22889495" target="_blank" rel="external">这里</a>），我仅仅简短的罗列了一些moonmq的设计想法，但是对于如何使用并没有详细说明，公司同事无法很好的使用。</p>
+  <entry>
+    <title><![CDATA[Go MoonMQ使用说明]]></title>
+    <link href="http://siddontang.com/2014/04/24/golang-moonmq-example/"/>
+    <id>http://siddontang.com/2014/04/24/golang-moonmq-example/</id>
+    <published>2014-04-24T05:46:41.000Z</published>
+    <updated>2014-08-08T16:02:32.000Z</updated>
+    <content type="html"><![CDATA[<p>在上一篇moonmq的介绍中（<a href="http://blog.csdn.net/siddontang/article/details/22889495" target="_blank" rel="external">这里</a>），我仅仅简短的罗列了一些moonmq的设计想法，但是对于如何使用并没有详细说明，公司同事无法很好的使用。</p>
 <p>对于moonmq的使用，其实很简单，样例代码在<a href="https://github.com/siddontang/moonmq/tree/master/example" target="_blank" rel="external">这里</a>，我们只需要处理好broker，consumer以及publisher的关系就可以了。</p>
 <p>首先，我们需要启动一个broker，因为moonmq现在只支持tcp的自定义协议，所以broker启动的时候需要指定一个listen address。</p>
 <pre><code>#启动broker
@@ -1021,39 +1129,26 @@ MSET (10 keys): 21881.84 requests per second
 </ul>
 <p>从上面的例子可以看出，使用moonmq很方便，后续我准备加入http的支持，使其更容易使用。</p>
 <p>moonmq的代码在这里<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">https://github.com/siddontang/moonmq</a>。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="moonmq" scheme="http://siddontang.com/tags/moonmq/"/>
+    
+      <category term="message queue" scheme="http://siddontang.com/tags/message-queue/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-04-23T05:29:51.000Z"><a href="/2014/04/23/golang-leveldb/">04-23-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/04/23/golang-leveldb/">Go的LevelDB接口</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>leveldb是一个很强悍的kv数据库，自然，我也希望能在go中使用。</p>
+  <entry>
+    <title><![CDATA[Go的LevelDB接口]]></title>
+    <link href="http://siddontang.com/2014/04/23/golang-leveldb/"/>
+    <id>http://siddontang.com/2014/04/23/golang-leveldb/</id>
+    <published>2014-04-23T05:29:51.000Z</published>
+    <updated>2014-08-08T15:59:53.000Z</updated>
+    <content type="html"><![CDATA[<p>leveldb是一个很强悍的kv数据库，自然，我也希望能在go中使用。</p>
 <p>如果有官方的go leveldb实现，那我会优先考虑，譬如<a href="https://code.google.com/p/leveldb-go/" target="_blank" rel="external">这个</a>，但是该库文档完全没有，并且在网上没发现有人用于实战环境，对其能否在生产环境中使用打上问号，保险起见，我还是决定不使用。</p>
 <p>因为leveldb有c的接口，所以通过cgo能很方便的进行集成，所以我决定采用该种方式，幸运的是，已经有人做了cgo的版本，也就是<a href="https://github.com/jmhodges/levigo" target="_blank" rel="external">levigo</a>。</p>
 <p>使用levigo，需要编译安装leveldb，如果需要压缩支持还需要编译snappy，为了简单，我写了一个构件脚本，如下：</p>
@@ -1116,119 +1211,356 @@ func (db *DB) Delete(key []byte) error
 <pre><code>func (db *DB) Iterator(begin []byte, end []byte, limit int) *Iterator 
 func (db *DB) ReverseIterator(rbegin []byte, rend []byte, limit int) *Iterator 
 </code></pre><p>具体的代码在<a href="https://github.com/siddontang/golib/tree/master/leveldb" target="_blank" rel="external">这里</a>。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="leveldb" scheme="http://siddontang.com/tags/leveldb/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
+  <entry>
+    <title><![CDATA[Go使用pprof调试Goroutine]]></title>
+    <link href="http://siddontang.com/2014/04/22/golang-pprof-goroutine/"/>
+    <id>http://siddontang.com/2014/04/22/golang-pprof-goroutine/</id>
+    <published>2014-04-22T02:56:26.000Z</published>
+    <updated>2014-08-08T16:05:40.000Z</updated>
+    <content type="html"><![CDATA[<p>有一段时间，我们的推送服务socket占用很不正常，我们自己统计的同时在线就10w的用户，但是占用的socket竟然达到30w，然后查看goroutine的数量，发现已经60w+。</p>
+<p>每个用户占用一个socket，而一个socket，有read和write两个goroutine，简化的代码如下：</p>
+<pre><code>c, _ := listerner.Accept()
 
-  <nav id="pagination">
-  
-  
-    <a href="/tags/go/page/2/" class="alignright next">下一页</a>
-  
-  <div class="clearfix"></div>
-</nav>
-</div></div>
-    <aside id="sidebar" class="alignright">
-  <div class="search">
-  <form action="//google.com/search" method="get" accept-charset="utf-8">
-    <input type="search" name="q" results="0" placeholder="搜索">
-    <input type="hidden" name="q" value="site:siddontang.com">
-  </form>
-</div>
+go c.run()
 
-  <div class="widget tag">
-  <h3 class="title">Github</h3>
-  <ul class="entry">
-  <li><a href="https://github.com/siddontang/ledisdb" target="_blank">LedisDB</a><small>Fast NoSQL</small></li>
-  <li><a href="https://github.com/siddontang/mixer" target="_blank">Mixer</a><small>MySQL Proxy with Go</small></li>
-  <li><a href="https://github.com/siddontang/libtnet" target="_blank">Libtnet</a><small>High Performance EventLoop</small></li>
-  <li><a href="https://github.com/siddontang/moonmq" target="_blank">MoonMQ</a><small>Fast Message Queue</small></li>
-  <li><a href="https://github.com/siddontang" target="_blank">More...</a></li>
-  </ul>
-</div>
+func (c *conn) run() {
+    go c.onWrite()
+    c.onRead()
+}
 
+func (c *conn) onRead() {
+    stat.AddConnCount(1)
 
-  
-<div class="widget tag">
-  <h3 class="title">分类</h3>
-  <ul class="entry">
-  
-    <li><a href="/categories/c++/">c++</a><small>6</small></li>
-  
-    <li><a href="/categories/go/">go</a><small>26</small></li>
-  
-    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
-  
-    <li><a href="/categories/lua/">lua</a><small>2</small></li>
-  
-    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
-  
-    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
-  
-    <li><a href="/categories/program/">program</a><small>10</small></li>
-  
-    <li><a href="/categories/python/">python</a><small>6</small></li>
-  
-  </ul>
-</div>
+    //on something
 
+    stat.AddConnCount(-1)
 
+    //clear
+    //notify onWrite to quit
+}
+</code></pre><p>当时我就怀疑，用户同时在线的统计是正确的，也就是之后的clear阶段出现了问题，导致两个goroutine都无法正常结束。在检查代码之后，我们发现了一个可疑的地方，因为我们不光有自己的统计，还会将一些统计信息发送到我们公司的统计平台，代码如下：</p>
+<pre><code>ch = make([]byte, 100000)
+func send(msg []byte) {
+    ch &lt;- msg
+}
+
+//在另一个goroutine的地方，
+msg &lt;- msg
+httpsend(msg)
+</code></pre><p>我们channel的缓存分配了10w，如果公司统计平台出现了问题，可能会导致channel阻塞。但到底是不是这个原因呢？</p>
+<p>幸运的是，我们先前已经在代码里面内置了pprof的功能，通过pprof goroutine的信息，发现大量的goroutine的当前运行函数在httpsend里面，也就是说，公司的统计平台在大并发下面服务不可用，虽然我们有http超时的处理，但是因为发送的数据量太频繁，导致整体阻塞。</p>
+<p>临时的解决办法就是关闭了统计信息的发送，后续我们会考虑将其发送到自己的mq上面，虽然也可能会出现mq服务不可用的问题，但是说句实话，比起自己实现的mq，公司的统计平台更让我不可信。</p>
+<p>这同时也给了我一个教训，访问外部服务一定要好好处理外部服务不可用的问题，即使可用，也要考虑压力问题。</p>
+<p>对于pprof如何查看了goroutine的问题，可以通过一个简单的例子说明:</p>
+<pre><code>package main
+
+import (
+    &quot;net/http&quot;
+    &quot;runtime/pprof&quot;
+)
+
+var quit chan struct{} = make(chan struct{})
+
+func f() {
+    &lt;-quit
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set(&quot;Content-Type&quot;, &quot;text/plain&quot;)
+
+    p := pprof.Lookup(&quot;goroutine&quot;)
+    p.WriteTo(w, 1)
+}
+
+func main() {
+    for i := 0; i &lt; 10000; i++ {
+        go f()
+    }
+
+    http.HandleFunc(&quot;/&quot;, handler)
+    http.ListenAndServe(&quot;:11181&quot;, nil)
+}
+</code></pre><p>这上面的例子中，我们启动了10000个goroutine，并阻塞，然后通过访问<a href="http://localhost：11181/，我们就可以得到整个goroutine的信息，仅列出关键信息：" target="_blank" rel="external">http://localhost：11181/，我们就可以得到整个goroutine的信息，仅列出关键信息：</a></p>
+<pre><code>goroutine profile: total 10004
+
+10000 @ 0x186f6 0x616b 0x6298 0x2033 0x188c0
+#    0x2033    main.f+0x33    /Users/siddontang/test/pprof.go:11
+</code></pre><p>可以看到，在main.f这个函数中，有10000个goroutine正在执行，符合我们的预期。</p>
+<p>在go里面，还有很多运行时查看机制，可以很方便的帮我们定位程序问题，不得不赞一下。</p>
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="pprof" scheme="http://siddontang.com/tags/pprof/"/>
+    
+      <category term="goroutine" scheme="http://siddontang.com/tags/goroutine/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-<div class="widget tagcloud">
-  <h3 class="title">标签云</h3>
-  <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 13.75px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.00px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 13.75px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a>
-  </div>
-</div>
-
-</aside>
-    <div class="clearfix"></div>
-  </div>
-  <footer id="footer" class="inner"><div class="alignleft">
+  <entry>
+    <title><![CDATA[Go Timer实现]]></title>
+    <link href="http://siddontang.com/2014/04/16/golang-timer/"/>
+    <id>http://siddontang.com/2014/04/16/golang-timer/</id>
+    <published>2014-04-16T01:57:46.000Z</published>
+    <updated>2014-08-08T16:06:20.000Z</updated>
+    <content type="html"><![CDATA[<p>在go自带的timer实现中，采用的是通常的最小堆的方式，具体可以参见<a href="http://golang.org/src/pkg/runtime/time.goc" target="_blank" rel="external">这里</a>。</p>
+<p>最小堆能够提供很好的定时精度，但是，在实际情况中，我们并不需要这样高精度的定时器，譬如对于一个连接，如果它在2分钟以内没有数据交互，我们就将其删除，2分钟并不需要那么精确，多几秒少几秒都无所谓的。</p>
+<p>以前我们单独实现了一个<a href="https://github.com/siddontang/golib/tree/master/timingwheel" target="_blank" rel="external">timingwheel</a>，采用的是channel close的方式来处理低精度，超大量timer定时的问题，详见<a href="http://blog.csdn.net/siddontang/article/details/18370541" target="_blank" rel="external">这里</a>。</p>
+<p>但是timingwheel只有After接口，远远不能满足实际的需求，于是我按照linux timer的实现方式，依葫芦画瓢，弄了一个go版本的实现。linux timer的实现，参考<a href="http://blog.csdn.net/tianmohust/article/details/8707162" target="_blank" rel="external">这篇</a>。</p>
+<p>后续用go timer来表示我自己实现的timer。</p>
+<p>在linux中，我们使用tick来表示一次中断的时间，用jiffies来表示系统自启动以来流逝的tick次数。在go timer中，我们在创建一个wheel的时候，需要指定一次tick的时间，如下：</p>
+<pre><code>func NewWheel(tick time.Duration) *Wheel
+</code></pre><p>Wheel是go timer统一对timer进行管理的地方。对于每一次tick，我们采用go自带的ticker进行模拟。</p>
+<p>为了便于外部使用，我仍然提供的是跟go自己timer一样的接口，譬如：</p>
+<pre><code>func NewTimer(d time.Duration) *Timer
+</code></pre><p>在NewTimer中，参数d是一个time duration，我们还需要根据tick来进行换算，得到go timer中实际的expires，也就是在多少次jiffies后该timer触发。</p>
+<p>譬如，NewTimer参数为10s，tick为1s，那么经过10个jiffies之后，该timer就会超时触发。如果tick为500ms，那么需要经过20个jiffies之后，该timer才会被触发。</p>
+<p>所以timer超时jiffies的计算如下：</p>
+<pre><code>expires = wheel.jiffies + d / wheel.tick
+</code></pre><p>详细的代码在<a href="https://github.com/siddontang/golib/tree/master/timer" target="_blank" rel="external">https://github.com/siddontang/golib/tree/master/timer</a>。</p>
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="timer" scheme="http://siddontang.com/tags/timer/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-  &copy; 2014 SiddonTang
+  <entry>
+    <title><![CDATA[在Go中使用JSON作为主要配置]]></title>
+    <link href="http://siddontang.com/2014/04/13/golang-json-config/"/>
+    <id>http://siddontang.com/2014/04/13/golang-json-config/</id>
+    <published>2014-04-13T03:53:14.000Z</published>
+    <updated>2014-08-08T15:59:31.000Z</updated>
+    <content type="html"><![CDATA[<p>最近在用go重构，在先前的代码中，我们使用的ini文件进行配置，但是因为很多历史遗留问题，导致配置混乱，维护困难，自然也需要考虑重构了。</p>
+<h1 id="通用配置格式">通用配置格式</h1>
+<p>通用的配置格式有很多，常用的就有ini，json，yaml，xml等，当然为了通用我们不考虑自定义的配置格式。那如何选择呢？</p>
+<p>首先，xml我们就不用考虑了，到现在为止我都没觉得用这玩意配置起来有多方便，反而很臃肿，可能java系的童鞋会比较青睐。</p>
+<p>再来考虑ini，ini文件对于简单应用的配置可以说是非常方便的，如果配置没有太多的层次结构，使用ini就能完全满足我们的需要，即使有，我们也能够通过加入特定前缀来解决。譬如，我们可能有如下redis配置：</p>
+<pre><code>[ModuleA]
+
+persistent_redis_addr = 127.0.0.1:6379
+persistent_redis_password = admin
+
+cache_redis_addr = 127.0.0.1:6380
+cache_redis_password = admin
+</code></pre><p>然后，需求变化了，我们需要另一个持久化redis服务来做相关事情，于是配置就可能变成了下面这样：</p>
+<pre><code>[ModuleA]
+
+persistent_redis_addr = 127.0.0.1:6379
+persistent_redis_password = admin
+
+persistent2_redis_addr = 127.0.0.1:6379
+persistent2_redis_password = admin
+
+cache_redis_addr = 127.0.0.1:6380
+cache_redis_password = admin
+</code></pre><p>虽然通过前缀命名能解决层级问题，但总觉得是对程序员不怎么友好的。</p>
+<h1 id="why_json">why json</h1>
+<p>剩下的就是json和yaml，可以这么说，这两个都算是比较好的轻量级配置格式，而且对程序员非常友好，而且go里面都可以通过定义struct，将层级结构的配置映射到相应的struct里面。</p>
+<p>但是我还是决定选择json作为我们go代码的默认配置格式，最主要的原因在于go的json包有一个杀手级别的RawMessage实现。而这个在我能找到的yaml包中没有。</p>
+<p>RawMessage主要是用来告诉go延迟解析用的。当我们定义了某一个字段为RawMessage之后，go就不会解析这段json，这样我们就可以将其推后到各自的子模块单独解析。</p>
+<p>假设有一个功能，后台存储可能是redis或者mysql，但是只会使用一个，可能我们会按照如下方式写配置：</p>
+<pre><code>redis_store : {
+    addr : 127.0.0.1
+    db : 0
+},
+
+mysql_store : {
+    addr : 127.0.0.1
+    db : test
+    password : admin
+    user : root
+}
+
+store : redis
+</code></pre><p>对应的class为</p>
+<pre><code>type Config struct {
+    RedisStore struct {
+        Addr string
+        DB int
+    }
+
+    MysqlStore Struct {
+        Addr string
+        DB string
+        Password string
+        User string
+    }
+
+    Store string
+}
+</code></pre><p>如果这时候我们在增加了一种新的store，我们需要在Config文件里面在增加一个新的field，但是实际我们只会使用一种store，并不需要写这么多的配置。</p>
+<p>我们可以使用RawMessage来处理：</p>
+<pre><code>type Config struct {
+    Store string
+    StoreConfig json.RawMessage
+}
+</code></pre><p>如果使用redis，对应的配置文件为</p>
+<pre><code>store: redis
+store_config: {
+    addr : 127.0.0.1
+    db : 0
+}
+</code></pre><p>如果使用mysql，对应的配置文件为</p>
+<pre><code>store: mysql
+store_config: {
+    addr : 127.0.0.1
+    db : test
+    password : admin
+    user : root
+}
+</code></pre><p>go读取配置文件之后，并不会处理RawMessage对应的东西，而是由我们代码自己对应的store模块去处理。这样无论配置文件怎么变动，store模块做了什么变动，都不会影响Config类。</p>
+<p>而在各个模块中，我们只需要自己定义相关config，然后可以将RawMessage直接解析映射到该config上面，譬如，对于redis，我们在模块中有如下定义</p>
+<pre><code>type RedisConfig config {
+    Addr string `json:&quot;addr&quot;`
+    DB int `json:&quot;db&quot;`
+}
+
+func NewConfig(m json.RawMessage) *RedisConfig {
+    c := new(RedisConfig)
+
+    json.Unmarshal(m, c)
+
+    return c
+}
+</code></pre><h1 id="json的不足">json的不足</h1>
+<p>使用json也还有很多蛋疼的地方，最大的问题就在于注释，在json中，可不能这样写：</p>
+<pre><code>{
+    //this is a comment
+    /*this is a comment*/ 
+}
+</code></pre><p>但是，我们又不可能不写一点注释来说明配置项是干啥的，所以，通常采用的是引入一个comment字段的方式，譬如：</p>
+<pre><code>{
+    &quot;_comment&quot; : &quot;this is a comment&quot;,
+    &quot;key&quot; : &quot;value&quot;
+}
+</code></pre><p>另外，json还需要注意的就是写的时候最后一项不能加上逗号，这样的json会因为格式错误无法解析的。</p>
+<pre><code>{
+    &quot;key&quot; : &quot;value&quot;,
+}
+</code></pre><p>最后那个逗号可是不能要的，但是实际写配置的时候我们可是经常性的随手加上了。</p>
+<p>但是，总的来说，json对于go的项目还是很友好的，我不光在项目中推行了，在自己的开源项目中，也大量的采用了json作为主要的配置文件。</p>
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="json" scheme="http://siddontang.com/tags/json/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
-</div>
-<div class="clearfix"></div></footer>
-  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
-<script src="/js/jquery.imagesloaded.min.js"></script>
-<script src="/js/gallery.js"></script>
+  <entry>
+    <title><![CDATA[Go中Slice与String的无内存copy]]></title>
+    <link href="http://siddontang.com/2014/04/12/golang-no-copy/"/>
+    <id>http://siddontang.com/2014/04/12/golang-no-copy/</id>
+    <published>2014-04-12T09:10:16.000Z</published>
+    <updated>2014-08-08T16:05:04.000Z</updated>
+    <content type="html"><![CDATA[<p>在go里面，string和slice的互换是需要进行内存拷贝的，虽然在底层，它们都只是用 pointer + len来表示的一段内存。</p>
+<p>通常，我们不会在意string和slice的转换带来的内存拷贝性能问题，但是总有些地方需要关注的，刚好在看vitess代码的时候，发现了一种很hack的做法，string和slice的转换只需要拷贝底层的指针，而不是内存拷贝。当然这样做的风险各位就要好好担当了：</p>
+<pre><code>func String(b []byte) (s string) {
+    pbytes := (*reflect.SliceHeader)(unsafe.Pointer(&amp;b))
+    pstring := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))
+    pstring.Data = pbytes.Data
+    pstring.Len = pbytes.Len
+    return
+}
 
+func Slice(s string) (b []byte) {
+    pbytes := (*reflect.SliceHeader)(unsafe.Pointer(&amp;b))
+    pstring := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))
+    pbytes.Data = pstring.Data
+    pbytes.Len = pstring.Len
+    pbytes.Cap = pstring.Len
+    return
+}
+</code></pre><p>在我的测试例子中，slice转string之后，如果slice的值有变化，string也会跟着改变，如下：</p>
+<pre><code>b := []byte(&quot;hello world&quot;)
 
-<script type="text/javascript">
-var disqus_shortname = 'siddontang';
+a := String(b)
 
-(function(){
-  var dsq = document.createElement('script');
-  dsq.type = 'text/javascript';
-  dsq.async = true;
-  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
-  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
-}());
-</script>
+b[0] = &#39;a&#39;
 
+println(a)  //output  aello world
+</code></pre><p>但是string转slice之后，就不能更改slice了，如下：</p>
+<pre><code>a := &quot;hello world&quot;
 
+b := Slice(a)
 
-<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
-<script src="/fancybox/jquery.fancybox.pack.js"></script>
-<script type="text/javascript">
-(function($){
-  $('.fancybox').fancybox();
-})(jQuery);
-</script>
+b[0] = &#39;a&#39;  //这里就等着崩溃吧
 
-</body>
-</html>
+//但是可以这样，因为go又重新给b分配了内存
+b = append(b, &quot;hello world&quot;…)
+</code></pre><p>上面为什么会崩溃我猜想可能是string是immutable的，可能对应的内存地址也是不允许改动的。</p>
+<p>另外，上面这个崩溃在defer里面是recover不回来的，真的就崩溃了，原因可能就跟c的非法内存访问一样，os不跟你玩了。</p>
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
+  
+  <entry>
+    <title><![CDATA[Go Log模块开发]]></title>
+    <link href="http://siddontang.com/2014/04/07/golang-log/"/>
+    <id>http://siddontang.com/2014/04/07/golang-log/</id>
+    <published>2014-04-07T13:34:36.000Z</published>
+    <updated>2014-08-08T16:01:56.000Z</updated>
+    <content type="html"><![CDATA[<p>在go里面，虽然有log模块，但是该模块提供的功能并不强，譬如就没有我们常用的level log功能，但是自己实现一个log模块也并不困难。</p>
+<p>对于log的level，我们定义如下:</p>
+<pre><code>const (
+    LevelTrace = iota
+    LevelDebug
+    LevelInfo
+    LevelWarn
+    LevelError
+    LevelFatal
+)    
+</code></pre><p>相应的，提供如下几个函数:</p>
+<pre><code>func Trace(format string, v ...interface{}) 
+func Debug(format string, v ...interface{}) 
+func Info(format string, v ...interface{}) 
+func Warn(format string, v ...interface{}) 
+func Error(format string, v ...interface{}) 
+func Fatal(format string, v ...interface{}) 
+</code></pre><p>另外，对于一个log，我们可能将其写入不同的地方，譬如可能直接输出到stdout，或者写文件，或者写socket，在创建特定logger的时候，我们需要指定对应的handler，用来实现不同的写入方式。</p>
+<p>handler的定义如下：</p>
+<pre><code>type Handler interface {
+    Write(p []byte) (n int, err error)
+    Close() error
+}
+</code></pre><p>我们可以参考python的log模块，实现几个通用的handler，譬如StreamHandler，FileHandler，TimeRotatingFileHandler。</p>
+<p>log模块的实现<a href="https://github.com/siddontang/golib/tree/master/log" target="_blank" rel="external">https://github.com/siddontang/golib/tree/master/log</a>。</p>
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="log" scheme="http://siddontang.com/tags/log/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
+  
+</feed>

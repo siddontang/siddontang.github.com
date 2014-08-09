@@ -66,16 +66,14 @@
 <p>在<a href="http://blog.csdn.net/siddontang/article/details/25601611" target="_blank" rel="external">读生产环境下go语言最佳实践有感</a>一文中，我介绍过soundcloud公司的做法，直接将第三库的代码check下来，放到自己工程的vendor目录里面，或者使用godep。</p>
 <p>不过现在，我发现了一种更好的包管理方式<a href="http://labix.org/gopkg.in" target="_blank" rel="external">gopkg</a>。它通过约定使用带有版本号的url来让go tool去check指定的版本库，虽然现在只支持github的go repositories，但是我觉得已经足够强大。</p>
 <p>一个很简单的例子，我们通过如下方式获取go的yaml包</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">go <span class="keyword">get</span> gopkg.<span class="keyword">in</span>/yaml.v1</div></pre></td></tr></table></figure>
-
-<p>而实际上，该yaml包对应的地址为：</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line">http<span class="variable">s:</span>//github.<span class="keyword">com</span>/<span class="keyword">go</span>-yaml/yaml</div></pre></td></tr></table></figure>
-
-<p>yaml.v1表明版本为v1，而在github上面，有一个对应的v1 branch。</p>
+<pre><code>go get gopkg.in/yaml.v1
+</code></pre><p>而实际上，该yaml包对应的地址为：</p>
+<pre><code>https://github.com/go-yaml/yaml
+</code></pre><p>yaml.v1表明版本为v1，而在github上面，有一个对应的v1 branch。</p>
 <p>gopkg支持的url格式很简单：</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div></pre></td><td class="code"><pre><div class="line">gopkg.in/pkg.v3      → github.<span class="keyword">com</span>/<span class="keyword">go</span>-pkg/pkg (branch/<span class="keyword">tag</span> v3, v3.<span class="keyword">N</span>, <span class="built_in">or</span> v3.<span class="keyword">N</span>.M)</div><div class="line">gopkg.in/user/pkg.v3 → github.<span class="keyword">com</span>/user/pkg   (branch/<span class="keyword">tag</span> v3, v3.<span class="keyword">N</span>, <span class="built_in">or</span> v3.<span class="keyword">N</span>.M)</div></pre></td></tr></table></figure>
-
-<p>我们使用v.N的方式来定义一个版本，然后再github上面对应的建立一个同名的分支。gopkg支持<strong>(vMAJOR[.MINOR[.PATCH]])</strong>这种类型的版本模式，如果存在多个major相同的版本，譬如v1，v1.0.1，v1.1.2，那么gopkg会选用最高级别的v1.1.2使用，譬如有如下版本：</p>
+<pre><code>gopkg.in/pkg.v3      → github.com/go-pkg/pkg (branch/tag v3, v3.N, or v3.N.M)
+gopkg.in/user/pkg.v3 → github.com/user/pkg   (branch/tag v3, v3.N, or v3.N.M)
+</code></pre><p>我们使用v.N的方式来定义一个版本，然后再github上面对应的建立一个同名的分支。gopkg支持<strong>(vMAJOR[.MINOR[.PATCH]])</strong>这种类型的版本模式，如果存在多个major相同的版本，譬如v1，v1.0.1，v1.1.2，那么gopkg会选用最高级别的v1.1.2使用，譬如有如下版本：</p>
 <ul>
 <li>v1</li>
 <li>v2.0</li>
@@ -109,9 +107,8 @@
 <p>上面都提到了更改结构体，譬如我给一个结构体增加字段，就可能不需要升级主版本，但是如果删除结构体的一个导出字段，那就必须要升级了。如果只是单纯的更改改结构体里面非导出字段的东西，也不需要升级。</p>
 <p>更加详细的信息，请直接查看<a href="http://labix.org/gopkg.in" target="_blank" rel="external">gopkg</a></p>
 <p>可以看到，gopkg使用了一种很简单地方式让我们方便的对go pakcage进行版本管理。于是我也依葫芦画瓢，给我的log package做了一个v1版本的，你可以直接</p>
-<figure class="highlight"><table><tr><td class="gutter"><pre><div class="line">1</div></pre></td><td class="code"><pre><div class="line"><span class="keyword">go</span> <span class="built_in">get</span> gopkg.in/siddontang/<span class="keyword">go</span>-<span class="built_in">log</span>.v1/<span class="built_in">log</span></div></pre></td></tr></table></figure>
-
-
+<pre><code>go get gopkg.in/siddontang/go-log.v1/log
+</code></pre>
       
     </div>
     <footer>
@@ -166,6 +163,18 @@
   </form>
 </div>
 
+  <div class="widget tag">
+  <h3 class="title">Github</h3>
+  <ul class="entry">
+  <li><a href="https://github.com/siddontang/ledisdb" target="_blank">LedisDB</a><small>Fast NoSQL</small></li>
+  <li><a href="https://github.com/siddontang/mixer" target="_blank">Mixer</a><small>MySQL Proxy with Go</small></li>
+  <li><a href="https://github.com/siddontang/libtnet" target="_blank">Libtnet</a><small>High Performance EventLoop</small></li>
+  <li><a href="https://github.com/siddontang/moonmq" target="_blank">MoonMQ</a><small>Fast Message Queue</small></li>
+  <li><a href="https://github.com/siddontang" target="_blank">More...</a></li>
+  </ul>
+</div>
+
+
   
 <div class="widget tag">
   <h3 class="title">分类</h3>
@@ -192,69 +201,11 @@
 
 
   
-<div class="widget tag">
-  <h3 class="title">标签</h3>
-  <ul class="entry">
-  
-    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
-  
-    <li><a href="/tags/c++/">c++</a><small>9</small></li>
-  
-    <li><a href="/tags/celery/">celery</a><small>1</small></li>
-  
-    <li><a href="/tags/go/">go</a><small>26</small></li>
-  
-    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
-  
-    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
-  
-    <li><a href="/tags/json/">json</a><small>1</small></li>
-  
-    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
-  
-    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
-  
-    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
-  
-    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
-  
-    <li><a href="/tags/log/">log</a><small>1</small></li>
-  
-    <li><a href="/tags/lua/">lua</a><small>4</small></li>
-  
-    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
-  
-    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
-  
-    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
-  
-    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
-  
-    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
-  
-    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
-  
-    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
-  
-    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
-  
-    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
-  
-    <li><a href="/tags/python/">python</a><small>7</small></li>
-  
-    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
-  
-    <li><a href="/tags/restful/">restful</a><small>1</small></li>
-  
-    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
-  
-    <li><a href="/tags/timer/">timer</a><small>2</small></li>
-  
-    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
-  
-    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
-  
-  </ul>
+<div class="widget tagcloud">
+  <h3 class="title">标签云</h3>
+  <div class="entry">
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 13.75px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.00px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 13.75px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a>
+  </div>
 </div>
 
 </aside>
