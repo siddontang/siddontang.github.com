@@ -1,0 +1,381 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>moonmq | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+<h2 class="archive-title tag">moonmq</h2>
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-24T05:46:41.000Z"><a href="/2014/04/24/golang-moonmq-example/">04-24-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/24/golang-moonmq-example/">Go MoonMQ使用说明</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在上一篇moonmq的介绍中（<a href="http://blog.csdn.net/siddontang/article/details/22889495" target="_blank" rel="external">这里</a>），我仅仅简短的罗列了一些moonmq的设计想法，但是对于如何使用并没有详细说明，公司同事无法很好的使用。</p>
+<p>对于moonmq的使用，其实很简单，样例代码在<a href="https://github.com/siddontang/moonmq/tree/master/example" target="_blank" rel="external">这里</a>，我们只需要处理好broker，consumer以及publisher的关系就可以了。</p>
+<p>首先，我们需要启动一个broker，因为moonmq现在只支持tcp的自定义协议，所以broker启动的时候需要指定一个listen address。</p>
+<pre><code>#启动broker
+./simple_broker -addr=127.0.0.1:11182
+</code></pre><p>启动了broker之后，我们就可以向该broker发送消息</p>
+<pre><code>#向test这个queue发送 hello msg
+./simple_publisher -addr=127.0.0.1:11182 -queue=test -msg=hello
+</code></pre><p>然后在另一个shell里面接收消息</p>
+<pre><code>#接收test这个queue的消息
+./simple_consumer -addr=127.0.0.1:11182 -queue=test
+
+#output get msg: hello
+</code></pre><p>如果没有消息，那么consumer就会一直等待，直到接收到消息。</p>
+<p>这里详细说一下consumer的实现，</p>
+<ul>
+<li><p>创建一个与broker的连接</p>
+<pre><code>  //create a client for use
+  client := NewClient(config)
+
+  //get a usable connection
+  conn, _ := client.Get()
+</code></pre></li>
+<li><p>绑定queue</p>
+<pre><code>  //bind a queue
+  //queue name : test
+  //routingKey : &quot;&quot;
+  //noAck : true
+  ch, _ := conn.Bind(&quot;test&quot;, &quot;&quot;, true)
+</code></pre></li>
+<li><p>接收消息</p>
+<pre><code>  //receive msg, block to wait until a msg received
+  msg := ch.GetMsg()
+  println(msg)
+</code></pre></li>
+<li><p>回执消息</p>
+<pre><code>  //if channel noAck is false, we must ack
+  ch.Ack()
+</code></pre></li>
+</ul>
+<p>从上面的例子可以看出，使用moonmq很方便，后续我准备加入http的支持，使其更容易使用。</p>
+<p>moonmq的代码在这里<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">https://github.com/siddontang/moonmq</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-03T10:30:17.000Z"><a href="/2014/04/03/moonmq-introduction/">04-03-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/03/moonmq-introduction/">MoonMQ 高性能消息队列介绍</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>moonmq是一个用go实现的高性能消息队列系统，后续准备用于我们消息推送服务以及各个后台的异步任务。</p>
+<p>在设计上面，moonmq主要借鉴了rabbitmq以及rocketmq相关的思想，但是做了很多减法，毕竟我不是要设计成一个非常通用的mq。</p>
+<h1 id="名词解释">名词解释</h1>
+<ul>
+<li>publisher，消息生产者</li>
+<li>consumer，消息消费者</li>
+<li>broker，消息中转站</li>
+<li>queue，消息存储队列</li>
+</ul>
+<p>publisher给一个命名的queue发送消息msg，broker负责将msg存放在queue里面。</p>
+<p>consumer可以关注自己感兴趣的queue，这样当queue里面有消息的时候，broker就会将该消息推送给该consumer。</p>
+<h1 id="推拉模型">推拉模型</h1>
+<p>在rocketmq里面，支持的是pull msg，而rabbitmq则是支持push和pull msg。moonmq只支持push msg。主要有如下考量：</p>
+<ul>
+<li>当consumer在线的时候，push是最及时的，因为这时候铁定能把msg push成功。</li>
+<li>当consumer离线，broker会保存离线消息，当consumer上线之后，broker仍然按照push的方式将离线消息进行推送。</li>
+</ul>
+<p>另外，因为moonmq后续会支持我们的消息推送系统，如果采用pull模型，几十万的consumer定期的pull，我有点担心moonmq会吃不消。</p>
+<h1 id="消息类型">消息类型</h1>
+<p>moonmq将msg分为direct和fanout，fanout就是广播消息，moonmq会将任何订阅了该queue的consumer进行msg push。</p>
+<p>如果msg的type为direct，moonmq将会采用轮询的方式，选择一个consumer进行msg push。</p>
+<h1 id="消息优先级">消息优先级</h1>
+<p>moonmq不支持消息优先级，处理起来会很麻烦，而且通常我们并不需要特别精细的优先级控制。</p>
+<p>可以通过一个简单的方式实现粗粒度的优先级控制：</p>
+<ul>
+<li>设置queue1，queue2，queue3三个队列，queue1用来处理保存优先级最高的消息，queue2次之，queue3最低</li>
+<li>publisher发送消息的时候根据优先级发送到指定的queue上面去</li>
+<li>我们可以有多个consumer处理queue1的消息，譬如3个，然后用2个处理queue2的，1个处理queue1的，这样实现优先级控制。</li>
+</ul>
+<h1 id="消息过滤">消息过滤</h1>
+<p>moonmq通过routing key来进行消息过滤。</p>
+<p>publisher在给特定queue发送msg的时候，还可以指定对应的routing key，只有关注了该queue同时也指定了相同的routing key的consumer才会收到该msg。</p>
+<h1 id="Ack">Ack</h1>
+<p>moonmq支持ack机制，当push一个msg到consumer的时候，consumer必须回应一个ack，moonmq才认为msg push成功。如果长时间没有ack，则moonmq会重新选择一个consumer再次发送。</p>
+<p>ack能够很大程度的保证消息推送的成功率，但是对于消息的快速推送会有影响，所以moonmq也支持no ack模式，这种模式下moonmq只要发送成功了msg，就认为push成功，无需等待ack的回执。</p>
+<h1 id="延迟消息">延迟消息</h1>
+<p>这个现在还没支持，后续是情况而定</p>
+<h1 id="定时消息">定时消息</h1>
+<p>难度比较大，不会实现</p>
+<h1 id="协议">协议</h1>
+<p>moonmq采用的是类似rocketmq的协议，如下：</p>
+<pre><code>|total length(4 bytes)|header length(4 bytes)|header json|body|
+
+total length = 4 + len(header json) + len(body)
+header length = len(header json)
+</code></pre><p>在moonmq里面，我们使用Proto来定义协议</p>
+<pre><code>type Proto struct {
+    Method uint32 `json:&quot;method&quot;`
+
+    Fields map[string]string `json:&quot;fields&quot;`
+
+    Body []byte `json:&quot;-&quot;`
+}
+</code></pre><p>moonmq的任何协议，都需要带上method，我们通过method进行实际的消息处理。</p>
+<p>moonmq的method参考rabbitmq，有如下几种类型的method：</p>
+<ul>
+<li>同步request method，客户端在发送request method之后必须等待对应的response method，在等待的过程中也能够处理push，error等异步method。</li>
+<li>同步response method，对应特定的request method。</li>
+<li>异步method，发送之后无需等待。</li>
+</ul>
+<p>现阶段，moonmq支持如下同步method：</p>
+<ul>
+<li>auth, auth_ok</li>
+<li>publish, publish_o</li>
+<li>bind, bind_ok</li>
+<li>unbind, unbind_ok</li>
+</ul>
+<p>同时支持如下异步method:</p>
+<ul>
+<li>push</li>
+<li>error</li>
+<li>heartbeat</li>
+<li>ack</li>
+</ul>
+<h1 id="后续">后续</h1>
+<p>这只是moonmq的一个简单介绍，后续我们会不断完善moonmq，争取也能成为一个不错的mq产品。</p>
+<p>moonmq的代码在这里<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">https://github.com/siddontang/moonmq</a>，期待大家的反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+
+  <nav id="pagination">
+  
+  
+  <div class="clearfix"></div>
+</nav>
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

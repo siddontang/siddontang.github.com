@@ -1,0 +1,965 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>第 2 页 | 归档：2013 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+<h2 class="archive-title">2013</h2>
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-06-16T14:16:14.000Z"><a href="/2013/06/16/introduction-mtunnel/">06-16-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/06/16/introduction-mtunnel/">mtunnel - a simple http tunnel</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>mtunnel是一个简易的http隧道工具，使用python实现，基于tornado。</p>
+<p>为了解决远端用户服务器的一些问题，我们需要远程连接到用户的服务器上面，但因为企业安全性问题，外部根本不可能访问相关服务器，只能通过用户的本地机器去访问，但是用户本地机器也在内网环境下面，外部不能直接连接。</p>
+<p>因为用户的机器在内网环境下面，也不可能通过通常的代理去连接。所以比较好的方式就是通过一台双方都能访问的公网服务器，来交换双方的数据。</p>
+<p>mtunnel通过http tunnel的方式来进行数据的交互。它将双方交互的数据封装到http的body里面，通过http协议进行传输。这样有几个好处：</p>
+<ul>
+<li>不用关心交互的具体协议，mtunnel只是将双方交互的所有信息完全封装到http body里面进行传递。</li>
+<li>http一般不会被企业的网络安全规则给屏蔽，内网穿透性更好。</li>
+</ul>
+<p>假设，企业服务器启动了sshd，而我们这边使用putty。流程如下：</p>
+<p><img src="https://raw.github.com/siddontang/blog/master/asserts/mtunnel-flow.png" alt="image"></p>
+<ul>
+<li>putty直接将数据发送给forward proxy，由forward proxy将数据通过http body发送给server。</li>
+<li>server收到数据之后将其放置在一个buffer中。如果reverse proxy这时候已经连接到server，则直接将数据发送给reverse proxy。</li>
+<li>reverse proxy定时去server获取数据，如果有则将其发送给sshd。</li>
+<li>sshd返回的数据同样流程返回给putty。</li>
+</ul>
+<h2 id="使用">使用</h2>
+<p>mtunnel分为3个部分，与putty交互的forward proxy，与sshd交互的reverse proxy以及负责双方数据中转的server。</p>
+<h3 id="start_server">start server</h3>
+<pre><code>    python server.py -p 8888
+</code></pre><p>假设sever的ip地址为10.20.187.118，监听port为8888。</p>
+<h3 id="start_reverse_proxy">start reverse proxy</h3>
+<p>因为我们需要通过用户本地机器去访问服务器，所以首先必须用户同意让我们访问，也就是他需要在本地启动reverse proxy。</p>
+<pre><code>    python rproxy.py -host 10.20.189.241 -p 22 --server 10.20.187.118:8888
+</code></pre><p>host和port连接的是sshd的ip和port，而server则是服务器的地址。<br>reverse proxy如果成功连接上了server，则会获取一个channel id。后续所有的通信都必须通过该channel id进行。</p>
+<h3 id="start_forward_proxy">start forward proxy</h3>
+<pre><code>    python fproxy.py --server 10.20.187.118:8888 --channel 112122 -p 8889
+</code></pre><p>我们在本地启动forward proxy，监听本地8889端口，server为服务器的地址，而channel则是用户启动reverse proxy之后获取的channel id，由用户负责告诉我们。</p>
+<h3 id="use">use</h3>
+<p>当做了上述操作之后，我们只需要启动putty，连接forward proxy。然后putty就能与远端的sshd交互了。</p>
+<h2 id="远程协助？">远程协助？</h2>
+<p>为什么不使用QQ远程协助这种类似功能？主要有以下几点原因：</p>
+<ul>
+<li>QQ远程协助能看到用户本地机器的很多信息，企业用户对于安全性问题比较敏感。</li>
+<li>网络问题，现在很多企业的网络环境非常不好，我们就碰到过太多次远程的时候网络坑爹造成完全无法工作的情况。</li>
+</ul>
+<h2 id="后续方向">后续方向</h2>
+<p>现在的版本只是一个最基本的版本，很多问题没有考虑，后续主要考虑以下几个方面：</p>
+<ul>
+<li>安全性，尤其要保证channel id的安全性。后续考虑使用签名机制等。</li>
+<li>网络容错，还没怎么很好的处理网络出问题的情况，譬如网络断开等。</li>
+<li>P2P，数据都走server会有延时，稳定等问题，如果能够P2P互通，就很强大了。</li>
+</ul>
+<p>代码在<a href="http://https://github.com/siddontang/mtunnel" target="_blank" rel="external">这里</a>，该版本只是笔者使用python实现的一个非常基础的版本，很多地方存在不足，后续会慢慢完善。</p>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-05-29T13:05:05.000Z"><a href="/2013/05/29/nginx-vhost-deploy/">05-29-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/05/29/nginx-vhost-deploy/">nginx虚拟主机解决企业内外网访问</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在企业里面部署服务，需要面临的一个问题就是不同企业复杂的网络环境。通常来说，私有云只需要在企业内部使用，但是也有很多企业需要通过外网能访问。同时，对于不同网络的访问请求，系统也需要进行不同的处理。譬如内网用户请求下载直接可以rewrite到对应的内网下载机上，但外网用户请求下载则可能需要通过代理进行。</p>
+<p>因为我们的系统使用nginx作为网络总的入口，所以，自然通过部署nginx来解决内外网的访问问题。对于私有云产品来说，内网的nginx server是很好配置的，难点在于如何配置外网的server，因为外网有很多种网络环境，需要分别考虑。</p>
+<h2 id="基础知识">基础知识</h2>
+<p>在进行配置之前，首先列举一些nginx的配置需要了解的基本知识。</p>
+<p>首先，来看一个最简单的nginx配置</p>
+<pre><code>http {
+    server {
+        listen 192.168.1.10:80;
+        server_name www.domain.com;
+        location / {
+            return 200 &quot;Hello World&quot;;
+        }
+    }
+}
+</code></pre><p>在上面这个例子中，nginx启动了一个server，该server监听192.168.1.10的80端口，server_name为 www.domain.com。</p>
+<p>ip和port大家很好理解，对于server_name，可以认为就是发送http请求header里面的host。</p>
+<p>当外部发送 <a href="http://192.168.1.10:80/hello" target="_blank" rel="external">http://192.168.1.10:80/hello</a> 这个http请求的时候，监听80端口的这个server会处理。</p>
+<p>同时，我们也可以通过域名来访问，如<a href="http://www.domain.com/hello，因为www.domain.com跟server_name配置一样，所以nginx也能处理响应。当然，前提是企业必须配置dns将该域名指定到192.168.1.10上面。" target="_blank" rel="external">http://www.domain.com/hello，因为www.domain.com跟server_name配置一样，所以nginx也能处理响应。当然，前提是企业必须配置dns将该域名指定到192.168.1.10上面。</a></p>
+<p>对于任何http请求，nginx都是首先获取一个匹配的server，而具体nginx选择哪一个server，则是如下流程：</p>
+<ul>
+<li>通过listen的ip以及port确定server</li>
+<li>如果有多个server，则通过server_name再次确定</li>
+<li>如果仍然有多个，则按照配置顺序选择第一个</li>
+</ul>
+<p>所以通过nginx来响应内外网的请求，也就是配置不同server的过程。</p>
+<p>对于外网来说，通常来说有2种情况，具有独立的外网IP以及NAT映射的外网IP，如果提供了外网域名，通过域名解析的IP也仍然是上述两种情况。</p>
+<h2 id="独立外网IP">独立外网IP</h2>
+<p>假设内网ip为192.168.1.10，实际的外网ip为10.20.189.217。</p>
+<h3 id="无域名">无域名</h3>
+<p>对于具有独立外网IP的机器来说，nginx很好配置。如下</p>
+<pre><code>server {
+    listen 192.168.1.10:80;
+    server_name 192.168.1.10;
+}
+
+server {
+    listen 10.20.189.217:80;
+    server_name 10.20.189.217;
+}
+</code></pre><p>可以看到，我们直接可以通过listen监听不同的ip来配置内外网server，</p>
+<p>或者我们也可以通过如下方式：</p>
+<pre><code>server {
+    listen 80;
+    server_name 192.168.1.10;
+}
+
+server {
+    listen 80;
+    server_name 10.20.189.217;
+}
+</code></pre><p>这里，nginx监听同一个端口，通过对应的server_name来进行区分内外网。对于有独立外网IP的情况，建议使用前一种方式，直接listen ip:port。</p>
+<h3 id="有域名">有域名</h3>
+<p>如果有域名，那么我们可以在server_name中填入相应的域名信息。</p>
+<pre><code>server {
+    listen 192.168.1.10:80;
+    server_name www.domain.com;
+}
+
+server {
+    listen 10.20.189.217:80;
+    server_name www.domain.com;
+}
+</code></pre><p>可以看到，如果内外网都有相同的域名，那么listen的时候就必须得填入ip信息，如果只监听端口，nginx没法通过server_name区分内外网。</p>
+<h2 id="NAT外网IP">NAT外网IP</h2>
+<p>如果外网IP为NAT映射的，那么nginx是不能直接listen这个IP的。假设NAT映射端口仍然为80，外网NAT地址为10.20.189.217。</p>
+<h3 id="无域名-1">无域名</h3>
+<pre><code>server {
+    listen 80;
+    server_name 192.168.1.10;
+}
+
+server {
+    listen 80;
+    server_name 10.20.189.217;
+}
+</code></pre><p>可以看到，无域名情况比较简单，我们可以通过server_name来区分内外网。</p>
+<h3 id="有不同域名">有不同域名</h3>
+<p>如果内外网有不同域名，那么情况也跟无域名一样，通过配置server_name区分。</p>
+<pre><code>server {
+    listen 80;
+    server_name www.domain1.com;
+}
+
+server {
+    listen 80;
+    server_name www.domain2.com;
+}
+</code></pre><h3 id="有相同域名">有相同域名</h3>
+<p>如果内外网有相同域名，那么就不能通过监听同一个端口来区分内外网了。笔者能想到的做法就是nginx监听不同的端口。</p>
+<pre><code>server {
+    listen 80;
+    server_name www.domain1.com;
+}
+
+server {
+    listen 10080;
+    server_name www.domain2.com;
+}
+</code></pre><p>这里，通过监听10080来响应外网的请求，这样NAT的映射端口就需要改变。</p>
+<h2 id="end">end</h2>
+<p>可以看到，内外网的配置，其实就是nginx vhost的配置，而关键点就在于listen以及server_name。详细可以参考<a href="http://nginx.org/en/docs/http/request_processing.html" target="_blank" rel="external">How nginx processes a request</a>，<a href="http://nginx.org/en/docs/http/server_names.html" target="_blank" rel="external">Server names</a>。</p>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-05-29T13:04:49.000Z"><a href="/2013/05/29/nginx-performance-optimization/">05-29-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/05/29/nginx-performance-optimization/">nginx性能优化</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>最近在测试服务器压力的时候，发现使用tornado的服务benchmark上不去，顶多1500左右，nginx即使开了8个进程，在响应请求的时候有一个work进程的cpu超高，达到100%的情况。</p>
+<p>对于cpu超高的情况，当初我们都认为是2.6.18网卡中断只能在一个cpu上处理，导致cpu高，这虽然是一个原因，但是短期内升级整个系统是一个不太可能的事情。</p>
+<p>鉴于官方说tornado性能很高，所以总觉得我们在某些地方使用有问题，看了nginx以及tornado的源码，发现有几个地方我们真没注意。</p>
+<ul>
+<li><p>listen backlog，nginx默认的backlog是511，而tornado则是100，对于这种设置，如果并发量太大，因为backlog不足会导致大量的丢包。</p>
+<p>  将nginx以及tornado listen的时候backlog改大成20000，同时需要调整net.ipv4.tcp_max_syn_backlog，net.ipv4.tcp_timestamps，net.ipv4.tcp_tw_recycle等相关参数。</p>
+</li>
+<li><p>accept_mutex，将其设置为off，nginx默认为on，是为了accept的解决惊群效应，但是鉴于nginx只有8个进程，同时并发量大，每个进程都唤醒都能被处理，所以关闭。</p>
+</li>
+</ul>
+<p>做了上面简单的两个操作之后，ab benchmark发现nginx的cpu负载比较平均，同时不会出现upstream request timeout以及cannot assign requested address等错误。</p>
+<p>同时，直接压tornado也第一次达到了4000的rps，通过nginx proxy到tornado则在3200左右。</p>
+<p>虽然只是修改了几个配置，性能就提升了很多，后续对于nginx，还有很多需要研究的东西。</p>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-05-22T00:03:41.000Z"><a href="/2013/05/22/thumbnail-architecture/">05-22-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/05/22/thumbnail-architecture/">缩略图架构实现</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>笔者最近将缩略图功能引入了私有云系统中，这里简单记录一下。</p>
+<h2 id="架构">架构</h2>
+<p>整体架构如下：</p>
+<p><img src="https://raw.github.com/siddontang/blog/master/asserts/thumbnail-architecture.png" alt="image"></p>
+<p>可以看到，笔者采用了通用的分层架构设计模式。</p>
+<ul>
+<li>file storage存放着原始的图片数据。</li>
+<li>image server用于图片的处理，同时进行图片的cache。</li>
+<li>nginx作为统一的入口，同时也作为cache。</li>
+</ul>
+<p>当用户请求一张图片的缩略图的时候，如果该图片不存在于nginx的缓存中，则nginx根据图片的fileid 通过consistent hash路由到对应的image server上面去处理，如果image server仍然没有该图片，则会从file storage下载。</p>
+<p>分层架构有一个很好的地方在于系统的可扩展性，同时我们也可以在加入一些中间层，提高cache的命中率，譬如我们就可以在image server与nginx之间引入一个cache层。不过鉴于我们的系统主要用于企业内部，不会出现图片数据量过大的情况，所以上面这套分层设计已经足够了。</p>
+<h3 id="nginx_try_files">nginx try_files</h3>
+<p>如果本地cache不存在，则去后台服务器取数据。对于这套逻辑，nginx可以通过try_files很好的处理，譬如:</p>
+<pre><code>location /abc.png {
+    root /data/image/;
+    try_files $uri @fetch;
+}
+
+location @fetch {
+    proxy_pass http://up_imageserver$request_uri;
+}
+</code></pre><p>首先try_files会尝试在本地获取对应的文件，如果没有找到，则会内部跳转到fetch这个location去远程获取数据。</p>
+<h2 id="何时处理缩略图">何时处理缩略图</h2>
+<p>既然是缩略图，那么何时生成缩略图就是需要考虑的问题了。通常来说，缩略图的生成会有两种方式：</p>
+<ul>
+<li><p>上传生成</p>
+<p>  当用户上传一张图片之后，系统自动为该图片生成对应的固定格式缩略图，然后将原图与缩略图一起存放到file storage里面去。这方面主要有facebook的<a href="http://static.usenix.org/event/osdi10/tech/full_papers/Beaver.pdf" target="_blank" rel="external">Haystack</a>系统。</p>
+</li>
+<li><p>实时生成</p>
+<p>  当用户上传一张图片之后，只保留该图片的原始数据，当请求该图的缩略图时，如果cache中不存在，由image server动态生成。这方面可以参考淘宝的图片存储介绍。</p>
+</li>
+</ul>
+<p>对于笔者来说，实际使用的是第二种方法，主要有以下几个原因的考量：</p>
+<ul>
+<li>对于实时生成的缩略图我们可以灵活的指定其大小，而不像上传生成那样只有预先定义的width和height。</li>
+<li>存储成本，额外存储缩略图会占用很大的存储空间，而且存放到file storage里面还会有冗余备份的问题，更加浪费。</li>
+<li>协同图片的冷热性问题，最近最热的图片铁定是最频繁访问的，尤其是在多人协同情况下面，而这些图片缩略图是有缓存的，不需要每次都通过原图生成，性能有保证。</li>
+</ul>
+<h2 id="如何处理缩略图">如何处理缩略图</h2>
+<p>既然选择实时生成缩略图，那么如何快速生成缩略图就是笔者需要考虑的问题了。这里笔者使用<a href="http://www.graphicsmagick.org/" target="_blank" rel="external">graphicsmagick</a>来生成缩略图，网上有太多介绍，这里不再累述。</p>
+<h2 id="安全">安全</h2>
+<p>生成缩略图之后，如何保证该图片的安全访问也是一个需要关注的问题。笔者考虑了如下解决方案：</p>
+<ul>
+<li><p>签名，任何缩略图的url都是经过签名，因为签名是通过登陆用户自身的access id和security key进行的，并且有时效性，所以外界很难伪造。或者，可以使用简单的<a href="http://wiki.nginx.org/HttpAccessKeyModule" target="_blank" rel="external">HttpAccessKeyModule</a>来进行访问控制。</p>
+</li>
+<li><p>nginx <a href="http://wiki.nginx.org/HttpRefererModule" target="_blank" rel="external">HttpRefererModule</a>，只允许特定domain的请求访问。</p>
+</li>
+</ul>
+<h2 id="存储">存储</h2>
+<p>对于如何存储大量的图片小文件，笔者觉得可以如下考虑：</p>
+<ul>
+<li>对于文件最终存放的file storage，业界有很多好的分布式解决方案，譬如<a href="http://code.taobao.org/p/tfs/src/" target="_blank" rel="external">TFS</a>，<a href="https://github.com/mogilefs" target="_blank" rel="external">mogilefs</a>等，如果想自己造一个轮子，也很不错。</li>
+<li><p>对于图片的cache，因为cache的存储文件量级我们是可以控制的，所以这里可以考虑直接使用通常的文件系统存储。</p>
+<p>  但需要注意的是，单个目录下面文件数量不能过多，目录的层次也不能过深，不然会导致很严重的性能瓶颈。为了解决上述问题，笔者建立了三层目录结构，首层100个文件夹，以1 - 100命名，每个文件夹下面1000个文件夹，以1 - 1000命名，对于任意的图片文件，根据其实际的文件名通过两次hash到特定的目录下。</p>
+</li>
+</ul>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-05-20T13:50:18.000Z"><a href="/2013/05/20/swig-and-pygmcrypto/">05-20-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/05/20/swig-and-pygmcrypto/">swig的学习以及国密的python封装</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h2 id="起因">起因</h2>
+<p>最近在研究国密算法，而我们主要是使用python来进行开发，所以就需要构建一个国密的python模块。</p>
+<p>国密算法网上已经有很好的实现，笔者使用的是一个参考Xyssl实现的那个版本。因为这些版本都是c的，所以很容易将其扩展到python里面，但是为了跟python自身的crypto的行为一致，需要将国密生成相应的class。譬如，python的hashlib的md5，使用方式如下：</p>
+<pre><code>md = hashlib.md5(&quot;123&quot;)
+md.update(&quot;456&quot;)
+print md.hexdigest()
+mdCopy = md.copy()
+print mdCopy.digest()
+</code></pre><p>所以，对于类似的国密sm3算法，我们扩展到python里面，也应该提供如上的使用方式。</p>
+<p>注册一个class到python，也不是一件很困难的事情，但是笔者觉得可以采用更简单的方式，自然就考虑使用swig。</p>
+<h2 id="swig">swig</h2>
+<p><a href="http://www.swig.org/" target="_blank" rel="external">swig</a>（需翻墙）可以算是将c、c++代码生成到其他语言的一个代码生成器，</p>
+<p>网上关于swig的学习介绍有很多，这里笔者只是记录一下写python的国密扩展时候使用到的swig知识点。</p>
+<p>以sm3来说，为了以class的方式在python里面使用，我们首先需要在swig定义其class的template，如下：</p>
+<pre><code>class SM3 
+{
+public:
+    SM3(const unsigned char* input, int inputLen);
+    ~SM3();
+
+    void update(const unsigned char* input, int inputLen);
+    void digest(unsigned char output[32]);
+    void hexdigest(unsigned char output[64]);
+    SM3 copy();
+};
+</code></pre><p>在python里面使用的时候，我们可以使用如下方式创建一个sm3对象：</p>
+<pre><code>md = SM3(&quot;1234567890&quot;)
+</code></pre><p>可以看到，在python里面，我们创建sm3对象只传入了一个参数，那么怎么对应c++里面的这两个(unsigned char*, int)呢？这里，我们使用swig里面的<a href="http://www.swig.org/Doc2.0/Typemaps.html#Typemaps" target="_blank" rel="external">typemaps</a>：</p>
+<pre><code>%typemap(in) (const unsigned char* input, int inputLen) 
+{
+    $1 = (unsigned char*)PyString_AsString($input);
+    $2 = PyString_Size($input);
+}
+</code></pre><p>这里，我们定义一个in typemap，swig碰到这种typemap会将python里的函数参数转换成对应的c++参数。</p>
+<p>对于sm3的digest以及hexdigest，python里面如下：</p>
+<pre><code>print md.digest()
+print md.hexdigest()
+</code></pre><p>可以看到，在c++里面，output是函数的参数，而在python里面则是作为返回值。这里，我们可以使用argout typemap来处理。</p>
+<pre><code>%typemap(in, numinputs = 0) unsigned char [ANY] (unsigned char temp[$1_dim0]) 
+{
+    $1 = temp;
+}
+
+%typemap(argout) unsigned char [ANY] 
+{
+    Py_XDECREF($result);
+    $result = PyString_FromStringAndSize((const char*)$1, $1_dim0);
+}
+</code></pre><p>这里，我们需要注意几个地方:</p>
+<ul>
+<li>因为digest以及hexdigest的array长度是32和64，所以使用ANY来匹配，使用$1_dim0来获取实际的array长度。</li>
+<li>因为digest以及hexdigest在python里面是没有参数的，所以我们需要swig忽略输入参数，使用numinputs = 0。</li>
+<li>因为没有参数传入，所以我们需要手动构造一个array，使用unsigned char temp[$1_dim0]，然后将这个array的地址赋给实际的参数output。</li>
+<li>使用argout，将output的结果放到python函数的返回值。</li>
+</ul>
+<p>上述的实现，是参考<a href="http://www.swig.org/Doc2.0/Typemaps.html#Typemaps_multi_argument_typemaps" target="_blank" rel="external">multi_argument_typemaps</a>里面的很多例子，尤其是关于in buffer和out buffer的。</p>
+<h2 id="pygmcrypto">pygmcrypto</h2>
+<p>对于国密算法，笔者这里只使用了sm3和sm4，对于sm2来说，笔者认为太过复杂，还没有较好的开源实现，同时笔者也没有精力自己去写一个，如果有谁有好的实现，欢迎联系我，笔者乐意将其build进python模块里去。</p>
+<p>代码<a href="https://github.com/siddontang/pygmcrypto" target="_blank" rel="external">pygmcrypto</a>在这里。直接使用python setup.py install进行安装，使用如下:</p>
+<pre><code>from gmcrypto import sm4, sm3
+md = sm4.new(&quot;1&quot; * 16)
+eData = md.encrypt(&quot;1&quot; * 16)
+dData = md.decrypt(dData)
+
+md = sm3.new(&quot;123&quot;)
+md.update(&quot;456&quot;)
+md.hexdigest()
+</code></pre><p>如果出现编译不成功的情况，很有可能是生成的swig template问题，大家只需要在swig目录下面make重新生成就可以了。swig的版本需要2.0以上。</p>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-05-05T13:23:20.000Z"><a href="/2013/05/05/think-for-web-server-architecture/">05-05-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/05/05/think-for-web-server-architecture/">关于web服务器架构的思考</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>笔者最近一年都在从事企业私有云存储的开发，主导并推动了服务器架构的重构。在架构演化的过程中，有了很多的心得体会，这里记录一下，算是对自己架构成长的一个总结。 </p>
+<h2 id="原则">原则</h2>
+<p>对于笔者来说，设计一个web服务器架构方案，最先考虑的就是简单以及可扩展性。而这两个也是笔者设计架构的首要原则。</p>
+<h3 id="简单">简单</h3>
+<p>对于一个企业级web产品来说，它其实是由非常多的基础服务来组合起来的。以私有云产品来说，如果想实现一个简单的文件共享功能，至少需要共享服务，文件服务，账号服务三个服务来共同实现。</p>
+<ul>
+<li>共享服务，用来管理文件共享关系，如用户A给用户B共享了一个文件abc.txt</li>
+<li>文件服务，用来提供共享文件下载，如用户B需要在哪里以及如何下载abc.txt这个文件</li>
+<li>账号服务，用来提供共享人员的相关信息，如用户A和B的账号，姓名等信息</li>
+</ul>
+<p>上面三个服务，缺少了任何一个都不能实现共享功能。但是为了实现一个功能就要与3个服务进行交互，有些童鞋就觉得非常麻烦，简单起见，他们将其糅合在一起，这样就能很好的进行代码编写了。但是这样做的弊端也非常明显，可维护性非常的差，因为功能都是耦合在一起了，如果这时候我们想用另一套企业自己的账号数据，那么完全无法实现。</p>
+<p>上面说的只是笔者列举的一个例子，实际项目中，共享功能还是很好的进行了切分，但是仍然有很多功能过于耦合，以至于笔者的团队在很长的一段时间里面都在为以前的某些童鞋的错误设计买单。</p>
+<p>鉴于有了上面的经验教训，笔者在考虑架构方案的时候最先想的就是<strong>简单</strong>。 </p>
+<p>所谓简单，其实很好理解，就是一个服务就干一件事情，不同的功能逻辑别糅在一个服务里面实现。更上层的服务是通过集成底层的服务来实现。其实这个就跟程序设计里面模块化的思想一样，只不过这里的模块就是单个服务。</p>
+<p>一个服务一个模块，好处是很多的，但也不可能100%的完美，仍然很多问题需要考虑，譬如：</p>
+<ul>
+<li>服务的可用性问题，如何判断一个服务是否可用，以及当机服务的恢复。</li>
+<li>服务的运维管理问题，系统可能随着功能的增多而有了太多的服务，对这些服务的监控管理就是一个很难的问题，毕竟每个人都不希望凌晨因为服务当掉了这些问题被电话叫醒。</li>
+</ul>
+<p>上面的这些问题，笔者认为已经涉及到服务的高可用问题了，与是否采用简单服务方案无关。而对于服务的高可用，分布式这些问题，笔者反而认为在简单这个原则下面，反而能更好的处理解决。</p>
+<h3 id="可扩展性">可扩展性</h3>
+<p>对于大规模web系统来说，随时可能面临着突然大并发量访问而造成系统负载撑不住的问题。对于这种情况，我们就需要扩展我们的系统使其能够处理过载的情况。</p>
+<p>对于web系统的扩展，通常采用横向扩展的方式，当某一个服务出现性能瓶颈，我们只需要动态增加该服务就能减轻过载问题。因为服务是可以动态进行横向扩展的，所以服务提供的功能都应该是<strong>状态无关</strong>的。所谓无状态性，就是每一次服务器的请求都应该是独立的，如果服务是有状态的，为了维护调用的状态，我们会做非常多的事情，这非常不利于扩展，同时也增加了系统的复杂性。</p>
+<h2 id="stars">stars</h2>
+<p>stars是私有云项目开始的时候葱头写的一套web服务器框架。</p>
+<p>在项目开始的时候，大部分的开发同学都没有web服务器开发的经验，为了解决这个问题，葱头设计了stars，使得大家能够非常的使用python进行web服务器的开发。stars有很多设计巧妙以及值得学习的地方。虽然现在看来有些设计无法满足现有的需求。但是笔者一直认为<strong>没有最好的架构，只有合适的架构</strong>，作为一个架构师，即使你考虑了很多后续扩展的问题，但是仍然有一些需求变化是你考虑不到的。</p>
+<h3 id="rpc">rpc</h3>
+<p>stars最大的特点，就在于封装了复杂的http调用，使得开发的同学不需要关注底层http知识。而做到这一点，就是将http的调用封装变成了大家熟悉的函数调用RPC。譬如我们有如下的一个http请求：</p>
+<pre><code>http://domain.com/file/getFileInfo?fileId=1
+</code></pre><p>该HTTP请求获取一个fileId为1的文件相关信息，在stars里面，我们可以这样写：</p>
+<pre><code>remote = RPC(&quot;domain.com&quot;)
+remote.file.getFileInfo(fileId = 1)
+</code></pre><p>而stars不光封装了http调用，同时为了方便大家的开发，也定义了一套API规范，只要大家写的API满足一定规则，就自动能够被注册到stars里面，这样外面就能使用RPC来调用。</p>
+<p>对于web服务API的模式，笔者认为，通常有RPC以及Restful等几种方式：</p>
+<pre><code>RPC Pattern:
+GET http://domain.com/file/getFileInfo?fileId=1
+GET http://domain.com/file/deleteFile?fileId=1
+
+Restful Pattern:
+GET http://domain.com/file/1
+DELETE http://domain.com/file/1
+</code></pre><p>stars采用的是RPC Pattern，对于这种模式，它对于开发同学很好理解，因为它就跟普通的函数调用一样，使用起来则比较自然。反而Restful Pattern则对于开发同学不怎么好理解。只是随着现今系统规模的扩大，笔者越发觉得stars遇到了问题：</p>
+<ul>
+<li>每实现一个功能，就新增一个API，导致API越来越多，管理越来越复杂。</li>
+<li>第三方开发者难于对接。API过多，开发者不知道如何使用哪些API。</li>
+</ul>
+<p>对于这种情况，可能Restful是一个很好的解决方案，如果有机会，笔者可能会在后续的新的项目中考虑实施。</p>
+<h3 id="stub">stub</h3>
+<p>对于web服务来说，如何信任客户端的HTTP请求？如何高效的与客户端进行交互？这些都是需要考虑的问题。stars采用了stub方式，在高效交互的情况下也能保证不错的安全性。</p>
+<ul>
+<li>客户端首先通过username + password的方式登陆系统，使用https协议保证其安全性。</li>
+<li>登陆成功之后，服务器会下发一个stub作为后续客户端与服务器交互的凭证。</li>
+<li>客户端的任何HTTP请求都需要带上stub。</li>
+<li>stub不会一直有效，一段时间之后过期，客户端需要重新请求申请新的stub。</li>
+</ul>
+<p>因为使用了stub，客户端与服务器能高效的交互，但是stub有如下问题：</p>
+<ul>
+<li>因为每次请求都会带上stub，只要该stub被外部截获，那么就可能伪装成该用户进行访问了。所以stub在很短的一段时间之后就会过期，但即使过期也仍然有风险。</li>
+<li>stub是放到url的请求参数上面传递给服务器的，即使采用HTTPS方式，该stub也能在浏览器上面看到，无法保证安全。</li>
+<li>stub放置在web服务一个总控服务的内存中，无持久化策略，只要该服务重启，先前所有的stub都会失效。</li>
+<li>每个服务一个stub，随着服务的增多，客户需要关注过多的stub管理。</li>
+<li>对于服务的任何HTTP请求，都需要在该服务对应的总控服务中进行stub验证，造成单点问题。</li>
+</ul>
+<p>可以看到，stub虽然提供了很好的与web服务交互的方式，但是在web系统规模扩大之后，不利于后续的扩展，安全性也有漏洞。</p>
+<h3 id="信任链">信任链</h3>
+<p>stars另一个设计巧妙的地方在于其信任链机制。实际会遇到如下情况，假设现在客户端已经生成了一个服务的stub，可以与该服务交互，但这时候客户端需要访问另一个服务的某个API，可是这时候没有该服务的stub，那如何处理呢？</p>
+<p>信任链机制其实就是这样一种情况，服务相互之间是可信任的，因为这些服务都是我们部署的，同时我们也可以通过很多其他方法保证可信任。</p>
+<p>当客户端与服务A建立信任之后，如果客户端想访问服务B，客户端可以通过A向B申请一个stub，这样就可以通过该stub访问服务B。</p>
+<h2 id="resty">resty</h2>
+<p>通过上面可以看到，stars架构是项目初期为了解决服务器快速开发等问题而提出的一套实现方案，当web系统越来越复杂的时候，stars就有了一些局限性，这时候就需要有另一套架构来满足现有的情况。</p>
+<p>对于新架构的选择，笔者决定从如下几个方面考虑：</p>
+<ul>
+<li>吸收stars精华，以其为基础演化，而不是完全重来。架构可能跟进化论一样，是不断进化的。而推倒重来，就如同突然基因突变一样，你自认为变好了，没准可能更差。</li>
+<li>平滑升级，系统已经部署到很多企业里面，如何保证升级的平稳，以及升级数据的完整性，都是我们需要面临的问题。</li>
+<li>简单，参考业界最通用的解决方案，不需要引入复杂的自造轮子。</li>
+</ul>
+<h3 id="签名">签名</h3>
+<p>为了解决stars stub相关问题，笔者认为可以采用最通用的HTTP签名机制。</p>
+<ul>
+<li>客户端使用username + password登陆成功之后，服务器下发一对id和key，因为登陆采用HTTPS方式，所以id和key不会被外部截获。</li>
+<li>客户端发送HTTP请求，使用key对其签名，并带上id一起发送给服务器。</li>
+<li>任何外部的HTTP请求，首先会通过验证服务器对其验证，如果验证通过，则证明是一个合法的url。</li>
+<li>验证通过之后，系统将会把HTTP请求路由到实际处理的服务上处理。</li>
+</ul>
+<p>url签名可以算是一种非常通过的安全交互模式，amazon s3，阿里云等云存储服务都使用了该方式。虽然引入验证服务器，增加了处理HTTP请求的时间，但是将验证与逻辑分离解耦，笔者认为更好，同时，后续我们可以通过很多方法优化验证服务。</p>
+<h3 id="原子api">原子api</h3>
+<p>前面说了，stars的RPC模式会导致API越来越多，以至于开发者为了实现一个功能，可能会与多个API进行交互，这明显提升了第三方开发的复杂性。所以笔者提出了原子API的概念，其实就是在服务器级别整合API，使得开发者只需要通过调用简单的API就能实现相应的功能。</p>
+<p>对于如何提供原子级别的API，笔者觉得可以使用如下方法：</p>
+<ul>
+<li>如果某一个功能需要多个API顺序执行，每个API的执行结果都可能影响该功能的最终结果，这样的功能我们就需要提供一个原子API来整合。</li>
+<li>如果某一个功能只是需要调用多个API查询相关数据，那么我们只需要提供批量查询的API即可，不需要提供原子API整合。</li>
+</ul>
+<p>既然引入了原子级别的API，那么在哪里进行整合呢？譬如有一个功能，需要服务A和服务B的API，我们不可能写一个服务C来特意的整合这个功能，这样会导致服务越来越多。所以笔者决定在nginx这一层提供原子API功能的整合。使用nginx的好处在于只需要增多一个location，该location里面进行API的整合。</p>
+<p>不过，为nginx开发一个module去处理这一个location其实也是一件非常困难的事情，虽然nginx的module开发看起来很简单，但是实际做起来会发现非常的复杂。幸运的是，我们有openresty，直接可以使用lua进行nginx的开发。现在我们已经大量在使用openresty，这也是为什么笔者将这次的架构命名为resty的原因。</p>
+<h3 id="统一入口">统一入口</h3>
+<p>stars有一个比较严重的问题，在于各个服务之间都是互相知道地址的，这样就有几个问题：</p>
+<ul>
+<li>对外暴漏的入口地址太多，客户端知道太多的服务地址。</li>
+<li>不利于动态部署，服务之间地址固定，重启某一个服务，相关服务都需要重启。</li>
+</ul>
+<p>为了解决这个问题，笔者决定在nginx这一层做统一入口，所有的服务地址由nginx这边进行管理，这样有如下几个好处：</p>
+<ul>
+<li>地址解耦，配置统一，只有nginx知道所有服务的地址，便于集中管理 </li>
+<li>隔离，服务与服务之间，服务与客户端之间完全隔离 </li>
+<li>动态部署，任何服务的动态变更，只需要nginx处理，该服务的相关服务完全不用重启。</li>
+</ul>
+<h2 id="总结">总结</h2>
+<p>以上只是简单的记录进来服务的架构演化，虽然现有的架构能满足系统的需求，但是没准一段时间之后就又会出现局限性。笔者一直认为，没有最好的架构，只有合适的架构。但是无论怎样，保持简单就可以了。</p>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-03-02T10:00:00.000Z"><a href="/2013/03/02/re-think-server-architecture-2/">03-02-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/03/02/re-think-server-architecture-2/">最近关于服务器架构的一点思考（2)</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>在前一篇”最近关于服务器架构的一点思考”，我主要考虑的是现阶段服务架构的易交互性以及安全性，包括客户端与服务器之间的签名访问，通过access id和security key交互，这套机制虽然简单，但是足够方便与高效。所以，后续碰到了服务器的问题，我也会基于这个原则，简单就好。</p>
+<p>因为我们的产品是部署到大型企业内部，供企业内部使用，也就是在内网环境里面，所以在很早期的时候是没考虑企业员工在外网访问的问题的。但是随着部署的企业对这方面的要求越来越高，我们现在不得不考虑我们的服务支持内外网访问，并且要保证足够的安全性。</p>
+<h1 id="http代理服务器">http代理服务器</h1>
+<p>最开始为了快速部署，我提出了一种可行的解决方案，因为我们采用http进行通讯，所以很自然的就可以通过配置一台HTTP代理服务器来解决内外网访问的问题，在外网使用的员工，通过代理服务器访问内部的服务。</p>
+<p>这个方案很简单，用户也觉得不错，使用了一段时间之后，一些用户就提意见了。主要有以下两点</p>
+<ul>
+<li>我在外网使用填写代理地址之后，拿到内网工作，发现无法使用了，因为还是走的外网代理</li>
+<li>我的企业服务器有内外网地址，我不想用代理方式，你让你们的服务直接部署在有内外网ip的机器上面，这样内外网都能访问</li>
+</ul>
+<p>对于第一个问题，我们可以考虑不用解决，因为对于浏览器的使用来说，用户也需要手动去管理自己的代理设置，所以不需要自动处理的。但是对于第二点，直接在具有内外网ip的机器上面部署，则对我们是一个难题了。</p>
+<h1 id="早期的服务架构">早期的服务架构</h1>
+<p>为什么不好解决直接将服务部署到具有内外网ip的机器上面，是因为早期的服务架构导致的，如图：<br><img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/re-think-server-architecture-2/origin-architecture.png" alt="Alt text" title="origin-architecture"></p>
+<p>我们的服务会有多个，并且这些service可能会分布到不同的物理机器上面，但是这些service又是直接对客户端提供服务的，也就是说，如果我们现在需要直接内外功能，那么我们需要将这些service都部署到具有内外网ip的机器上面，假设有10个service，则需要10台这样的机器，这个对于企业是铁定无法接受的。但是如果把这些service都部署到一台内外网ip的机器上面，则服务的性能会大打折扣。</p>
+<h2 id="一点对架构碎碎念">一点对架构碎碎念</h2>
+<p>为什么早期会如此架构，不便考量了，至少优势在于交互简单，快捷方便，但是有如下几个缺点：</p>
+<ul>
+<li>内外网ip问题，这个在上面已经说明</li>
+<li>service的地址全部对外暴露，client知道的东西太多了</li>
+<li>service之间的地址信息也绑定的太死，不利于动态部署，任何service的变化都需要重启所有相关联的service </li>
+</ul>
+<p>可能还有一些问题，但是我要说的是早期的架构不是不行，在当时，可能它是最好的一套解决方案，只是到了现在，随着需求不断演化，程序的不断复杂，这套架构已经有点不适宜了。所以我认为，<strong>任何的架构方案只是在当时特定的条件下面提出的较好的解决方案</strong>，至于说什么可扩展性，可维护性，我觉得都是逐渐演化的。架构师不是神，不可能预见所有的东西。</p>
+<p>所以，对于一个功能，一套架构体系，你拿到手之后立马提一堆问题，说就不应这么设计，然后提出一堆自己认为很好的设计，我只能觉得你这个人不尊重别人的成果，不实事求是，至于其他的评价大家自己去yy吧。</p>
+<p>发了一堆的牢骚，只是想说明，没有完美的架构，只有合适的架构。即使我现在设计的这一套方案，没准不久之后我自己又想到了另一套更好的方案也说不定。</p>
+<h1 id="如何解决？">如何解决？</h1>
+<p>既然现有的架构不足以解决内外网的问题，那么我们就需要一套新的架构来实现，对于我个人来说，设计新的方案，一般会有如下几点考量：</p>
+<ul>
+<li>尽量做到架构的演化，而不是推倒重来。以前的东西也有可取的东西，那么我们是可以借鉴的，架构可能跟进化论一样，是不断进化的。而推倒重来，就如同突然基因突变一样，你自认为变好了，没准可能更差。</li>
+<li>易升级，毕竟我们的程序已经部署到很多企业里面，如何平滑的升级是一个很大的问题，升级就一定要保证数据的完整性。</li>
+<li>后续面临的问题，这些一定要想清楚，新的架构会面临什么样的情况，性能压力怎样，可扩展性怎样，如果出问题会在什么地方有问题，这些都需要考量。虽然不可能预料到所有情况，但多多益善。</li>
+<li>简单。架构一定要简单，这算是我一直坚持的原则了，这套体系不光我们能很好明白，对于技术支持人员，运维人员也能很好理解。</li>
+</ul>
+<p>那对于现有问题，我们如何解决呢？</p>
+<h2 id="黑盒！！！">黑盒！！！</h2>
+<p>所有的service都在黑盒里面，通过一个统一的代理服务对外提供访问，同时service之间也互相隔离，通过统一的代理服务进行访问。如图：</p>
+<p><img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/re-think-server-architecture-2/reverse-proxy-server.png" alt="Alt text" title="reverse-proxy-server"> </p>
+<p>这一套架构，很简单，无非就是引入了一个中间代理层，虽然多了间接层性能上面有损失，但是优势也是显而易见的：</p>
+<ul>
+<li>地址解耦，配置统一，只有proxy server知道所有service的地址信息，便于集中管理 </li>
+<li>隔离，service与service之间，service与client之间完全隔离 </li>
+<li>动态部署，任何service的动态变更，只需要proxy server处理，该service的相关服务完全不用重启，service的扩展方便 </li>
+</ul>
+<p>其实说了这么多，都是很简单的机制，在实际中，我们使用nginx作为reverse proxy server。</p>
+<h2 id="单点故障？">单点故障？</h2>
+<p>因为所有的service都通过nginx进行交互，大家很容易就想到nginx能不能顶住的问题，也就是单点问题。幸运的是，nginx可以很好的扩展，直接演化出如下架构：</p>
+<p><img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/re-think-server-architecture-2/nginx-extension.png" alt="Alt text" title="nginx-extension"> </p>
+<p>而多台nginx的访问则可以通过很多方法，最简单的就是配置dns，或者自己实现一个高效的router服务。</p>
+<h2 id="内外网访问？">内外网访问？</h2>
+<p>因为我们所有的service都是通过nginx对外提供访问，所以很容易的我们在具有内外网ip的机器上面部署nginx，就能很好的解决内外网访问的问题：<img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/re-think-server-architecture-2/in-and-out-access.png" alt="Alt text" title="in-and-out-access"> </p>
+<h2 id="comet推送？">comet推送？</h2>
+<p>我们的service有时候会通过comet通知client进行相应的更新操作，而这些消息无论内网还是外网用户都应该收到，现阶段采用的最简单的做法就是将comet server部署到对外提供访问的nginx那台机器上面，这样内外网用户都能连上comet server，收到通知消息：<img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/re-think-server-architecture-2/comet.png" alt="Alt text" title="comet"> </p>
+<h2 id="文件传输？">文件传输？</h2>
+<p>因为我们的service会提供存储服务，就面临的一个文件传输的问题，后面以下载为例。当用户上传了一个文件之后，很有可能在短时间内对这个文件感兴趣的人都会去请求将其下载下来。如果整个数据传输通过nginx来中转，那么很有可能造成nginx的性能瓶颈以至于无法处理其他的服务请求。我们通常将服务的请求分为两类，数据请求和逻辑请求，在内网环境下面，服务器如果是百兆网卡，即使每个用户限速一兆，100个用户同时下载也会将服务器网络带宽耗尽，以至于无法处理逻辑请求。虽然这个问题可以通过扩展更多的nginx来解决，但是最好的办法还是客户端直接连接提供下载的service，这样就能做到数据与逻辑的分开处理。</p>
+<p>因为我们的file service都是部署在内网，所以内网用户能直接连接，但是外网用户怎么办呢？同时，直接将file service暴漏给client，不是又违背了我们先前设计的原则了吗？</p>
+<p>对于这个问题，我的考虑如下：</p>
+<ul>
+<li>外网的流量压力远远小于内网，因为我们是企业内部使用，外网的访问只会出现在一般人员出差的情况下面，外网使用频率低。</li>
+<li>无论内网还是外网，整个的下载流程应该是一样的，client不能根据是内网还是外网写两套下载逻辑的代码。</li>
+<li>service不能主动暴露自己的地址信息。</li>
+</ul>
+<p>有了以上几个考量，我们决定使用一种很简单的方式，就是nginx rewrite。流程如下：</p>
+<ul>
+<li>当client请求nginx下载的时候，nginx能知道是内网用户还是外网用户。</li>
+<li>对于内网用户，nginx直接rewrite到file service的地址那边，因为file service的地址只有nginx知道，所以它能将该地址提供给client让其直接连接。这就解决了file service主动暴露地址的问题。</li>
+<li>对于外网用户，nginx也走rewrite流程，只是仍然rewrite到自己负责提供代理下载服务的地址上面，client请求该地址之后，nginx负责将数据取出在传输给client。</li>
+</ul>
+<p>这里我们可以看到，外网的数据流仍然走的是nginx，这对于nginx性能压力来说虽然有影响，但是因为外网的流量压力很小，所以还是能顶住的。</p>
+<h2 id="内外网切换？">内外网切换？</h2>
+<p>现在我们程序可以内网，外网都能访问了，那么就面临一个问题，当一个用户从内网环境切换到外网环境的时候，如何能够正常的访问？</p>
+<p>对于client来说，首先需要配置一个服务器的ip或者dns地址才能有效的访问我们的service，如果内网和外网都是通过一样的dns来提供服务，那即是网络切换了，client也能够通过该地址连接到服务器。但如果内网和外网对外提供的是ip地址访问，或者不一样的dns，那么client就无法连接了。</p>
+<p>首先，我们需要明确的是，client需不需要自动的处理网络切换的情况，我觉得不需要自动处理。如果发生了网络切换，client就会出现连接不上服务器的问题，但是client无法简单的判断到底是因为网络切换造成的连接问题，还是服务器本来就出现了故障造成的连接问题。同时，我觉得网络切换对于用户自身来说，是一个能自己感知的行为。所以我们采用的了一种最简单的处理方式，登陆时候判断内外网环境。如果用户切换了内外网，那么他只需要重登陆一下就可以了。</p>
+<p>当用户成功登陆的时候，服务器会给client下发一个配置好的内网ip和外网ip地址，这样当用户下次登陆的时候，首先尝试使用内网ip登陆，如果不通，则使用外网ip登陆。这样就能解决内外网自动登陆的问题。</p>
+<h1 id="写在后面的东西">写在后面的东西</h1>
+<p>一个很简单的企业需求，部署到内外网IP的服务器上面，就引发了我们对现有架构的重新思考与演化，可以看到需求都是不容小觑的。这套新的架构体系，虽然简单，但是能很好的解决现有的一些问题，同时又具有足够的可扩展性，当然还会碰到很多其他的问题，有些问题我已经预料到，并想了很多解决方法，但大部分还是未知的，这里就不展开了。所以需要我不断的去自省思索。没准后面还会写很多re-think系列出来。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-01-13T10:00:00.000Z"><a href="/2013/01/13/re-think-server-architecture/">01-13-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/01/13/re-think-server-architecture/">最近关于服务器架构的一点思考</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>几个月前，思索了一套安全的服务器交互模型，随着几个月的不停的思索，又有很多新的心得体会。抽象来说，我认为，对于一个好的服务器架构，简单，可扩展性强，是必不可少的。</p>
+<ul>
+<li><p>简单，其实很好理解，一个服务就干一件事情，不同的功能逻辑别糅在一个服务里面实现。短期来看，一个服务器实现一堆功能逻辑，编码容易简单，但是弊端也能立马显现，可维护性差，单点故障等。我们的项目就出现了这样的问题，一个童鞋当初为了方便，将本来几个服务，组织架构服务，登陆验证服务，账号管理服务等几个服务的代码糅合在一个服务里面，编码是简单了，但是后续一堆问题出来了。举个最简单的例子，我们想使用外部的一个登陆验证模块，使用外部的组织架构数据，现在我们完全无法实现。就因为这个，我们又准备将这几个服务进行拆分。所以，无论怎样，保证服务的简单，是为了更好的为了后续的扩展</p>
+</li>
+<li><p>扩展性强，一是服务功能可扩展强，因为一个服务一个功能，当我们需要实现另一个功能的时候就增加一个服务，每个服务通过标准的通信协议（一般就是http）进行通信就行。另一个就是服务本身的可扩展性强，单个服务里面实现的功能都应该是状态无关的，也就是说服务的api提供不能有时序关系。就因为无时序状态，所以每个服务的个数可以动态扩展</p>
+</li>
+</ul>
+<h1 id="安全交互">安全交互</h1>
+<p>在一套安全的服务器交互模型中，我提出使用key + stub的方式进行高效安全的交互，这套机制虽然没有问题，但是我现在觉得是对第三方开发不友好的方式。如果不光我们提供服务，客户端也由我们编写，那无所谓，但是如果另一个客户端想对接我们的服务，就会面临一个很郁闷的问题，必须保存每一个服务的stub，这个随着服务的增多会越来越来管理。所以思索了很久，还是采用业界比较通用的签名方法，这个足够高效，也足够安全。</p>
+<ul>
+<li>部署一个访问验证服务器，用于管理access id和security key</li>
+<li>当用户安全的登陆之后，我们会给访问客户端一个用于访问我们所有服务的access id和security key。因为登陆一般采用的是https，所以id和key不会被网络窃听获取到，所以是安全的</li>
+<li>客户端收到该id和key之后，对于后续任何的http请求，使用key对url签名，然后将id与签名放置在http header里面一同发送给server</li>
+<li>server收到http请求之后，首先通过header里面的id在访问验证server里面找到对应的key，在使用同样的方式对url进行签名，如果两次签名一样，表明这是一个合法的url，如果不一样，可能其他人篡改了该url，我们拒绝这次http请求</li>
+<li>当用户注销登出，id和key就无效了。如果为了安全性，客户端也可以强制的每隔一段时间进行id和key的更换</li>
+</ul>
+<p>签名机制足够的简单高效，但也必须得注意几个问题：</p>
+<ul>
+<li>每次对url进行签名最好带上一个随机数，譬如当前时间，这样不容易被窃听之后暴力破解得到key</li>
+<li>为了更好的保证安全性，这套机制还是应该在https上面使用</li>
+</ul>
+<h1 id="访问验证服务器">访问验证服务器</h1>
+<p>这里我引入访问验证服务器，也是我认为架构简单性的考量，每个服务干自己的事情，所以需要验证了就提供一个验证服务器。</p>
+<p>但这里又有一个问题，当服务器收到http请求之后，在什么时候进行url的验证？为了保证简单性，各个服务提供api是不会出现任何验证逻辑，那这套验证逻辑放置在什么地方呢？我觉得可以在两个地方处理：</p>
+<ul>
+<li>服务框架的统一http入口处理里面，铁定我们会写一套框架代码，各个服务在这套框架之上运行。譬如我们采用tornado wsgi的方式搭建服务器，他对于任何http请求都是有一个统一的入口的，我们只要在这个入口里面首先进行访问权限的判断，然后在继续进行后续操作就行</li>
+<li>在引入一个总控服务器，该服务器收到http请求之后首先进行访问验证，然后在进行后续操作</li>
+</ul>
+<p>这两种方式，第一种是我们项目现在使用stub采用的，而第二种则是我现在推荐的方式。第一种方式有一个不好的地方在于，验证逻辑跟框架代码耦合了，虽然我们可以通过很多方式让框架跟验证逻辑进行解耦，但是我仍然觉得有点别扭。现今我们stub为什么可以这么是因为验证控制这套逻辑本来就是由底层框架提供，而不是外部服务提供。</p>
+<p>而采用第二种方式，则需要引入一个总控服务器，可以使用openresty解决，因为我们所有的http都要经过nginx，所以直接在nginx里面做就可以了。因为nginx性能很高，同时在openresty里面使用lua做到非常容易开发，而且我们实现的只是简单的流程控制，所以通过nginx绰绰有余。</p>
+<h1 id="原子级别的api服务">原子级别的api服务</h1>
+<p>因为我们的功能都是由不同的服务器提供，这里就有一个比较郁闷的问题，一个功能如果需要不同服务器协同，怎么处理。譬如我现在想实现一个功能，我需要a，b，c三个服务以此进行处理，只有都处理成功了这个功能才算完成。如果只有我们自己写客户端，那没问题，但是如果有一个第三方需要对接实现这个功能，那么他们就会很困惑，为啥我要这么麻烦来实现这个功能？并且还不能保证他们能理解正确，写出正确的功能代码。</p>
+<p>这个问题现在已经比较严重了，导致了我们有时候不得不花上很多时间来给其他开发人员解释api如何使用。所以每一个功能有一个原子级别的api来提供，是一个不错的办法。怎么说呢，因为引入了openresty，所以我们完全可以在nginx这层就写好该功能需要访问的服务。这个其实跟上面的访问验证类似，就是由openresty做总控，来进行流程的控制。</p>
+<h1 id="总控nginx">总控nginx</h1>
+<p>既然我们使用openresty来进行服务的总控控制，就需要注意一个最重要的问题：openresty负责的功能只能是简单的流程控制，它不负责其他任何的功能逻辑，这样才能保证足够的简单。我们不希望在nginx里面有太多重型的逻辑。</p>
+<h1 id="总结">总结</h1>
+<p>这些算是近端时间以来对服务架构的一些理解，还有一些，后续慢慢补充。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+
+  <nav id="pagination">
+  
+    <a href="/archives/2013/" class="alignleft prev">上一页</a>
+  
+  
+  <div class="clearfix"></div>
+</nav>
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

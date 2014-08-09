@@ -1,0 +1,351 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>Mixer MySQL通讯协议解析 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="Mixer MySQL通讯协议解析"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-13T03:16:31.000Z"><a href="/2014/03/13/mixer-protocol/">03-13-2014</a></time>
+      
+      
+  
+    <h1 class="title">Mixer MySQL通讯协议解析</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="综述">综述</h1>
+<p>要实现一个mysql proxy，首先需要做的就是理解并实现mysql通讯协议。这样才能通过proxy架起client到server之间的桥梁。</p>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>的mysql协议实现主要参考mysql官方的<a href="http://dev.mysql.com/doc/internals/en/client-server-protocol.html" target="_blank" rel="external">internal manual</a>，并用Wireshark同时进行验证。在实现的过程中，当然踩了很多坑，这里记录一下，算是对协议分析的一个总结。</p>
+<p>需要注意的是，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>并没有支持所有的mysql协议，譬如备份，存储过程等，主要在于精力有限，同时也为了实现简单。</p>
+<h1 id="数据类型">数据类型</h1>
+<p>mysql协议只有两种基本的数据类型，integer和string。</p>
+<h2 id="integer">integer</h2>
+<p>integer包括fixed length integer和length encoded integer两种，对于length encoded integer，用的地方比较多，这里详细说明一下。</p>
+<p>对于一个integer，我们按照如下的方式将其转成length encoded integer：</p>
+<ul>
+<li>如果value &lt; 251，使用1 byte</li>
+<li>如果value &gt;= 251 同时 value &lt; 2 ** 16，使用fc + 2 byte</li>
+<li>如果value &gt;= 2 ** 16 同时 value &lt; 2 ** 24，使用fd + 3 byte </li>
+<li>如果value &gt;= 2 ** 24 同时 value &lt; 2 ** 64，使用fe + 8 byte</li>
+</ul>
+<p>相应的，对于一个length encoded integer，我们可以通过判断第一个byte的值来转成相应的integer。</p>
+<h2 id="string">string</h2>
+<p>string包括：</p>
+<ul>
+<li>fixed length string，固定长度string</li>
+<li>null terminated string，以null结尾的string</li>
+<li>variable length string，通过另一个值决定长度的string</li>
+<li>length encoded string，通过起始length encoded integer决定长度的string</li>
+<li>rest of packet string，从当前位置到包结尾的string</li>
+</ul>
+<h1 id="Packet">Packet</h1>
+<p>在mysql中，如果client或server要发送数据，它需要将数据按照(2 ** 24 - 1)拆分成packet，给每一个packet添加header，然后再以此发送。</p>
+<p>对于一个packet，格式如下：</p>
+<pre><code>3              payload length
+1              sequence id
+string[len]    payload
+</code></pre><p>前面3个字节表明的是该packet的长度，每个packet最大不超过16MB。第4个字节表明的是该packet的序列号，从0开始，对于多个packet依次递增，等到下一个新的命令发送数据的时候才重置为0。前面4个字节组成了一个packet的header，后面就是该packet实际的数据。</p>
+<p>因为一个packet最大能发送的数据位16MB，所以如果需要发送大于16MB的数据，就需要拆分成多个packet进行发送。</p>
+<p>通常，server会回给client三种类型的packet</p>
+<ul>
+<li>OK Packet，操作成功</li>
+<li>Err Packet，操作失败</li>
+<li>EOF Packet，end of file</li>
+</ul>
+<h1 id="登陆交互">登陆交互</h1>
+<p>要实现proxy，首先需要解决的就是登陆问题，包括proxy模拟server处理client的登陆，proxy模拟client登陆server。</p>
+<p>为了简单，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只支持username + password的方式进行登陆，这应该也是最通用的登陆方式。同时不支持ssl以及compression。</p>
+<p>一个完整的登陆流程如下：</p>
+<ul>
+<li>client首先connect到server</li>
+<li>server发送initial handshake packet，包括支持的capability，一个用于加密的随机salt等</li>
+<li>client返回handshake结果，包括自己支持的capability，以及用salt加密的密码</li>
+<li>server验证，如果成功，返回ok packet，否则返回err packet并关闭连接</li>
+</ul>
+<p>这里，不得不说实现登陆协议的时候踩过的一个很大的坑，因为我使用的是HandshakeV10协议，在文档里面，协议有这样的规定：</p>
+<pre><code>if capabilities &amp; CLIENT_SECURE_CONNECTION {
+    string[$len]   auth-plugin-data-part-2 ($len=MAX(13, length of auth-plugin-data - 8))
+}
+</code></pre><p>如果根据文档的说明，算出来auth-plugin-data-part-2的长度是13，因为auth-plugin-data的长度是20。但是，实际情况是，auth-plugin-data-part-2的长度应该为12，第13位一直为0。只有这样，我们才能根据salt算出正确的加密密码。这一点，在mysql-proxy官方的文档，以及多个msyql client driver上面，Wireshark的分析中都是如此，在go-sql-driver中，作者都直接写了如下的注释：</p>
+<pre><code>// second part of the password cipher [12? bytes]
+// The documentation is ambiguous about the length.
+// The official Python library uses the fixed length 12
+// which is not documented but seems to work.
+</code></pre><p>可想而知，这个坑有多坑爹。至少我开始是栽在上面了。加密老是不对。</p>
+<h1 id="Command">Command</h1>
+<p>搞定了登陆，剩下的就是mysql的命令支持，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只实现了基本的命令。主要集中在text protocol以及prepared statment里面。</p>
+<h2 id="COM_PING">COM_PING</h2>
+<p>最基本的ping实现，用来检查mysql是否存活。</p>
+<h2 id="COM_INIT_DB">COM_INIT_DB</h2>
+<p>虽然叫init db，其实压根干的事情就跟use db一样，用来切换使用db的。</p>
+<h2 id="COM_QUERY">COM_QUERY</h2>
+<p>可以算是最重要的一个命令，我们在命令行使用的多数mysql语句，都是通过该命令发送的。</p>
+<p>在COM_QUERY中，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>主要支持了select，update，insert，delete，replace等基本的操作语句，同时支持begin，commit，rollback事物操作，还支持set names和set autocommit。</p>
+<p>COM_QUERY有4中返回packet</p>
+<ul>
+<li>OK Packet</li>
+<li>Err Packet</li>
+<li>Local In File（不支持）</li>
+<li>Text Resultset</li>
+</ul>
+<p>这里重点说明一下text resultset，因为它包含的就是我们最常用的select的结果集。</p>
+<p>一个text resultset，包括如下几个包：</p>
+<ul>
+<li>一个以length encoded integer编码的column-count packet</li>
+<li>column-count个column定义packet</li>
+<li>eof packet</li>
+<li>一个或者多个row packet，每个row packet有column-count个数据</li>
+<li>eof packet或者err packet</li>
+</ul>
+<p>对于一个row packet的里面的数据，我们通过如下方式获取：</p>
+<ul>
+<li>如果值为NULL，那么就是0xfb</li>
+<li>否则，任何值都是用length encoded string表示</li>
+</ul>
+<h2 id="COMSTMT*">COM<em>STMT</em>*</h2>
+<p>COM<em>STMT</em>族协议就是通常的prepared statement，当我在atlas群里面说支持prepared statement的时候，很多人以为我支持的是在COM_QUERY中使用的prepare，execute和deallocate prepare这组语句。其实这两个还是很有区别的。</p>
+<p>为什么我不现在不想支持COM_QUERY的prepare，主要在于这种prepare需要进行变量设置，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>在后端跟server是维护的一个连接池，所以对于client设置的变量，proxy维护起来特别麻烦，并且每次跟server使用新的连接的时候，还需要将所有的变量重设，这增大了复杂度。所以我不支持变量的设置，这点看cobar也是如此。既然不支持变量，所以COM_QUERY的prepare我也不会支持了。</p>
+<p>COM<em>STMT</em>*这组命令，主要用在各个语言的client driver中，所以我觉得只支持这种的prepare就够了。</p>
+<p>对于COM_STMT_EXECUTE的返回结果，因为prepare的语句可能是select，所以会返回binary resultset，binary resultset组成跟前面text resultset差不多，唯一需要注意的就是row packet采用的是binary row packet。</p>
+<p>对于每一个binary row packet，第一个byte为0，后面紧跟着一个null bitmap，然后才是实际的数据。</p>
+<p>在binary row packet中，使用null bitmap来表明该行某一列的数据为NULL。null bitmap长度通过 (column-count + 7 + 2) / 8计算得到，而对于每列数据，如果为NULL，那么它在null bitmap中的位置通过如下方式计算：</p>
+<pre><code>NULL-bitmap-byte = ((field-pos + offset) / 8)
+NULL-bitmap-bit  = ((field-pos + offset) % 8)
+</code></pre><p>offset在binary resultset中为2，field-pos为该列的位置。</p>
+<p>对于实际非NULL数据，则是根据每列定义的数据类型来获取，譬如如果type为MYSQL_TYPE_LONGLONG，那么该数据值的长度就是8字节，如果type为MYSQL_TYPE_STRING，那么该数据值就是一个length encoded string。</p>
+<h1 id="后记">后记</h1>
+<p>我通过Wireshark分析了一些mysql protocol，主要在<a href="https://github.com/siddontang/mixer/blob/master/doc/protocol.txt" target="_blank" rel="external">这里</a>，这里不得不强烈推荐wireshark，它让我在学习mysql protocol过程中事半功倍。</p>
+<p>mixer的代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>，欢迎反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/go/">go</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/go/">go</a>, <a href="/tags/mysql/">mysql</a>, <a href="/tags/mixer/">mixer</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

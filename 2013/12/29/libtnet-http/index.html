@@ -1,0 +1,348 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>Libtnet HTTP实现 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="Libtnet HTTP实现"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-12-29T08:27:12.000Z"><a href="/2013/12/29/libtnet-http/">12-29-2013</a></time>
+      
+      
+  
+    <h1 class="title">Libtnet HTTP实现</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="HTTP">HTTP</h1>
+<p>libtnet提供了简单的http支持，使用也很简单。</p>
+<p>一个简单的http server：</p>
+<pre><code>void onHandler(const HttpConnectionPtr_t&amp; conn, const HttpRequest&amp; request)
+{
+    HttpResponse resp;
+    resp.statusCode = 200;
+    resp.setContentType(&quot;text/html&quot;);
+    resp.body.append(&quot;Hello World&quot;);    
+    conn-&gt;send(resp);
+}
+
+TcpServer s;
+HttpServer httpd(&amp;s);
+httpd.setHttpCallback(&quot;/test&quot;, std::bind(&amp;onHandler, _1, _2));
+httpd.listen(Address(80));
+s.start(4);
+</code></pre><p>我们对http server的<strong>“/test”</strong>注册了一个handler，当用户访问该url的时候，就会显示”Hello World”。</p>
+<p>同样，http client的使用也很简单：</p>
+<pre><code>void onResponse(IOLoop* loop, const HttpResponse&amp; resp)
+{
+    cout &lt;&lt; resp.body &lt;&lt; endl;
+    loop-&gt;stop();
+}
+
+IOLoop loop;
+HttpClientPtr_t client = std::make_shared&lt;HttpClient&gt;(&amp;loop);
+client-&gt;request(&quot;http://127.0.0.1:80/test&quot;, std::bind(&amp;onResponse, &amp;loop, _1));
+loop.start(); 
+</code></pre><p>这里，我们使用了一个http client，向server请求”/test”的内容，当服务器有响应之后，会调用响应的回调函数。</p>
+<h1 id="HTTP_Parser">HTTP Parser</h1>
+<p>对于http的解析，我采用的是<a href="https://github.com/joyent/http-parser" target="_blank" rel="external">http parser</a>，因为它采用的是流式解析，同时非常容易集成进libtnet。</p>
+<p>使用http parser只需要设置相应的回调函数即可。http parser有如下几种回调：</p>
+<ul>
+<li>message begin，解析开始的时候调用</li>
+<li>url，解析url的时候调用</li>
+<li>status complete，http response解析status的时候调用</li>
+<li>header field，解析http header的field调用</li>
+<li>header value，解析http header的value调用</li>
+<li>headers complete，解析完成http header调用</li>
+<li>body，解析http body调用</li>
+<li>message complete，解析完成调用</li>
+</ul>
+<p>这里特别需要注意的是http header的解析，因为http parser将其拆分成了两种回调，所以我们在处理的时候需要记录上一次header callback是field的还是value的。在解析field的时候，如果上一次是value callback，那我们就需要将上一次解析的field和value保存下来，而该次的解析则是一个新的field了。</p>
+<p>另外，http parser还提供了upgrade的支持，所以我们很方便的就能区分该次请求是否为websocket。</p>
+<h1 id="Websocket">Websocket</h1>
+<p>libtnet也提供了websocket的支持，现阶段，只支持<a href="http://tools.ietf.org/html/rfc6455" target="_blank" rel="external">RFC6455</a>。</p>
+<p>当libtnet通过http parser发现该次请求为websocket的时候，就进入了websocket的流程。websocket的使用也很简单，当握手成功之后，后续的所有通讯就是纯粹的tcp通信了。</p>
+<p>一个简单的websocket server：</p>
+<pre><code>void onWsCallback(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
+{
+    switch(event)
+    {
+        case Ws_CloseEvent:
+            break;
+        case Ws_MessageEvent:
+            {
+                const string&amp; str = *(const string*)context;
+                conn-&gt;send(str);
+            }
+            break;
+        case Ws_PongEvent:
+            break;
+        default:
+            break;
+    }
+}
+
+TcpServer s;
+HttpServer httpd(&amp;s);
+httpd.setWsCallback(&quot;/push/ws&quot;, std::bind(&amp;onWsCallback, _1, _2, _3));    
+httpd.listen(Address(80));
+s.start();
+</code></pre><p>可以看到，websocket的callback机制也类似于libtnet connection的callback机制，用户需通过event + context的方式来处理该次回调的数据。</p>
+<p>libtnet对websocket的frame的处理参照的是tornado的websocket模块。也能够组合多frame的数据，外部只需要关注Ws_MessageEvent即可。</p>
+<p>websocket client的实现也很简单：</p>
+<pre><code>void onWsConnEvent(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
+{
+    switch(event)
+    {
+        case Ws_OpenEvent:
+            conn-&gt;send(&quot;Hello world&quot;);
+            break;    
+        case Ws_MessageEvent:
+            {
+                const string&amp; msg = *(const string*)context;
+
+                LOG_INFO(&quot;message %s&quot;, msg.c_str());
+                conn-&gt;close();                        
+            }
+            break;
+        default:
+            break;
+    }    
+}
+
+IOLoop loop;
+WsClientPtr_t client = std::make_shared&lt;WsClient&gt;(&amp;loop);    
+client-&gt;connect(&quot;ws://127.0.0.1:80/push/ws&quot;, std::bind(&amp;onWsConnEvent, _1, _2, _3));
+loop.start();
+</code></pre>
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/c++/">c++</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/c++/">c++</a>, <a href="/tags/libtnet/">libtnet</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

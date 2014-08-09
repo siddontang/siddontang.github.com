@@ -1,0 +1,390 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>在go中使用linked channels进行数据广播 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="在go中使用linked channels进行数据广播"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-30T13:50:44.000Z"><a href="/2014/03/30/golang-linked-channel/">03-30-2014</a></time>
+      
+      
+  
+    <h1 class="title">在go中使用linked channels进行数据广播</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>原文在<a href="http://rogpeppe.wordpress.com/2009/12/01/concurrent-idioms-1-broadcasting-values-in-go-with-linked-channels/" target="_blank" rel="external">这里</a>（需翻墙），为啥想要翻译这篇文章是因为在实际中也碰到过如此的问题，而该文章的解决方式很巧妙，希望对大家有用。</p>
+<p>在go中channels是一个很强大的东西，但是在处理某些事情上面还是有局限的。其中之一就是一对多的通信。channels在多个writer，一个reader的模型下面工作的很好，但是却不能很容易的处理多个reader等待获取一个writer发送的数据的情况。</p>
+<p>处理这样的情况，可能的一个go api原型如下：</p>
+<pre><code>type Broadcaster …
+
+func NewBroadcaster() Broadcaster
+func (b Broadcaster) Write(v interface{})
+func (b Broadcaster) Listen() chan interface{}
+</code></pre><p>broadcast channel通过NewBroadcaster创建，通过Write函数进行数据广播。为了监听这个channel的信息，我们使用Listen，该函数返回一个新的channel去接受Write发送的数据。</p>
+<p>这套解决方案需要一个中间process用来处理所有reader的注册。当调用Listen创建新的channel之后，该channel就被注册，通常该中间process的主循环如下：</p>
+<pre><code>for {
+    select {
+        case v := &lt;-inc:
+            for _, c := range(listeners) {
+                c &lt;- v
+            }
+        case c := &lt;- registeryc:
+            listeners.push(c)
+    }
+}
+</code></pre><p>这是一个通常的做法，（译者也经常这么干）。但是该process在处理数据广播的时候会阻塞，直到所有的readers读取到值。一个可选的解决方式就是reader的channel是有buffer缓冲的，缓冲大小我们可以按需调节。或者当buffer满的时候我们将数据丢弃。</p>
+<p>但是这篇blog并不是介绍上面这套做法的。这篇blog主要提出了另一种实现方式用来实现writer永远不阻塞，一个慢的reader并不会因为writer发送数据太快而要考虑分配太大的buffer。</p>
+<p>虽然这么做不会有太高的性能，但是我并不在意，因为我觉得它很酷。我相信我会找到一个很好的使用地方的。</p>
+<p>首先是核心的东西：</p>
+<pre><code>type broadcast struct {
+    c chan broadcast
+    v interface{}
+}
+</code></pre><p>这就是我说的linked channel，但是其实是<a href="http://wadler.blogspot.com/2009/11/list-is-odd-creature.html" target="_blank" rel="external">Ouroboros data structure</a>。也就是，这个struct实例在发送到channel的时候包含了自己。</p>
+<p>从另一方面来说，如果我有一个chan broadcast类型的数据，那么我就能从中读取一个broadcast b，b.v就是writer发送的任意数据，而b.c，这个原先的chan broadcast，则能够让我重复这个过程。</p>
+<p>另一个可能让人困惑的地方在于一个带有缓冲区的channel能够被用来当做一个1对多广播的对象。如果我定义如下的buffered channel：</p>
+<pre><code>var c = make(chan T, 1)
+</code></pre><p>任何试图读取c的process都将阻塞直到有数据写入。</p>
+<p>当我们想广播一个数据的时候，我们只是简单的将其写入这个channel，这个值只会被一个reader给获取，但是我们约定，只要读取到了数据，我们立刻将其再次放入该channel，如下：</p>
+<pre><code>func wait(c chan T) T {
+    v := &lt;-c
+    c &lt;-v
+    return v
+}
+</code></pre><p>结合上面两个讨论的东西，我们就能够发现如果在broadcast struct里面的channel如果能够按照上面的方式进行处理，我们就能实现一个数据广播。</p>
+<p>代码如下：</p>
+<pre><code>package broadcast
+
+type broadcast struct {
+    c   chan broadcast;
+    v   interface{};
+}
+
+type Broadcaster struct {
+    // private fields:
+    Listenc chan chan (chan broadcast);
+    Sendc   chan&lt;- interface{};
+}
+
+type Receiver struct {
+    // private fields:
+    C chan broadcast;
+}
+
+// create a new broadcaster object.
+func NewBroadcaster() Broadcaster {
+    listenc := make(chan (chan (chan broadcast)));
+    sendc := make(chan interface{});
+    go func() {
+        currc := make(chan broadcast, 1);
+        for {
+            select {
+            case v := &lt;-sendc:
+                if v == nil {
+                    currc &lt;- broadcast{};
+                    return;
+                }
+                c := make(chan broadcast, 1);
+                b := broadcast{c: c, v: v};
+                currc &lt;- b;
+                currc = c;
+            case r := &lt;-listenc:
+                r &lt;- currc
+            }
+        }
+    }();
+    return Broadcaster{
+        Listenc: listenc,
+        Sendc: sendc,
+    };
+}
+
+// start listening to the broadcasts.
+func (b Broadcaster) Listen() Receiver {
+    c := make(chan chan broadcast, 0);
+    b.Listenc &lt;- c;
+    return Receiver{&lt;-c};
+}
+
+// broadcast a value to all listeners.
+func (b Broadcaster) Write(v interface{})   { b.Sendc &lt;- v }
+
+// read a value that has been broadcast,
+// waiting until one is available if necessary.
+func (r *Receiver) Read() interface{} {
+    b := &lt;-r.C;
+    v := b.v;
+    r.C &lt;- b;
+    r.C = b.c;
+    return v;
+}
+</code></pre><p>下面就是译者的东西了，这套方式实现的很巧妙，首先它解决了reader register以及unregister的问题。其次，我觉得它很好的使用了流式化处理的方式，当reader读取到了一个值，reader可以将其传递给下一个reader继续使用，同时自己在开始监听下一个新的值的到来。</p>
+<p>译者自己的一个测试用例：</p>
+<pre><code>func TestBroadcast(t *testing.T) {
+    b := NewBroadcaster()
+
+    r := b.Listen()
+
+    b.Write(&quot;hello&quot;)
+
+    if r.Read().(string) != &quot;hello&quot; {
+        t.Fatal(&quot;error string&quot;)
+    }
+
+    r1 := b.Listen()
+
+    b.Write(123)
+
+    if r.Read().(int) != 123 {
+        t.Fatal(&quot;error int&quot;)
+    }
+
+    if r1.Read().(int) != 123 {
+        t.Fatal(&quot;error int&quot;)
+    }
+
+    b.Write(nil)
+
+    if r.Read() != nil {
+        t.Fatal(&quot;error nit&quot;)
+    }
+
+    if r1.Read() != nil {
+        t.Fatal(&quot;error nit&quot;)
+    }
+}
+</code></pre><p>当然，这套方式还有点不足，主要就在于Receiver Read函数，并不能很好的与select进行整合，具体可以参考该作者另一篇blog <a href="http://rogpeppe.wordpress.com/2010/01/04/select-functions-for-go/" target="_blank" rel="external">http://rogpeppe.wordpress.com/2010/01/04/select-functions-for-go/</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/go/">go</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/go/">go</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

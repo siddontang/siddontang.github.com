@@ -1,0 +1,356 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>归档：2013/6 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+<h2 class="archive-title">2013/6</h2>
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-06-20T12:23:33.000Z"><a href="/2013/06/20/certificate-csp-openssl/">06-20-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/06/20/certificate-csp-openssl/">证书，CSP与Openssl</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h2 id="起因">起因</h2>
+<p>最近在研究更安全的交互体系，自然想到的就是提供证书的交互方式。给用户分配一对公私钥，然后将私钥交给用户保管，用户在登录或者一些关键操作的时候通过私钥签名，从而保证其安全性。</p>
+<p>鉴于团队的童鞋都没有开发usb key相关的经验，所以最开始的版本只考虑通过软证书实现。为了保证安全性，我们将用户的证书信息放置在windows系统的证书存储区里面，这样既减少证书被盗用的风险，同时通过windows的CSP（Cryptographic Service Provider）能让JS，APP都能读取到相关证书信息。</p>
+<h2 id="流程">流程</h2>
+<p>当用户登录系统的时候，需要使用该用户对应的私钥进行签名，如果该用户现阶段还没有私钥，则会引导用户跳转到证书申请页面进行申请。申请成功之后，系统自动为用户安装证书，然后用户就能够使用该证书与服务器进行交互了。</p>
+<h3 id="证书生成">证书生成</h3>
+<p>我们在服务器端通过openssl创建相关证书，主要有以下几个流程：</p>
+<ul>
+<li><p>创建私钥</p>
+<pre><code>  openssl genrsa -out private.key 1024
+</code></pre><p>  我们通过genrsa生成了一个1024位的私钥</p>
+</li>
+<li><p>生成CA</p>
+<pre><code>  openssl req -new -x509 -days 3650 -key private.key -out username.crt -subj &quot;/C=CN/ST=GZ/L=ZH/O=KSS/OU=KSS/CN=username&quot;
+</code></pre><p>  这里需要特别注意的是证书的CN信息，我们这里使用username来表示，这样CSP就能通过username，使用subjectName来查找相关证书了。为了保证username的私密性，我们也可以对username进行hmac处理。</p>
+</li>
+<li><p>提取公钥</p>
+<pre><code>  openssl rsa -in private.key -out public.key -outform PEM -pubout
+</code></pre><p>  提取对应公钥信息，后续服务器会通过该公钥进行验证与加密。</p>
+</li>
+<li><p>生成pfx</p>
+<pre><code>  openssl pkcs12 -export -inkey private.key -in username.crt -password pass: -out username.pfx
+</code></pre><p>  将私钥以及证书信息打包进pfx文件，并将该文件分发给用户。因为我们是通过脚本进行证书生成的处理，所以这里需要设置<strong>‘-password pass:’</strong>，用来保证脚本不会被hang up。</p>
+</li>
+</ul>
+<p>证书生成之后，我们会将证书的相关信息存放到数据库，同时将pfx文件分发给用户。</p>
+<h3 id="证书导入">证书导入</h3>
+<p>因为用户证书的申请是由我们自己的页面进行控制，所以我们通过JS就能将该证书信息下载下来，同时调用CSP相关接口将证书注册进windows的CA Store里面。</p>
+<p>在注册证书的时候，需要注意，有可能存在同名的subjectName证书（这种可能出现在用户更换证书的情况），需要首先将其删除。</p>
+<h3 id="证书使用">证书使用</h3>
+<p>当用户登录的时候，会做如下处理：</p>
+<ul>
+<li>通过username找到相应的私钥，进行签名sign</li>
+<li>服务器收到登录请求之后，通过username找到对应的公钥，进行验证verify</li>
+<li>服务器验证通过，则会使用公钥加密一个key返回给用户</li>
+<li>用户通过私钥对key进行解密，解开之后，后续的交互通过该key进行。</li>
+</ul>
+<p>对于其他关键性操作，也使用私钥进行sign，保证其安全性。对于服务器的验证，加密来说，我们使用pycrypto进行，谁叫我们使用的是python开发。</p>
+<h2 id="一些坑">一些坑</h2>
+<p>为了实现上述功能，我们栽了很多坑，这里记录一下，也供后续参考。</p>
+<ul>
+<li>字节序问题，windows csp对于sign使用的是小端序，而openssl等都使用的是大端序。所以我们在处理的时候需要进行字节序转换。</li>
+<li>openssl rsautl，dgst。这是最坑爹的了，openssl的rsautl貌似已经被废弃了，所以verify的时候不能使用rsautl，只能用dgst才能保证csp sign的数据服务器能verify。但是对于加解密来说rsautl竟然又可以。神奇！</li>
+<li>Base64，JS对于二进制流的处理比较蛋疼，所以我们的接口都是使用base64编码的，但python的base64会有一个<strong>‘\n’</strong>，这个就得我们手动去掉了。</li>
+<li>CSPICOM，原以为JS能调用CSPICOM就很方便了，但是CSPICOM在win7已经不支持，所以只能我们自己封装一个ActiveX，来调用CSP对应函数。</li>
+</ul>
+<h2 id="end">end</h2>
+<p>CSP的相关代码在<a href="https://gist.github.com/siddontang/5792247" target="_blank" rel="external">这里</a>。需要注意的是，证书的添加以及删除需要使用管理员权限。另外，不得不吐槽一下WIN32的API，笔者是在没有Visual AssixtX写的代码，太辛苦了！</p>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-06-16T14:16:14.000Z"><a href="/2013/06/16/introduction-mtunnel/">06-16-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/06/16/introduction-mtunnel/">mtunnel - a simple http tunnel</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>mtunnel是一个简易的http隧道工具，使用python实现，基于tornado。</p>
+<p>为了解决远端用户服务器的一些问题，我们需要远程连接到用户的服务器上面，但因为企业安全性问题，外部根本不可能访问相关服务器，只能通过用户的本地机器去访问，但是用户本地机器也在内网环境下面，外部不能直接连接。</p>
+<p>因为用户的机器在内网环境下面，也不可能通过通常的代理去连接。所以比较好的方式就是通过一台双方都能访问的公网服务器，来交换双方的数据。</p>
+<p>mtunnel通过http tunnel的方式来进行数据的交互。它将双方交互的数据封装到http的body里面，通过http协议进行传输。这样有几个好处：</p>
+<ul>
+<li>不用关心交互的具体协议，mtunnel只是将双方交互的所有信息完全封装到http body里面进行传递。</li>
+<li>http一般不会被企业的网络安全规则给屏蔽，内网穿透性更好。</li>
+</ul>
+<p>假设，企业服务器启动了sshd，而我们这边使用putty。流程如下：</p>
+<p><img src="https://raw.github.com/siddontang/blog/master/asserts/mtunnel-flow.png" alt="image"></p>
+<ul>
+<li>putty直接将数据发送给forward proxy，由forward proxy将数据通过http body发送给server。</li>
+<li>server收到数据之后将其放置在一个buffer中。如果reverse proxy这时候已经连接到server，则直接将数据发送给reverse proxy。</li>
+<li>reverse proxy定时去server获取数据，如果有则将其发送给sshd。</li>
+<li>sshd返回的数据同样流程返回给putty。</li>
+</ul>
+<h2 id="使用">使用</h2>
+<p>mtunnel分为3个部分，与putty交互的forward proxy，与sshd交互的reverse proxy以及负责双方数据中转的server。</p>
+<h3 id="start_server">start server</h3>
+<pre><code>    python server.py -p 8888
+</code></pre><p>假设sever的ip地址为10.20.187.118，监听port为8888。</p>
+<h3 id="start_reverse_proxy">start reverse proxy</h3>
+<p>因为我们需要通过用户本地机器去访问服务器，所以首先必须用户同意让我们访问，也就是他需要在本地启动reverse proxy。</p>
+<pre><code>    python rproxy.py -host 10.20.189.241 -p 22 --server 10.20.187.118:8888
+</code></pre><p>host和port连接的是sshd的ip和port，而server则是服务器的地址。<br>reverse proxy如果成功连接上了server，则会获取一个channel id。后续所有的通信都必须通过该channel id进行。</p>
+<h3 id="start_forward_proxy">start forward proxy</h3>
+<pre><code>    python fproxy.py --server 10.20.187.118:8888 --channel 112122 -p 8889
+</code></pre><p>我们在本地启动forward proxy，监听本地8889端口，server为服务器的地址，而channel则是用户启动reverse proxy之后获取的channel id，由用户负责告诉我们。</p>
+<h3 id="use">use</h3>
+<p>当做了上述操作之后，我们只需要启动putty，连接forward proxy。然后putty就能与远端的sshd交互了。</p>
+<h2 id="远程协助？">远程协助？</h2>
+<p>为什么不使用QQ远程协助这种类似功能？主要有以下几点原因：</p>
+<ul>
+<li>QQ远程协助能看到用户本地机器的很多信息，企业用户对于安全性问题比较敏感。</li>
+<li>网络问题，现在很多企业的网络环境非常不好，我们就碰到过太多次远程的时候网络坑爹造成完全无法工作的情况。</li>
+</ul>
+<h2 id="后续方向">后续方向</h2>
+<p>现在的版本只是一个最基本的版本，很多问题没有考虑，后续主要考虑以下几个方面：</p>
+<ul>
+<li>安全性，尤其要保证channel id的安全性。后续考虑使用签名机制等。</li>
+<li>网络容错，还没怎么很好的处理网络出问题的情况，譬如网络断开等。</li>
+<li>P2P，数据都走server会有延时，稳定等问题，如果能够P2P互通，就很强大了。</li>
+</ul>
+<p>代码在<a href="http://https://github.com/siddontang/mtunnel" target="_blank" rel="external">这里</a>，该版本只是笔者使用python实现的一个非常基础的版本，很多地方存在不足，后续会慢慢完善。</p>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+
+  <nav id="pagination">
+  
+  
+  <div class="clearfix"></div>
+</nav>
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

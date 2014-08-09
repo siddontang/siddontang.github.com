@@ -1,0 +1,1199 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>第 3 页 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-03T10:30:17.000Z"><a href="/2014/04/03/moonmq-introduction/">04-03-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/03/moonmq-introduction/">MoonMQ 高性能消息队列介绍</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>moonmq是一个用go实现的高性能消息队列系统，后续准备用于我们消息推送服务以及各个后台的异步任务。</p>
+<p>在设计上面，moonmq主要借鉴了rabbitmq以及rocketmq相关的思想，但是做了很多减法，毕竟我不是要设计成一个非常通用的mq。</p>
+<h1 id="名词解释">名词解释</h1>
+<ul>
+<li>publisher，消息生产者</li>
+<li>consumer，消息消费者</li>
+<li>broker，消息中转站</li>
+<li>queue，消息存储队列</li>
+</ul>
+<p>publisher给一个命名的queue发送消息msg，broker负责将msg存放在queue里面。</p>
+<p>consumer可以关注自己感兴趣的queue，这样当queue里面有消息的时候，broker就会将该消息推送给该consumer。</p>
+<h1 id="推拉模型">推拉模型</h1>
+<p>在rocketmq里面，支持的是pull msg，而rabbitmq则是支持push和pull msg。moonmq只支持push msg。主要有如下考量：</p>
+<ul>
+<li>当consumer在线的时候，push是最及时的，因为这时候铁定能把msg push成功。</li>
+<li>当consumer离线，broker会保存离线消息，当consumer上线之后，broker仍然按照push的方式将离线消息进行推送。</li>
+</ul>
+<p>另外，因为moonmq后续会支持我们的消息推送系统，如果采用pull模型，几十万的consumer定期的pull，我有点担心moonmq会吃不消。</p>
+<h1 id="消息类型">消息类型</h1>
+<p>moonmq将msg分为direct和fanout，fanout就是广播消息，moonmq会将任何订阅了该queue的consumer进行msg push。</p>
+<p>如果msg的type为direct，moonmq将会采用轮询的方式，选择一个consumer进行msg push。</p>
+<h1 id="消息优先级">消息优先级</h1>
+<p>moonmq不支持消息优先级，处理起来会很麻烦，而且通常我们并不需要特别精细的优先级控制。</p>
+<p>可以通过一个简单的方式实现粗粒度的优先级控制：</p>
+<ul>
+<li>设置queue1，queue2，queue3三个队列，queue1用来处理保存优先级最高的消息，queue2次之，queue3最低</li>
+<li>publisher发送消息的时候根据优先级发送到指定的queue上面去</li>
+<li>我们可以有多个consumer处理queue1的消息，譬如3个，然后用2个处理queue2的，1个处理queue1的，这样实现优先级控制。</li>
+</ul>
+<h1 id="消息过滤">消息过滤</h1>
+<p>moonmq通过routing key来进行消息过滤。</p>
+<p>publisher在给特定queue发送msg的时候，还可以指定对应的routing key，只有关注了该queue同时也指定了相同的routing key的consumer才会收到该msg。</p>
+<h1 id="Ack">Ack</h1>
+<p>moonmq支持ack机制，当push一个msg到consumer的时候，consumer必须回应一个ack，moonmq才认为msg push成功。如果长时间没有ack，则moonmq会重新选择一个consumer再次发送。</p>
+<p>ack能够很大程度的保证消息推送的成功率，但是对于消息的快速推送会有影响，所以moonmq也支持no ack模式，这种模式下moonmq只要发送成功了msg，就认为push成功，无需等待ack的回执。</p>
+<h1 id="延迟消息">延迟消息</h1>
+<p>这个现在还没支持，后续是情况而定</p>
+<h1 id="定时消息">定时消息</h1>
+<p>难度比较大，不会实现</p>
+<h1 id="协议">协议</h1>
+<p>moonmq采用的是类似rocketmq的协议，如下：</p>
+<pre><code>|total length(4 bytes)|header length(4 bytes)|header json|body|
+
+total length = 4 + len(header json) + len(body)
+header length = len(header json)
+</code></pre><p>在moonmq里面，我们使用Proto来定义协议</p>
+<pre><code>type Proto struct {
+    Method uint32 `json:&quot;method&quot;`
+
+    Fields map[string]string `json:&quot;fields&quot;`
+
+    Body []byte `json:&quot;-&quot;`
+}
+</code></pre><p>moonmq的任何协议，都需要带上method，我们通过method进行实际的消息处理。</p>
+<p>moonmq的method参考rabbitmq，有如下几种类型的method：</p>
+<ul>
+<li>同步request method，客户端在发送request method之后必须等待对应的response method，在等待的过程中也能够处理push，error等异步method。</li>
+<li>同步response method，对应特定的request method。</li>
+<li>异步method，发送之后无需等待。</li>
+</ul>
+<p>现阶段，moonmq支持如下同步method：</p>
+<ul>
+<li>auth, auth_ok</li>
+<li>publish, publish_o</li>
+<li>bind, bind_ok</li>
+<li>unbind, unbind_ok</li>
+</ul>
+<p>同时支持如下异步method:</p>
+<ul>
+<li>push</li>
+<li>error</li>
+<li>heartbeat</li>
+<li>ack</li>
+</ul>
+<h1 id="后续">后续</h1>
+<p>这只是moonmq的一个简单介绍，后续我们会不断完善moonmq，争取也能成为一个不错的mq产品。</p>
+<p>moonmq的代码在这里<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">https://github.com/siddontang/moonmq</a>，期待大家的反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-30T13:50:44.000Z"><a href="/2014/03/30/golang-linked-channel/">03-30-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/30/golang-linked-channel/">在go中使用linked channels进行数据广播</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>原文在<a href="http://rogpeppe.wordpress.com/2009/12/01/concurrent-idioms-1-broadcasting-values-in-go-with-linked-channels/" target="_blank" rel="external">这里</a>（需翻墙），为啥想要翻译这篇文章是因为在实际中也碰到过如此的问题，而该文章的解决方式很巧妙，希望对大家有用。</p>
+<p>在go中channels是一个很强大的东西，但是在处理某些事情上面还是有局限的。其中之一就是一对多的通信。channels在多个writer，一个reader的模型下面工作的很好，但是却不能很容易的处理多个reader等待获取一个writer发送的数据的情况。</p>
+<p>处理这样的情况，可能的一个go api原型如下：</p>
+<pre><code>type Broadcaster …
+
+func NewBroadcaster() Broadcaster
+func (b Broadcaster) Write(v interface{})
+func (b Broadcaster) Listen() chan interface{}
+</code></pre><p>broadcast channel通过NewBroadcaster创建，通过Write函数进行数据广播。为了监听这个channel的信息，我们使用Listen，该函数返回一个新的channel去接受Write发送的数据。</p>
+<p>这套解决方案需要一个中间process用来处理所有reader的注册。当调用Listen创建新的channel之后，该channel就被注册，通常该中间process的主循环如下：</p>
+<pre><code>for {
+    select {
+        case v := &lt;-inc:
+            for _, c := range(listeners) {
+                c &lt;- v
+            }
+        case c := &lt;- registeryc:
+            listeners.push(c)
+    }
+}
+</code></pre><p>这是一个通常的做法，（译者也经常这么干）。但是该process在处理数据广播的时候会阻塞，直到所有的readers读取到值。一个可选的解决方式就是reader的channel是有buffer缓冲的，缓冲大小我们可以按需调节。或者当buffer满的时候我们将数据丢弃。</p>
+<p>但是这篇blog并不是介绍上面这套做法的。这篇blog主要提出了另一种实现方式用来实现writer永远不阻塞，一个慢的reader并不会因为writer发送数据太快而要考虑分配太大的buffer。</p>
+<p>虽然这么做不会有太高的性能，但是我并不在意，因为我觉得它很酷。我相信我会找到一个很好的使用地方的。</p>
+<p>首先是核心的东西：</p>
+<pre><code>type broadcast struct {
+    c chan broadcast
+    v interface{}
+}
+</code></pre><p>这就是我说的linked channel，但是其实是<a href="http://wadler.blogspot.com/2009/11/list-is-odd-creature.html" target="_blank" rel="external">Ouroboros data structure</a>。也就是，这个struct实例在发送到channel的时候包含了自己。</p>
+<p>从另一方面来说，如果我有一个chan broadcast类型的数据，那么我就能从中读取一个broadcast b，b.v就是writer发送的任意数据，而b.c，这个原先的chan broadcast，则能够让我重复这个过程。</p>
+<p>另一个可能让人困惑的地方在于一个带有缓冲区的channel能够被用来当做一个1对多广播的对象。如果我定义如下的buffered channel：</p>
+<pre><code>var c = make(chan T, 1)
+</code></pre><p>任何试图读取c的process都将阻塞直到有数据写入。</p>
+<p>当我们想广播一个数据的时候，我们只是简单的将其写入这个channel，这个值只会被一个reader给获取，但是我们约定，只要读取到了数据，我们立刻将其再次放入该channel，如下：</p>
+<pre><code>func wait(c chan T) T {
+    v := &lt;-c
+    c &lt;-v
+    return v
+}
+</code></pre><p>结合上面两个讨论的东西，我们就能够发现如果在broadcast struct里面的channel如果能够按照上面的方式进行处理，我们就能实现一个数据广播。</p>
+<p>代码如下：</p>
+<pre><code>package broadcast
+
+type broadcast struct {
+    c   chan broadcast;
+    v   interface{};
+}
+
+type Broadcaster struct {
+    // private fields:
+    Listenc chan chan (chan broadcast);
+    Sendc   chan&lt;- interface{};
+}
+
+type Receiver struct {
+    // private fields:
+    C chan broadcast;
+}
+
+// create a new broadcaster object.
+func NewBroadcaster() Broadcaster {
+    listenc := make(chan (chan (chan broadcast)));
+    sendc := make(chan interface{});
+    go func() {
+        currc := make(chan broadcast, 1);
+        for {
+            select {
+            case v := &lt;-sendc:
+                if v == nil {
+                    currc &lt;- broadcast{};
+                    return;
+                }
+                c := make(chan broadcast, 1);
+                b := broadcast{c: c, v: v};
+                currc &lt;- b;
+                currc = c;
+            case r := &lt;-listenc:
+                r &lt;- currc
+            }
+        }
+    }();
+    return Broadcaster{
+        Listenc: listenc,
+        Sendc: sendc,
+    };
+}
+
+// start listening to the broadcasts.
+func (b Broadcaster) Listen() Receiver {
+    c := make(chan chan broadcast, 0);
+    b.Listenc &lt;- c;
+    return Receiver{&lt;-c};
+}
+
+// broadcast a value to all listeners.
+func (b Broadcaster) Write(v interface{})   { b.Sendc &lt;- v }
+
+// read a value that has been broadcast,
+// waiting until one is available if necessary.
+func (r *Receiver) Read() interface{} {
+    b := &lt;-r.C;
+    v := b.v;
+    r.C &lt;- b;
+    r.C = b.c;
+    return v;
+}
+</code></pre><p>下面就是译者的东西了，这套方式实现的很巧妙，首先它解决了reader register以及unregister的问题。其次，我觉得它很好的使用了流式化处理的方式，当reader读取到了一个值，reader可以将其传递给下一个reader继续使用，同时自己在开始监听下一个新的值的到来。</p>
+<p>译者自己的一个测试用例：</p>
+<pre><code>func TestBroadcast(t *testing.T) {
+    b := NewBroadcaster()
+
+    r := b.Listen()
+
+    b.Write(&quot;hello&quot;)
+
+    if r.Read().(string) != &quot;hello&quot; {
+        t.Fatal(&quot;error string&quot;)
+    }
+
+    r1 := b.Listen()
+
+    b.Write(123)
+
+    if r.Read().(int) != 123 {
+        t.Fatal(&quot;error int&quot;)
+    }
+
+    if r1.Read().(int) != 123 {
+        t.Fatal(&quot;error int&quot;)
+    }
+
+    b.Write(nil)
+
+    if r.Read() != nil {
+        t.Fatal(&quot;error nit&quot;)
+    }
+
+    if r1.Read() != nil {
+        t.Fatal(&quot;error nit&quot;)
+    }
+}
+</code></pre><p>当然，这套方式还有点不足，主要就在于Receiver Read函数，并不能很好的与select进行整合，具体可以参考该作者另一篇blog <a href="http://rogpeppe.wordpress.com/2010/01/04/select-functions-for-go/" target="_blank" rel="external">http://rogpeppe.wordpress.com/2010/01/04/select-functions-for-go/</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-23T08:39:08.000Z"><a href="/2014/03/23/mixer-tokenizer/">03-23-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/23/mixer-tokenizer/">Mixer MySQL词法分析</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>mixer希望在proxy这层就提供自定义路由，sql黑名单，防止sql注入攻击等功能，而这些的基石就在于将用户发上来的sql语句进行解析。也就是我最头大的词法分析和语法分析。</p>
+<p>到现在为止，我只是实现了一个比较简单的词法分析器，用以将sql语句分解成多个token。而对于从token在进行语法分析，构建sql的AST，我现在还真没啥经验（编译原理太差了），急需牛人帮忙。</p>
+<p>所以，这里只是简单介绍一下mixer的词法分析。</p>
+<h1 id="tokenize">tokenize</h1>
+<p>在很多地方，我们都需要进行词法分析，通常会有几种方式：</p>
+<ul>
+<li>使用一个强大的工具，譬如lex，mysql-proxy就用的这种方式</li>
+<li>使用正则表达式</li>
+<li>state machine</li>
+</ul>
+<p>对于使用工具，我觉得有一个不怎么好的地方在于学习成本，譬如我用lex的时候就需要学习它的语法，同时通过工具生成的代码可读性都不怎么好，代码量大，更严重的是可能会比较慢。所以mysql自身也是自己实现一个词法分析模块。</p>
+<p>而对于正则表达式，性能问题可能是一个很需要考虑的，而且复杂度并不比使用类似lex这样的工具低。</p>
+<p>状态机可能是我觉得自己动手实现词法解析一个很好的方式，对于sql的词法解析，我觉得使用state machine的方式来自己写一个难度并不大，所以mixer自己实现了一个。</p>
+<h1 id="state_machine">state machine</h1>
+<p>通常，一个状态机的实现采用的是state + action + switch的做法，可能如下：</p>
+<pre><code>switch state {
+    case state1:
+        state = action1()
+    case state2:
+        state = action2()
+    case state3:
+        state = action3()
+}
+</code></pre><p>对于一个state，我们通过switch知道它将会由哪一个action进行处理，而对于每一个action，我们则知道执行完成之后下一个state是什么。</p>
+<p>对于上面的实现，如果state过多，可能会导致太多的case语句，我们可以通过state function进行简化。</p>
+<p>一个state function就是执行当前的state action，并且直接返回下一个state function。</p>
+<p>我们可以这样做：</p>
+<pre><code>type stateFn func(*Lexer) stateFn
+
+for state := startState; state != nil {
+    state = state(lexer)
+}
+</code></pre><p>所以我们需要实现的就是每一个state function以及对应的它的下一个需要执行的state function。</p>
+<h1 id="mixer_lexer">mixer lexer</h1>
+<p>mixer的词法分析实现主要参考<a href="http://cuddle.googlecode.com/hg/talk/lex.html" target="_blank" rel="external">这个</a>。主要实现在<a href="https://github.com/siddontang/mixer/tree/master/src/parser" target="_blank" rel="external">parser模块</a>。</p>
+<p>对于一个lexer，需要提供的是NextToken的功能，供外部获取下一个token，从而进行后续的操作（譬如语法分析）。</p>
+<p>lexer的next token如下：</p>
+<pre><code>func (l *Lexer) NextToken() (Token, error) {
+    for {
+        select {
+            case t := &lt;-l.tokens:
+                return t, nil
+            default:
+                if l.state == nil {
+                    return Token{TK_EOF, &quot;&quot;}, l.err
+                }
+                l.state = l.state(l)
+                if l.err != nil {
+                    return Token{TK_UNKNOWN, &quot;&quot;}, l.err
+                }
+        }
+    }
+}
+</code></pre><p>tokens是一个channel，每次state解析的token都会emit到这个channel上面，供NextToken获取，如果channel为空了，则再次调用state function。</p>
+<p>可以看到，用go实现一个词法解析是很容易的事情，剩下的就是写相应的state function用来解析sql。</p>
+<h1 id="todo">todo</h1>
+<p>mixer的词法分析还有很多不完善的地方，譬如对于科学计数法数值的解析就不完善，后续准备参考mysql官方的词法分析模块在好好完善一下。</p>
+<p>mixer的代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>，希望感兴趣的童鞋共同完善。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-19T01:33:52.000Z"><a href="/2014/03/19/polaris-session-middleware/">03-19-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/19/polaris-session-middleware/">Polaris中间件实现</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="起因">起因</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>虽然是模仿tornado开发，但我觉得作为一个go的web框架，还需要提供一些额外的扩展支持。</p>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>现在已经支持session以及middleware，主要参加django。</p>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>对于这些额外功能的支持，采取的是注册 + json配置驱动的方式。这个跟go的database/sql有点类似，任何模块都提供一套类似如下的接口:</p>
+<pre><code>type Obj interface {
+
+}
+
+type Driver interface{
+    Open(jsonConfig json.RawMessage) (Obj, error)
+}
+
+func Register(name string, driver Driver) error
+func Open(name string, jsonConfig json.RawMessage) (Obj, error)
+</code></pre><p>如果我们需要自定义功能，只需要实现自己的driver以及对应的obj，然后Register进去，后续就可以通过Open直接使用了。</p>
+<p>对于每个模块的配置，因为<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的整体配置是json，所以我也强制要求参数是json格式的，也就是json.RawMessage，各个模块自行进行Unmarshal处理。</p>
+<h1 id="session">session</h1>
+<p>对于一个session对象，无非就是Set，Get，Delete等，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>需要关心的是这个session对应的store。store可以理解为该session的持久化保存位置，可以是db，redis，cookie或者memory。</p>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>提供的store接口如下：</p>
+<pre><code>type Store interface {
+    //get a session by id
+    //if no session exist, regenerate another id to new a session
+    Get(id string) (*Session, error)
+
+    //delete session from store
+    Delete(*Session) error
+
+    //Save session to stroe
+    Save(*Session) error
+}
+
+type Driver interface {
+    Open(jsonConfig json.RawMessage) (Store, error)
+}
+</code></pre><p>现阶段，只提供了redis的支持，这里特别说明一下，我是在现在才知道redis有一个setex命令，想想以前经常用set + expire来设置一个key以及超时，想想都汗颜。</p>
+<p>对于session的持久化，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>提供了codec的接口，外部可以注册自己的序列化方式，同时在相应的store里面实现。对于一个codec，接口如下：</p>
+<pre><code>//codec for session encode and decode
+type Codec interface {
+    Encode(values map[interface{}]interface{}) ([]byte, error)
+    Decode(buf []byte) (map[interface{}]interface{}, error)
+}
+
+func RegisterCodec(name string, codec Codec) error
+func GetCodec(name string) (Codec, error)
+</code></pre><p>现阶段，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>提供了gob方式的codec。外部通过GetCodec(“gob”)就可以获取到。</p>
+<h1 id="middleware">middleware</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的middleware主要提供如下接口：</p>
+<pre><code>type Middleware interface {
+    ProcessRequest(env *context.Env) error
+    ProcessResponse(env *context.Env) error
+}
+</code></pre><p>context.Env是该次请求的上下文环境，对于每次http请求，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>会首先调用middleware的ProcessRequest，在处理实际对应的restful接口，然后再调用ProcessResponse。</p>
+<p>如果Process的时候，返回error，或者env已经finished，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>会终止后续的process操作。这套处理流程是否合适后续在好好考量。</p>
+<p>现阶段，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>提供了session middleware的支持。</p>
+<h1 id="Todo">Todo</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>采用注册 + json配置的方式，我觉得可以很好的处理后续模块功能的添加问题，后续可以参考django等框架继续完善。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-17T01:14:37.000Z"><a href="/2014/03/17/i18n-url/">03-17-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/17/i18n-url/">国际化Url设计</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>因为项目要支持国际化，最近跟一个同事在讨论多语言版本下面url如何设计，假如我们需要支持en和cn的版本。</p>
+<p>他倾向于支持如下的url格式，后续以格式1指代：</p>
+<pre><code>/en/group/abc.html
+/cn/group/abc.html
+</code></pre><p>而我则倾向于只提供一套url，lang的信息在其它地方携带，后续以格式2指代，譬如：</p>
+<pre><code>/group/abc.html?lang=en
+</code></pre><p>对于格式1，它的好处在于非常清晰的就告知用户当前网页是什么语言的，但是我觉得还有几个不足：</p>
+<ul>
+<li><p>nginx location的适配，为了适配url里面的lang，我们需要将所有的location改成如下形式：</p>
+<pre><code>  /(.+)/group/abc.html
+</code></pre><p>  改动比较大，同时nginx所有的location匹配都只能走正则匹配，性能稍微有点损耗。</p>
+</li>
+<li><p>url跳转，假如用户现在在 /en/group/abc.html下面，切换成cn页面，如何正确的跳转到/cn/group/abc.html，也是需要考量的，我并不认为这个很容易，尤其是在nginx以及后端django都需要按照统一规则处理情况下。</p>
+</li>
+</ul>
+<p>虽然有很多网站都是采用格式1的方式来支持国际化，譬如apple，nginx的官网，但是我发现当它们在涉及语言切换的时候，很多都跳转到了该语言的首页，可能这样实现更简单吧（这绝对是我的臆想！！！）。</p>
+<p>对于我倾向的格式2，想到的有三种方式带上lang的信息：</p>
+<ul>
+<li>参数携带，譬如上面的/group/abc.html?lang=en</li>
+<li>cookie携带，譬如在cookie里面设置 lang=en</li>
+<li>Accept-Language，当没有任何lang信息的时候根据Accept-Language判断</li>
+</ul>
+<p>当用户切换语言，或者url参数里面有lang信息的时候，我们会将该lang信息设置到cookie里面，这样下次访问的时候就可以根据cookie里面的访问了。</p>
+<p>可以看到，格式2有明显的几个好处：</p>
+<ul>
+<li>url不变，无论增加多种语言，url仍然是同一个url，语言切换的时候也不会进行url跳转。</li>
+<li>restful，我认为，在restful模式中，lang并不是资源，而是资源用来展示的一种方式，这个跟Content-Type类似。</li>
+</ul>
+<p>但是，格式2也有一些不足的地方，主要就在静态文件缓存，因为是同一个url，浏览器会对静态文件缓存，如果切换了lang，那么很有可能缓存的仍然是切换之前lang对应的文件。</p>
+<p>总之，两种格式的url在业界都有使用，据我观察，google，facebook，twitter在处理多语言的时候，采用的是格式2的方式，而我们在经过讨论之后，也决定采用格式2的方式。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-16T11:25:40.000Z"><a href="/2014/03/16/go-mysql-database-interface/">03-16-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/16/go-mysql-database-interface/">Go MySQL支持database/sql接口</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>已经支持golang database/sql接口，并通过<a href="https://github.com/bradfitz/go-sql-test" target="_blank" rel="external">https://github.com/bradfitz/go-sql-test</a>测试用例。</p>
+<p>现在<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>可以直接通过golang sql接口使用，如下：</p>
+<pre><code>import _ &quot;github.com/siddontang/go-mysql/mysql&quot;
+import &quot;database/sql&quot;
+</code></pre><p>后续的使用，可以直接参考相关golang sql的教程，譬如<a href="http://go-database-sql.org/index.html" target="_blank" rel="external">这个</a>。</p>
+<p>golang sql接口的兼容主要在driver.go的文件中，</p>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>支持的dsn格式为：</p>
+<pre><code>&lt;username&gt;:&lt;password&gt;@&lt;host&gt;:&lt;port&gt;/&lt;database&gt;
+</code></pre><p>因为在实现<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>的过程中，我就有意识的将一些接口设计成能跟database/sql进行适配。除了Rows接口的适配，因为我总觉得使用起来不方便，但是通过Resultset进行适配Rows也很方便。因为Resultset存储了Query之后所有的数据，所以我们可以通过一个int型iterator，就可以模拟Rows接口：</p>
+<pre><code>func (r *mysqlRows) Close() error {
+    r.iter = -1
+    return nil
+}
+
+func (r *mysqlRows) Next(dest []driver.Value) error {
+    if r.iter &gt;= r.r.RowNumber() {
+        return io.EOF
+    }
+
+    data := r.r.Data[r.iter]
+
+    for i := range data {
+        //set data[i] to dest[i]
+    }
+
+    r.iter++
+    return nil
+}
+</code></pre>
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-13T03:16:31.000Z"><a href="/2014/03/13/mixer-protocol/">03-13-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/13/mixer-protocol/">Mixer MySQL通讯协议解析</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="综述">综述</h1>
+<p>要实现一个mysql proxy，首先需要做的就是理解并实现mysql通讯协议。这样才能通过proxy架起client到server之间的桥梁。</p>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>的mysql协议实现主要参考mysql官方的<a href="http://dev.mysql.com/doc/internals/en/client-server-protocol.html" target="_blank" rel="external">internal manual</a>，并用Wireshark同时进行验证。在实现的过程中，当然踩了很多坑，这里记录一下，算是对协议分析的一个总结。</p>
+<p>需要注意的是，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>并没有支持所有的mysql协议，譬如备份，存储过程等，主要在于精力有限，同时也为了实现简单。</p>
+<h1 id="数据类型">数据类型</h1>
+<p>mysql协议只有两种基本的数据类型，integer和string。</p>
+<h2 id="integer">integer</h2>
+<p>integer包括fixed length integer和length encoded integer两种，对于length encoded integer，用的地方比较多，这里详细说明一下。</p>
+<p>对于一个integer，我们按照如下的方式将其转成length encoded integer：</p>
+<ul>
+<li>如果value &lt; 251，使用1 byte</li>
+<li>如果value &gt;= 251 同时 value &lt; 2 ** 16，使用fc + 2 byte</li>
+<li>如果value &gt;= 2 ** 16 同时 value &lt; 2 ** 24，使用fd + 3 byte </li>
+<li>如果value &gt;= 2 ** 24 同时 value &lt; 2 ** 64，使用fe + 8 byte</li>
+</ul>
+<p>相应的，对于一个length encoded integer，我们可以通过判断第一个byte的值来转成相应的integer。</p>
+<h2 id="string">string</h2>
+<p>string包括：</p>
+<ul>
+<li>fixed length string，固定长度string</li>
+<li>null terminated string，以null结尾的string</li>
+<li>variable length string，通过另一个值决定长度的string</li>
+<li>length encoded string，通过起始length encoded integer决定长度的string</li>
+<li>rest of packet string，从当前位置到包结尾的string</li>
+</ul>
+<h1 id="Packet">Packet</h1>
+<p>在mysql中，如果client或server要发送数据，它需要将数据按照(2 ** 24 - 1)拆分成packet，给每一个packet添加header，然后再以此发送。</p>
+<p>对于一个packet，格式如下：</p>
+<pre><code>3              payload length
+1              sequence id
+string[len]    payload
+</code></pre><p>前面3个字节表明的是该packet的长度，每个packet最大不超过16MB。第4个字节表明的是该packet的序列号，从0开始，对于多个packet依次递增，等到下一个新的命令发送数据的时候才重置为0。前面4个字节组成了一个packet的header，后面就是该packet实际的数据。</p>
+<p>因为一个packet最大能发送的数据位16MB，所以如果需要发送大于16MB的数据，就需要拆分成多个packet进行发送。</p>
+<p>通常，server会回给client三种类型的packet</p>
+<ul>
+<li>OK Packet，操作成功</li>
+<li>Err Packet，操作失败</li>
+<li>EOF Packet，end of file</li>
+</ul>
+<h1 id="登陆交互">登陆交互</h1>
+<p>要实现proxy，首先需要解决的就是登陆问题，包括proxy模拟server处理client的登陆，proxy模拟client登陆server。</p>
+<p>为了简单，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只支持username + password的方式进行登陆，这应该也是最通用的登陆方式。同时不支持ssl以及compression。</p>
+<p>一个完整的登陆流程如下：</p>
+<ul>
+<li>client首先connect到server</li>
+<li>server发送initial handshake packet，包括支持的capability，一个用于加密的随机salt等</li>
+<li>client返回handshake结果，包括自己支持的capability，以及用salt加密的密码</li>
+<li>server验证，如果成功，返回ok packet，否则返回err packet并关闭连接</li>
+</ul>
+<p>这里，不得不说实现登陆协议的时候踩过的一个很大的坑，因为我使用的是HandshakeV10协议，在文档里面，协议有这样的规定：</p>
+<pre><code>if capabilities &amp; CLIENT_SECURE_CONNECTION {
+    string[$len]   auth-plugin-data-part-2 ($len=MAX(13, length of auth-plugin-data - 8))
+}
+</code></pre><p>如果根据文档的说明，算出来auth-plugin-data-part-2的长度是13，因为auth-plugin-data的长度是20。但是，实际情况是，auth-plugin-data-part-2的长度应该为12，第13位一直为0。只有这样，我们才能根据salt算出正确的加密密码。这一点，在mysql-proxy官方的文档，以及多个msyql client driver上面，Wireshark的分析中都是如此，在go-sql-driver中，作者都直接写了如下的注释：</p>
+<pre><code>// second part of the password cipher [12? bytes]
+// The documentation is ambiguous about the length.
+// The official Python library uses the fixed length 12
+// which is not documented but seems to work.
+</code></pre><p>可想而知，这个坑有多坑爹。至少我开始是栽在上面了。加密老是不对。</p>
+<h1 id="Command">Command</h1>
+<p>搞定了登陆，剩下的就是mysql的命令支持，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只实现了基本的命令。主要集中在text protocol以及prepared statment里面。</p>
+<h2 id="COM_PING">COM_PING</h2>
+<p>最基本的ping实现，用来检查mysql是否存活。</p>
+<h2 id="COM_INIT_DB">COM_INIT_DB</h2>
+<p>虽然叫init db，其实压根干的事情就跟use db一样，用来切换使用db的。</p>
+<h2 id="COM_QUERY">COM_QUERY</h2>
+<p>可以算是最重要的一个命令，我们在命令行使用的多数mysql语句，都是通过该命令发送的。</p>
+<p>在COM_QUERY中，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>主要支持了select，update，insert，delete，replace等基本的操作语句，同时支持begin，commit，rollback事物操作，还支持set names和set autocommit。</p>
+<p>COM_QUERY有4中返回packet</p>
+<ul>
+<li>OK Packet</li>
+<li>Err Packet</li>
+<li>Local In File（不支持）</li>
+<li>Text Resultset</li>
+</ul>
+<p>这里重点说明一下text resultset，因为它包含的就是我们最常用的select的结果集。</p>
+<p>一个text resultset，包括如下几个包：</p>
+<ul>
+<li>一个以length encoded integer编码的column-count packet</li>
+<li>column-count个column定义packet</li>
+<li>eof packet</li>
+<li>一个或者多个row packet，每个row packet有column-count个数据</li>
+<li>eof packet或者err packet</li>
+</ul>
+<p>对于一个row packet的里面的数据，我们通过如下方式获取：</p>
+<ul>
+<li>如果值为NULL，那么就是0xfb</li>
+<li>否则，任何值都是用length encoded string表示</li>
+</ul>
+<h2 id="COMSTMT*">COM<em>STMT</em>*</h2>
+<p>COM<em>STMT</em>族协议就是通常的prepared statement，当我在atlas群里面说支持prepared statement的时候，很多人以为我支持的是在COM_QUERY中使用的prepare，execute和deallocate prepare这组语句。其实这两个还是很有区别的。</p>
+<p>为什么我不现在不想支持COM_QUERY的prepare，主要在于这种prepare需要进行变量设置，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>在后端跟server是维护的一个连接池，所以对于client设置的变量，proxy维护起来特别麻烦，并且每次跟server使用新的连接的时候，还需要将所有的变量重设，这增大了复杂度。所以我不支持变量的设置，这点看cobar也是如此。既然不支持变量，所以COM_QUERY的prepare我也不会支持了。</p>
+<p>COM<em>STMT</em>*这组命令，主要用在各个语言的client driver中，所以我觉得只支持这种的prepare就够了。</p>
+<p>对于COM_STMT_EXECUTE的返回结果，因为prepare的语句可能是select，所以会返回binary resultset，binary resultset组成跟前面text resultset差不多，唯一需要注意的就是row packet采用的是binary row packet。</p>
+<p>对于每一个binary row packet，第一个byte为0，后面紧跟着一个null bitmap，然后才是实际的数据。</p>
+<p>在binary row packet中，使用null bitmap来表明该行某一列的数据为NULL。null bitmap长度通过 (column-count + 7 + 2) / 8计算得到，而对于每列数据，如果为NULL，那么它在null bitmap中的位置通过如下方式计算：</p>
+<pre><code>NULL-bitmap-byte = ((field-pos + offset) / 8)
+NULL-bitmap-bit  = ((field-pos + offset) % 8)
+</code></pre><p>offset在binary resultset中为2，field-pos为该列的位置。</p>
+<p>对于实际非NULL数据，则是根据每列定义的数据类型来获取，譬如如果type为MYSQL_TYPE_LONGLONG，那么该数据值的长度就是8字节，如果type为MYSQL_TYPE_STRING，那么该数据值就是一个length encoded string。</p>
+<h1 id="后记">后记</h1>
+<p>我通过Wireshark分析了一些mysql protocol，主要在<a href="https://github.com/siddontang/mixer/blob/master/doc/protocol.txt" target="_blank" rel="external">这里</a>，这里不得不强烈推荐wireshark，它让我在学习mysql protocol过程中事半功倍。</p>
+<p>mixer的代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>，欢迎反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-12T06:16:43.000Z"><a href="/2014/03/12/polaris-introduction/">03-12-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/12/polaris-introduction/">Polaris 一个用Go实现的Restful Web框架</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>是一个用go实现的支持restful的web框架，主要参考tornado进行设计。</p>
+<p>虽然在go里面搭建一个http server非常的简单，这里强烈推荐<a href="http://www.gorillatoolkit.org/" target="_blank" rel="external">gorilla</a>，但并没有很好的对restful模型进行支持。考察了很多开源实现，我决定还是重新造一个轮子，毕竟难度也不怎么大，而且能够根据项目的使用慢慢调整完善。</p>
+<h1 id="使用">使用</h1>
+<p>设计<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>还是参考了tornado，虽然一段时间不用python了，但是我还是对tornado念念不忘。</p>
+<p>在<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>，我现在只支持get，post，put，head和delete这几种method，剩下的貌似我也没用到过。只要一个对象，它提供了以上一个或多个接口，就能注册进<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的router中。</p>
+<p>先上一个例子：</p>
+<pre><code>type Handler1 struct {
+
+}
+
+func (h *Handler1) Prepare(env *Env) {
+    fmt.Println(&quot;hello prepare&quot;)
+}
+
+func (h *Handler1) Get(env *Env) {
+    env.WriteString(&quot;hello get&quot;)
+}
+
+func (h *Handler1) Post(env *Env) {
+    env.WriteString(&quot;hello post&quot;)
+}
+
+type Handler2 struct {
+
+}
+
+//id is a captured submatch for regexp url below
+func (h *Handler2) Get(env *Env, id string) {
+    env.WriteString(&quot;hello &quot; + id)
+}
+
+r = NewRouter()
+
+r.Handle(&quot;/handler1&quot;, new(Handler1))
+r.Handle(&quot;/handler2/([0-9]+)&quot;, new(Handler2))
+
+http.Handle(&quot;/&quot;, r)
+http.ListenAndServe(&quot;127.0.0.1:11181&quot;, nil)
+</code></pre><p>上面，我们实现了两个handler，对于每一个handler，需要实现以下一个或多个接口:</p>
+<pre><code>Get(env *Env)
+Post(env *Env)
+Head(env *Env)
+Put(env *Env)
+Delete(env *Env)
+</code></pre><p>Env用以表明该次请求的上下文环境，主要是为了纪念一个内部库stars，以此命名。</p>
+<p>鉴于tornado也提供了prepare支持，所以，如果handler提供了Prepare(env *Env)接口，每次调用相应的函数的时候，会优先调用Prepare。</p>
+<p>在handler2中，我们可以看到，Get函数多了一个参数id，这主要是为了处理对应的正则url里面含有group的情况。上面handler2对应的url里面有一个([0-9]+) group，所以当url匹配成功之后，我们会将该group实际的数据传递给handler2。</p>
+<p>因为正则匹配的结果都是string，所以Get后面的参数都必须是string类型的。实际的类型转换需要handler自行处理。</p>
+<h1 id="路由规则">路由规则</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的路由规则比较简单，参考nginx分为literal pattern和regexp pattern两种。当有请求需要处理的时候，首先查看是否在literal pattern中，如果不是，则根据注册的regexp pattern依次匹配。</p>
+<p>上面的例子中，<strong>/handler1</strong>就是literal pattern，而<strong>/handler2/([0-9]+)</strong>则是regexp pattern。在go中，判断一个字符串是否是正则表达式，只要通过regexp.QuoteMeta就可以了，如果得到的值跟原字符串一样，该字符串就是literal pattern。</p>
+<h1 id="实现">实现</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>核心实现是基于reflect，这里列举一些：</p>
+<h2 id="判断一个handler是否具有相关接口">判断一个handler是否具有相关接口</h2>
+<ul>
+<li>reflect.ValueOf(handler)得到handler的value v</li>
+<li>v.MethodByName(“Get”)得到get function的value m</li>
+<li>m.Kind() == reflect.Func判断是否存在Get函数</li>
+</ul>
+<h2 id="判断接口是否满足规范">判断接口是否满足规范</h2>
+<ul>
+<li>m.NumIn()获取该函数输入参数的个数</li>
+<li>m.In(0).Kind() == reflect.Ptr和m.In(0).String() == “<em>polaris.Env”判断第一个参数必须为\</em>Env</li>
+<li>m.In(i).Kind() == reflect.String判断第i(i&gt;=1)个参数必须为string</li>
+</ul>
+<h2 id="根据传入的参数调用相应的函数">根据传入的参数调用相应的函数</h2>
+<ul>
+<li>根据传入的http request method找到对应的函数 m</li>
+<li>values = make([]relfect.Value, nArgs)</li>
+<li>通过reflect.ValueOf填充参数，第一个参数为*Env</li>
+<li>m.Call(values)，使用Call进行函数调用</li>
+</ul>
+<h1 id="后续">后续</h1>
+<p>现在的<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>只支持基本的restful模型，后续我考虑将自己开发的其他库，譬如log，mysql等进行整合，使其真正成为一个可用的restful web framework。</p>
+<p>代码在这里<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">https://github.com/siddontang/polaris</a>，欢迎大家反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-10T01:35:51.000Z"><a href="/2014/03/10/mixer-introduction/">03-10-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/10/mixer-introduction/">Mixer 一个用Go实现的MySQL Proxy</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>是一个用go实现的mysql proxy，支持基本的mysql代理功能。</p>
+<p>mysql的中间件很多，对于市面上面现有的功能强大的proxy，我主要考察了如下几个：</p>
+<ul>
+<li>mysql-proxy，mysql官方的代理，使用起来并不友好，需要进行lua定制，而且本人对其稳定性和性能存疑。</li>
+<li>Cobar，阿里的东西，品质没的说，但对于我们项目，有点杀鸡用牛刀的感觉，另外我们都不会java。</li>
+<li>Atlas，360出品的基于mysql-proxy的增强版，几乎用c重写了核心框架，性能和稳定性都没话说。</li>
+</ul>
+<p>当然，还有很多强大的proxy，我不可能一一涉及，而现阶段我们项目中使用的是Atlas（这算不算给Atlas打了一个广告？）。</p>
+<p>既然有这么多的proxy，为什么我还想自己实现一个呢？可能最主要的原因在于兴趣使然吧。</p>
+<h1 id="mysql功能支持">mysql功能支持</h1>
+<p>当开始着手进行<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>开发的时候，我就知道，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>不是mysql，它不可能proxy所有mysql的功能。所以，我决定<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只支持如下mysql命令：</p>
+<ul>
+<li>COM_QUERY<ul>
+<li>select, insert, update, delete, replace</li>
+<li>set autocommit</li>
+<li>set names</li>
+<li>begin, commit, rollback</li>
+</ul>
+</li>
+<li>COM_PING</li>
+<li>COM_INIT_DB</li>
+<li>COM<em>STMT_PREPARE, COM_STMT_EXEC等COM_STMT</em>*命令，仅支持上述COM_QUERY命令的prepare</li>
+</ul>
+<p>[mixer](<a href="https://github.com/siddontang/mixer不支持命令挺多的，列举一些：" target="_blank" rel="external">https://github.com/siddontang/mixer不支持命令挺多的，列举一些：</a></p>
+<ul>
+<li>set variable。如果支持，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>需要维护每一个变量的状态，增加了复杂度。但<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>支持autocommit和names的设置。</li>
+<li>sql text模式的prepare statement。</li>
+<li>show命令。</li>
+<li>存储过程。</li>
+</ul>
+<p>虽然很多功能现阶段没有，但不排除后续支持。</p>
+<h1 id="高可用方案">高可用方案</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>提供了一套mysql高可用使用方案，现阶段主要功能如下：</p>
+<ul>
+<li>读写分离，将select发送到slave，其余发送到master执行，事物所有在master执行。现阶段只支持一主一备。</li>
+<li>主备自动切换，当主mysql不可用，根据相关规则切换到backup mysql执行。</li>
+</ul>
+<h1 id="Todo">Todo</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>还不完善，很多功能需要实现，后续优先需要实现的功能：</p>
+<ul>
+<li>parser，将sql进行语法解析，构建AST，在proxy层面就防止一些mysql隐患，譬如注入攻击，delete没有where等。</li>
+<li>自定义路由，根据路由规则将sql路由到不同mysql执行。譬如根据主键将select语句hash到不同的slave上面执行。</li>
+<li>统计功能。</li>
+</ul>
+<p>代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>。非常希望对proxy感兴趣的童鞋参与进来，共同完善<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，使其成为另一个mysql中间件解决方案。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-05T06:26:04.000Z"><a href="/2014/03/05/libcoro/">03-05-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/05/libcoro/">简易的C++协程库</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="起因">起因</h1>
+<p>在第一个版本的<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>开发完成之后，我一直在思考如何让异步方式的网络编程更加简单。</p>
+<p>虽然<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>通过c++ shared_ptr以及function等技术很大程度上面解决了异步代码编写的一些问题，但是仍然会出现代码逻辑被强制拆分的情况。而这个则是项目中童鞋无法很好的使用其进行开发的原因。</p>
+<p>所以我考虑让<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine。</p>
+<h1 id="Coroutine">Coroutine</h1>
+<p>第一次接触coroutine的概念是在lua里面，记得当时想了很久才算弄明白了coroutine的使用以及原理。在lua中，coroutine的使用如下：</p>
+<pre><code>co = coroutine.create(function ()
+        print(&quot;begin yield&quot;)
+        coroutine.yield()
+        print(&quot;after yield&quot;)
+    end)
+
+coroutine.resume(co)
+print(&quot;after resume&quot;)
+
+coroutine.resume(co)
+</code></pre><p>我们可以通过resume执行一个新创建或者已经被挂起的coroutine，通过yield挂起当前的coroutine，这样就可以实现类似多线程方式下面的多任务调度。</p>
+<p>至于coroutine的原理，很多地方都有说明，主要就在于每个coroutine都有自己的堆栈，这样当coroutine挂起的时候，它的当前执行状态会被完整保留，下次resume的时候就可以接着执行了。</p>
+<p>而使用coroutine的好处，我觉得最大的一点在于它将拆分的异步逻辑同步化了，更利于代码编写。</p>
+<p>在使用python tornado的时候，我们开始阶段写了太多的callback回调，以至于代码的维护非常困难，而这个则在引入<a href="https://github.com/python-greenlet/greenlet" target="_blank" rel="external">greenlet</a>后有了明显好转。</p>
+<p>而后续在使用go语言中，因为它原生的支持coroutine（其实在go里面更准确的说法应该是goroutine），写代码非常的方便，所以现在go已经成为了我服务器的首选开发语言，我也用它开发了多个项目（如<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，一个mysql proxy），并且已经在公司项目中实施。</p>
+<p>当然，使用coroutine并不是毫无缺点的：</p>
+<ul>
+<li>每个coroutine都需要维护自己的堆栈，当我们需要创建数以百万计的coroutine的时候，内存的开销就需要考虑了。</li>
+<li>coroutine的切换，都需要保留当前的上下文环境，以便于下次resume的时候接着执行，如果coroutine切换频繁，开销也不小。</li>
+</ul>
+<h1 id="libcoro">libcoro</h1>
+<p>很早之前使用luajit的时候，我就知道可以在c++中实现coroutine的功能，在linux中，这通过makecontext，swapcontext等相关函数实现。虽然也可以通过setjmp/longjmp这两个古老的函数实现，但看了luajit的coco就知道，即使在linux下面，它也需要写很多define宏去适配。</p>
+<p>所以，我只考虑使用makecontext这套函数族来实现coroutine。虽然swapcontext会有性能问题，详见<a href="http://rethinkdb.com/blog/making-coroutines-fast/" target="_blank" rel="external">这里</a>，但早期我还不打算对其进行性能优化。</p>
+<p><a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>是一个简单的c++ coroutine库，只支持linux（因为我们的服务器只有linux的）。</p>
+<p>在接口上面，<a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>参考的是lua的coroutine的接口设计，使用非常简单:</p>
+<pre><code>void func1()
+{
+    coroutine.yield();
+}
+
+void func2(Coro_t co1)
+{
+    coroutine.resume(co1);    
+    coroutine.yield();
+}
+
+void func()
+{
+    Coro_t co1 = coroutine.create(std::bind(&amp;func1));    
+    coroutine.resume(co1);    
+    Coro_t co2 = coroutine.create(std::bind(&amp;func2, co1));
+    coroutine.resume(co2);
+    coroutine.resume(co2);
+}
+
+int main()
+{    
+    Coro_t co = coroutine.create(std::bind(&amp;func));
+    coroutine.resume(co);
+    return 0;
+}
+</code></pre><ul>
+<li>coroutine.create创建一个coroutine，参数为一个std::function，这样我们就可以通过std::bind非常方便的实现函数闭包了。</li>
+<li>coroutine.resume唤醒一个挂起或者新建的coroutine。</li>
+<li>coroutine.yield挂起当前coroutine。</li>
+<li>coroutine.running获取当前运行的coroutine，如果是主线程调用，则返回0。</li>
+<li>coroutine.status获取coroutine的状态。</li>
+</ul>
+<p>后续我考虑将<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine，不过这可能会成为一个新的网络库了。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+
+<nav id="pagination">
+  
+    <a href="/page/2/" class="alignleft prev">上一页</a>
+  
+  
+    <a href="/page/4/" class="alignright next">下一页</a>
+  
+  <div class="clearfix"></div>
+</nav></div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

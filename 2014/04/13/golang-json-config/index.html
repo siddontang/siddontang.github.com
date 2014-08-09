@@ -1,0 +1,357 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>在Go中使用JSON作为主要配置 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="在Go中使用JSON作为主要配置"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-13T03:53:14.000Z"><a href="/2014/04/13/golang-json-config/">04-13-2014</a></time>
+      
+      
+  
+    <h1 class="title">在Go中使用JSON作为主要配置</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>最近在用go重构，在先前的代码中，我们使用的ini文件进行配置，但是因为很多历史遗留问题，导致配置混乱，维护困难，自然也需要考虑重构了。</p>
+<h1 id="通用配置格式">通用配置格式</h1>
+<p>通用的配置格式有很多，常用的就有ini，json，yaml，xml等，当然为了通用我们不考虑自定义的配置格式。那如何选择呢？</p>
+<p>首先，xml我们就不用考虑了，到现在为止我都没觉得用这玩意配置起来有多方便，反而很臃肿，可能java系的童鞋会比较青睐。</p>
+<p>再来考虑ini，ini文件对于简单应用的配置可以说是非常方便的，如果配置没有太多的层次结构，使用ini就能完全满足我们的需要，即使有，我们也能够通过加入特定前缀来解决。譬如，我们可能有如下redis配置：</p>
+<pre><code>[ModuleA]
+
+persistent_redis_addr = 127.0.0.1:6379
+persistent_redis_password = admin
+
+cache_redis_addr = 127.0.0.1:6380
+cache_redis_password = admin
+</code></pre><p>然后，需求变化了，我们需要另一个持久化redis服务来做相关事情，于是配置就可能变成了下面这样：</p>
+<pre><code>[ModuleA]
+
+persistent_redis_addr = 127.0.0.1:6379
+persistent_redis_password = admin
+
+persistent2_redis_addr = 127.0.0.1:6379
+persistent2_redis_password = admin
+
+cache_redis_addr = 127.0.0.1:6380
+cache_redis_password = admin
+</code></pre><p>虽然通过前缀命名能解决层级问题，但总觉得是对程序员不怎么友好的。</p>
+<h1 id="why_json">why json</h1>
+<p>剩下的就是json和yaml，可以这么说，这两个都算是比较好的轻量级配置格式，而且对程序员非常友好，而且go里面都可以通过定义struct，将层级结构的配置映射到相应的struct里面。</p>
+<p>但是我还是决定选择json作为我们go代码的默认配置格式，最主要的原因在于go的json包有一个杀手级别的RawMessage实现。而这个在我能找到的yaml包中没有。</p>
+<p>RawMessage主要是用来告诉go延迟解析用的。当我们定义了某一个字段为RawMessage之后，go就不会解析这段json，这样我们就可以将其推后到各自的子模块单独解析。</p>
+<p>假设有一个功能，后台存储可能是redis或者mysql，但是只会使用一个，可能我们会按照如下方式写配置：</p>
+<pre><code>redis_store : {
+    addr : 127.0.0.1
+    db : 0
+},
+
+mysql_store : {
+    addr : 127.0.0.1
+    db : test
+    password : admin
+    user : root
+}
+
+store : redis
+</code></pre><p>对应的class为</p>
+<pre><code>type Config struct {
+    RedisStore struct {
+        Addr string
+        DB int
+    }
+
+    MysqlStore Struct {
+        Addr string
+        DB string
+        Password string
+        User string
+    }
+
+    Store string
+}
+</code></pre><p>如果这时候我们在增加了一种新的store，我们需要在Config文件里面在增加一个新的field，但是实际我们只会使用一种store，并不需要写这么多的配置。</p>
+<p>我们可以使用RawMessage来处理：</p>
+<pre><code>type Config struct {
+    Store string
+    StoreConfig json.RawMessage
+}
+</code></pre><p>如果使用redis，对应的配置文件为</p>
+<pre><code>store: redis
+store_config: {
+    addr : 127.0.0.1
+    db : 0
+}
+</code></pre><p>如果使用mysql，对应的配置文件为</p>
+<pre><code>store: mysql
+store_config: {
+    addr : 127.0.0.1
+    db : test
+    password : admin
+    user : root
+}
+</code></pre><p>go读取配置文件之后，并不会处理RawMessage对应的东西，而是由我们代码自己对应的store模块去处理。这样无论配置文件怎么变动，store模块做了什么变动，都不会影响Config类。</p>
+<p>而在各个模块中，我们只需要自己定义相关config，然后可以将RawMessage直接解析映射到该config上面，譬如，对于redis，我们在模块中有如下定义</p>
+<pre><code>type RedisConfig config {
+    Addr string `json:&quot;addr&quot;`
+    DB int `json:&quot;db&quot;`
+}
+
+func NewConfig(m json.RawMessage) *RedisConfig {
+    c := new(RedisConfig)
+
+    json.Unmarshal(m, c)
+
+    return c
+}
+</code></pre><h1 id="json的不足">json的不足</h1>
+<p>使用json也还有很多蛋疼的地方，最大的问题就在于注释，在json中，可不能这样写：</p>
+<pre><code>{
+    //this is a comment
+    /*this is a comment*/ 
+}
+</code></pre><p>但是，我们又不可能不写一点注释来说明配置项是干啥的，所以，通常采用的是引入一个comment字段的方式，譬如：</p>
+<pre><code>{
+    &quot;_comment&quot; : &quot;this is a comment&quot;,
+    &quot;key&quot; : &quot;value&quot;
+}
+</code></pre><p>另外，json还需要注意的就是写的时候最后一项不能加上逗号，这样的json会因为格式错误无法解析的。</p>
+<pre><code>{
+    &quot;key&quot; : &quot;value&quot;,
+}
+</code></pre><p>最后那个逗号可是不能要的，但是实际写配置的时候我们可是经常性的随手加上了。</p>
+<p>但是，总的来说，json对于go的项目还是很友好的，我不光在项目中推行了，在自己的开源项目中，也大量的采用了json作为主要的配置文件。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/go/">go</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/go/">go</a>, <a href="/tags/json/">json</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

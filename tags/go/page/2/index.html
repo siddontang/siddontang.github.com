@@ -1,0 +1,1140 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>第 2 页 | go | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+<h2 class="archive-title tag">go</h2>
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-22T02:56:26.000Z"><a href="/2014/04/22/golang-pprof-goroutine/">04-22-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/22/golang-pprof-goroutine/">Go使用pprof调试Goroutine</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>有一段时间，我们的推送服务socket占用很不正常，我们自己统计的同时在线就10w的用户，但是占用的socket竟然达到30w，然后查看goroutine的数量，发现已经60w+。</p>
+<p>每个用户占用一个socket，而一个socket，有read和write两个goroutine，简化的代码如下：</p>
+<pre><code>c, _ := listerner.Accept()
+
+go c.run()
+
+func (c *conn) run() {
+    go c.onWrite()
+    c.onRead()
+}
+
+func (c *conn) onRead() {
+    stat.AddConnCount(1)
+
+    //on something
+
+    stat.AddConnCount(-1)
+
+    //clear
+    //notify onWrite to quit
+}
+</code></pre><p>当时我就怀疑，用户同时在线的统计是正确的，也就是之后的clear阶段出现了问题，导致两个goroutine都无法正常结束。在检查代码之后，我们发现了一个可疑的地方，因为我们不光有自己的统计，还会将一些统计信息发送到我们公司的统计平台，代码如下：</p>
+<pre><code>ch = make([]byte, 100000)
+func send(msg []byte) {
+    ch &lt;- msg
+}
+
+//在另一个goroutine的地方，
+msg &lt;- msg
+httpsend(msg)
+</code></pre><p>我们channel的缓存分配了10w，如果公司统计平台出现了问题，可能会导致channel阻塞。但到底是不是这个原因呢？</p>
+<p>幸运的是，我们先前已经在代码里面内置了pprof的功能，通过pprof goroutine的信息，发现大量的goroutine的当前运行函数在httpsend里面，也就是说，公司的统计平台在大并发下面服务不可用，虽然我们有http超时的处理，但是因为发送的数据量太频繁，导致整体阻塞。</p>
+<p>临时的解决办法就是关闭了统计信息的发送，后续我们会考虑将其发送到自己的mq上面，虽然也可能会出现mq服务不可用的问题，但是说句实话，比起自己实现的mq，公司的统计平台更让我不可信。</p>
+<p>这同时也给了我一个教训，访问外部服务一定要好好处理外部服务不可用的问题，即使可用，也要考虑压力问题。</p>
+<p>对于pprof如何查看了goroutine的问题，可以通过一个简单的例子说明:</p>
+<pre><code>package main
+
+import (
+    &quot;net/http&quot;
+    &quot;runtime/pprof&quot;
+)
+
+var quit chan struct{} = make(chan struct{})
+
+func f() {
+    &lt;-quit
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set(&quot;Content-Type&quot;, &quot;text/plain&quot;)
+
+    p := pprof.Lookup(&quot;goroutine&quot;)
+    p.WriteTo(w, 1)
+}
+
+func main() {
+    for i := 0; i &lt; 10000; i++ {
+        go f()
+    }
+
+    http.HandleFunc(&quot;/&quot;, handler)
+    http.ListenAndServe(&quot;:11181&quot;, nil)
+}
+</code></pre><p>这上面的例子中，我们启动了10000个goroutine，并阻塞，然后通过访问<a href="http://localhost：11181/，我们就可以得到整个goroutine的信息，仅列出关键信息：" target="_blank" rel="external">http://localhost：11181/，我们就可以得到整个goroutine的信息，仅列出关键信息：</a></p>
+<pre><code>goroutine profile: total 10004
+
+10000 @ 0x186f6 0x616b 0x6298 0x2033 0x188c0
+#    0x2033    main.f+0x33    /Users/siddontang/test/pprof.go:11
+</code></pre><p>可以看到，在main.f这个函数中，有10000个goroutine正在执行，符合我们的预期。</p>
+<p>在go里面，还有很多运行时查看机制，可以很方便的帮我们定位程序问题，不得不赞一下。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-16T01:57:46.000Z"><a href="/2014/04/16/golang-timer/">04-16-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/16/golang-timer/">Go Timer实现</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在go自带的timer实现中，采用的是通常的最小堆的方式，具体可以参见<a href="http://golang.org/src/pkg/runtime/time.goc" target="_blank" rel="external">这里</a>。</p>
+<p>最小堆能够提供很好的定时精度，但是，在实际情况中，我们并不需要这样高精度的定时器，譬如对于一个连接，如果它在2分钟以内没有数据交互，我们就将其删除，2分钟并不需要那么精确，多几秒少几秒都无所谓的。</p>
+<p>以前我们单独实现了一个<a href="https://github.com/siddontang/golib/tree/master/timingwheel" target="_blank" rel="external">timingwheel</a>，采用的是channel close的方式来处理低精度，超大量timer定时的问题，详见<a href="http://blog.csdn.net/siddontang/article/details/18370541" target="_blank" rel="external">这里</a>。</p>
+<p>但是timingwheel只有After接口，远远不能满足实际的需求，于是我按照linux timer的实现方式，依葫芦画瓢，弄了一个go版本的实现。linux timer的实现，参考<a href="http://blog.csdn.net/tianmohust/article/details/8707162" target="_blank" rel="external">这篇</a>。</p>
+<p>后续用go timer来表示我自己实现的timer。</p>
+<p>在linux中，我们使用tick来表示一次中断的时间，用jiffies来表示系统自启动以来流逝的tick次数。在go timer中，我们在创建一个wheel的时候，需要指定一次tick的时间，如下：</p>
+<pre><code>func NewWheel(tick time.Duration) *Wheel
+</code></pre><p>Wheel是go timer统一对timer进行管理的地方。对于每一次tick，我们采用go自带的ticker进行模拟。</p>
+<p>为了便于外部使用，我仍然提供的是跟go自己timer一样的接口，譬如：</p>
+<pre><code>func NewTimer(d time.Duration) *Timer
+</code></pre><p>在NewTimer中，参数d是一个time duration，我们还需要根据tick来进行换算，得到go timer中实际的expires，也就是在多少次jiffies后该timer触发。</p>
+<p>譬如，NewTimer参数为10s，tick为1s，那么经过10个jiffies之后，该timer就会超时触发。如果tick为500ms，那么需要经过20个jiffies之后，该timer才会被触发。</p>
+<p>所以timer超时jiffies的计算如下：</p>
+<pre><code>expires = wheel.jiffies + d / wheel.tick
+</code></pre><p>详细的代码在<a href="https://github.com/siddontang/golib/tree/master/timer" target="_blank" rel="external">https://github.com/siddontang/golib/tree/master/timer</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-13T03:53:14.000Z"><a href="/2014/04/13/golang-json-config/">04-13-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/13/golang-json-config/">在Go中使用JSON作为主要配置</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>最近在用go重构，在先前的代码中，我们使用的ini文件进行配置，但是因为很多历史遗留问题，导致配置混乱，维护困难，自然也需要考虑重构了。</p>
+<h1 id="通用配置格式">通用配置格式</h1>
+<p>通用的配置格式有很多，常用的就有ini，json，yaml，xml等，当然为了通用我们不考虑自定义的配置格式。那如何选择呢？</p>
+<p>首先，xml我们就不用考虑了，到现在为止我都没觉得用这玩意配置起来有多方便，反而很臃肿，可能java系的童鞋会比较青睐。</p>
+<p>再来考虑ini，ini文件对于简单应用的配置可以说是非常方便的，如果配置没有太多的层次结构，使用ini就能完全满足我们的需要，即使有，我们也能够通过加入特定前缀来解决。譬如，我们可能有如下redis配置：</p>
+<pre><code>[ModuleA]
+
+persistent_redis_addr = 127.0.0.1:6379
+persistent_redis_password = admin
+
+cache_redis_addr = 127.0.0.1:6380
+cache_redis_password = admin
+</code></pre><p>然后，需求变化了，我们需要另一个持久化redis服务来做相关事情，于是配置就可能变成了下面这样：</p>
+<pre><code>[ModuleA]
+
+persistent_redis_addr = 127.0.0.1:6379
+persistent_redis_password = admin
+
+persistent2_redis_addr = 127.0.0.1:6379
+persistent2_redis_password = admin
+
+cache_redis_addr = 127.0.0.1:6380
+cache_redis_password = admin
+</code></pre><p>虽然通过前缀命名能解决层级问题，但总觉得是对程序员不怎么友好的。</p>
+<h1 id="why_json">why json</h1>
+<p>剩下的就是json和yaml，可以这么说，这两个都算是比较好的轻量级配置格式，而且对程序员非常友好，而且go里面都可以通过定义struct，将层级结构的配置映射到相应的struct里面。</p>
+<p>但是我还是决定选择json作为我们go代码的默认配置格式，最主要的原因在于go的json包有一个杀手级别的RawMessage实现。而这个在我能找到的yaml包中没有。</p>
+<p>RawMessage主要是用来告诉go延迟解析用的。当我们定义了某一个字段为RawMessage之后，go就不会解析这段json，这样我们就可以将其推后到各自的子模块单独解析。</p>
+<p>假设有一个功能，后台存储可能是redis或者mysql，但是只会使用一个，可能我们会按照如下方式写配置：</p>
+<pre><code>redis_store : {
+    addr : 127.0.0.1
+    db : 0
+},
+
+mysql_store : {
+    addr : 127.0.0.1
+    db : test
+    password : admin
+    user : root
+}
+
+store : redis
+</code></pre><p>对应的class为</p>
+<pre><code>type Config struct {
+    RedisStore struct {
+        Addr string
+        DB int
+    }
+
+    MysqlStore Struct {
+        Addr string
+        DB string
+        Password string
+        User string
+    }
+
+    Store string
+}
+</code></pre><p>如果这时候我们在增加了一种新的store，我们需要在Config文件里面在增加一个新的field，但是实际我们只会使用一种store，并不需要写这么多的配置。</p>
+<p>我们可以使用RawMessage来处理：</p>
+<pre><code>type Config struct {
+    Store string
+    StoreConfig json.RawMessage
+}
+</code></pre><p>如果使用redis，对应的配置文件为</p>
+<pre><code>store: redis
+store_config: {
+    addr : 127.0.0.1
+    db : 0
+}
+</code></pre><p>如果使用mysql，对应的配置文件为</p>
+<pre><code>store: mysql
+store_config: {
+    addr : 127.0.0.1
+    db : test
+    password : admin
+    user : root
+}
+</code></pre><p>go读取配置文件之后，并不会处理RawMessage对应的东西，而是由我们代码自己对应的store模块去处理。这样无论配置文件怎么变动，store模块做了什么变动，都不会影响Config类。</p>
+<p>而在各个模块中，我们只需要自己定义相关config，然后可以将RawMessage直接解析映射到该config上面，譬如，对于redis，我们在模块中有如下定义</p>
+<pre><code>type RedisConfig config {
+    Addr string `json:&quot;addr&quot;`
+    DB int `json:&quot;db&quot;`
+}
+
+func NewConfig(m json.RawMessage) *RedisConfig {
+    c := new(RedisConfig)
+
+    json.Unmarshal(m, c)
+
+    return c
+}
+</code></pre><h1 id="json的不足">json的不足</h1>
+<p>使用json也还有很多蛋疼的地方，最大的问题就在于注释，在json中，可不能这样写：</p>
+<pre><code>{
+    //this is a comment
+    /*this is a comment*/ 
+}
+</code></pre><p>但是，我们又不可能不写一点注释来说明配置项是干啥的，所以，通常采用的是引入一个comment字段的方式，譬如：</p>
+<pre><code>{
+    &quot;_comment&quot; : &quot;this is a comment&quot;,
+    &quot;key&quot; : &quot;value&quot;
+}
+</code></pre><p>另外，json还需要注意的就是写的时候最后一项不能加上逗号，这样的json会因为格式错误无法解析的。</p>
+<pre><code>{
+    &quot;key&quot; : &quot;value&quot;,
+}
+</code></pre><p>最后那个逗号可是不能要的，但是实际写配置的时候我们可是经常性的随手加上了。</p>
+<p>但是，总的来说，json对于go的项目还是很友好的，我不光在项目中推行了，在自己的开源项目中，也大量的采用了json作为主要的配置文件。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-12T09:10:16.000Z"><a href="/2014/04/12/golang-no-copy/">04-12-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/12/golang-no-copy/">Go中Slice与String的无内存copy</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在go里面，string和slice的互换是需要进行内存拷贝的，虽然在底层，它们都只是用 pointer + len来表示的一段内存。</p>
+<p>通常，我们不会在意string和slice的转换带来的内存拷贝性能问题，但是总有些地方需要关注的，刚好在看vitess代码的时候，发现了一种很hack的做法，string和slice的转换只需要拷贝底层的指针，而不是内存拷贝。当然这样做的风险各位就要好好担当了：</p>
+<pre><code>func String(b []byte) (s string) {
+    pbytes := (*reflect.SliceHeader)(unsafe.Pointer(&amp;b))
+    pstring := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))
+    pstring.Data = pbytes.Data
+    pstring.Len = pbytes.Len
+    return
+}
+
+func Slice(s string) (b []byte) {
+    pbytes := (*reflect.SliceHeader)(unsafe.Pointer(&amp;b))
+    pstring := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))
+    pbytes.Data = pstring.Data
+    pbytes.Len = pstring.Len
+    pbytes.Cap = pstring.Len
+    return
+}
+</code></pre><p>在我的测试例子中，slice转string之后，如果slice的值有变化，string也会跟着改变，如下：</p>
+<pre><code>b := []byte(&quot;hello world&quot;)
+
+a := String(b)
+
+b[0] = &#39;a&#39;
+
+println(a)  //output  aello world
+</code></pre><p>但是string转slice之后，就不能更改slice了，如下：</p>
+<pre><code>a := &quot;hello world&quot;
+
+b := Slice(a)
+
+b[0] = &#39;a&#39;  //这里就等着崩溃吧
+
+//但是可以这样，因为go又重新给b分配了内存
+b = append(b, &quot;hello world&quot;…)
+</code></pre><p>上面为什么会崩溃我猜想可能是string是immutable的，可能对应的内存地址也是不允许改动的。</p>
+<p>另外，上面这个崩溃在defer里面是recover不回来的，真的就崩溃了，原因可能就跟c的非法内存访问一样，os不跟你玩了。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-07T13:34:36.000Z"><a href="/2014/04/07/golang-log/">04-07-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/07/golang-log/">Go Log模块开发</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在go里面，虽然有log模块，但是该模块提供的功能并不强，譬如就没有我们常用的level log功能，但是自己实现一个log模块也并不困难。</p>
+<p>对于log的level，我们定义如下:</p>
+<pre><code>const (
+    LevelTrace = iota
+    LevelDebug
+    LevelInfo
+    LevelWarn
+    LevelError
+    LevelFatal
+)    
+</code></pre><p>相应的，提供如下几个函数:</p>
+<pre><code>func Trace(format string, v ...interface{}) 
+func Debug(format string, v ...interface{}) 
+func Info(format string, v ...interface{}) 
+func Warn(format string, v ...interface{}) 
+func Error(format string, v ...interface{}) 
+func Fatal(format string, v ...interface{}) 
+</code></pre><p>另外，对于一个log，我们可能将其写入不同的地方，譬如可能直接输出到stdout，或者写文件，或者写socket，在创建特定logger的时候，我们需要指定对应的handler，用来实现不同的写入方式。</p>
+<p>handler的定义如下：</p>
+<pre><code>type Handler interface {
+    Write(p []byte) (n int, err error)
+    Close() error
+}
+</code></pre><p>我们可以参考python的log模块，实现几个通用的handler，譬如StreamHandler，FileHandler，TimeRotatingFileHandler。</p>
+<p>log模块的实现<a href="https://github.com/siddontang/golib/tree/master/log" target="_blank" rel="external">https://github.com/siddontang/golib/tree/master/log</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-03T10:30:17.000Z"><a href="/2014/04/03/moonmq-introduction/">04-03-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/03/moonmq-introduction/">MoonMQ 高性能消息队列介绍</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>moonmq是一个用go实现的高性能消息队列系统，后续准备用于我们消息推送服务以及各个后台的异步任务。</p>
+<p>在设计上面，moonmq主要借鉴了rabbitmq以及rocketmq相关的思想，但是做了很多减法，毕竟我不是要设计成一个非常通用的mq。</p>
+<h1 id="名词解释">名词解释</h1>
+<ul>
+<li>publisher，消息生产者</li>
+<li>consumer，消息消费者</li>
+<li>broker，消息中转站</li>
+<li>queue，消息存储队列</li>
+</ul>
+<p>publisher给一个命名的queue发送消息msg，broker负责将msg存放在queue里面。</p>
+<p>consumer可以关注自己感兴趣的queue，这样当queue里面有消息的时候，broker就会将该消息推送给该consumer。</p>
+<h1 id="推拉模型">推拉模型</h1>
+<p>在rocketmq里面，支持的是pull msg，而rabbitmq则是支持push和pull msg。moonmq只支持push msg。主要有如下考量：</p>
+<ul>
+<li>当consumer在线的时候，push是最及时的，因为这时候铁定能把msg push成功。</li>
+<li>当consumer离线，broker会保存离线消息，当consumer上线之后，broker仍然按照push的方式将离线消息进行推送。</li>
+</ul>
+<p>另外，因为moonmq后续会支持我们的消息推送系统，如果采用pull模型，几十万的consumer定期的pull，我有点担心moonmq会吃不消。</p>
+<h1 id="消息类型">消息类型</h1>
+<p>moonmq将msg分为direct和fanout，fanout就是广播消息，moonmq会将任何订阅了该queue的consumer进行msg push。</p>
+<p>如果msg的type为direct，moonmq将会采用轮询的方式，选择一个consumer进行msg push。</p>
+<h1 id="消息优先级">消息优先级</h1>
+<p>moonmq不支持消息优先级，处理起来会很麻烦，而且通常我们并不需要特别精细的优先级控制。</p>
+<p>可以通过一个简单的方式实现粗粒度的优先级控制：</p>
+<ul>
+<li>设置queue1，queue2，queue3三个队列，queue1用来处理保存优先级最高的消息，queue2次之，queue3最低</li>
+<li>publisher发送消息的时候根据优先级发送到指定的queue上面去</li>
+<li>我们可以有多个consumer处理queue1的消息，譬如3个，然后用2个处理queue2的，1个处理queue1的，这样实现优先级控制。</li>
+</ul>
+<h1 id="消息过滤">消息过滤</h1>
+<p>moonmq通过routing key来进行消息过滤。</p>
+<p>publisher在给特定queue发送msg的时候，还可以指定对应的routing key，只有关注了该queue同时也指定了相同的routing key的consumer才会收到该msg。</p>
+<h1 id="Ack">Ack</h1>
+<p>moonmq支持ack机制，当push一个msg到consumer的时候，consumer必须回应一个ack，moonmq才认为msg push成功。如果长时间没有ack，则moonmq会重新选择一个consumer再次发送。</p>
+<p>ack能够很大程度的保证消息推送的成功率，但是对于消息的快速推送会有影响，所以moonmq也支持no ack模式，这种模式下moonmq只要发送成功了msg，就认为push成功，无需等待ack的回执。</p>
+<h1 id="延迟消息">延迟消息</h1>
+<p>这个现在还没支持，后续是情况而定</p>
+<h1 id="定时消息">定时消息</h1>
+<p>难度比较大，不会实现</p>
+<h1 id="协议">协议</h1>
+<p>moonmq采用的是类似rocketmq的协议，如下：</p>
+<pre><code>|total length(4 bytes)|header length(4 bytes)|header json|body|
+
+total length = 4 + len(header json) + len(body)
+header length = len(header json)
+</code></pre><p>在moonmq里面，我们使用Proto来定义协议</p>
+<pre><code>type Proto struct {
+    Method uint32 `json:&quot;method&quot;`
+
+    Fields map[string]string `json:&quot;fields&quot;`
+
+    Body []byte `json:&quot;-&quot;`
+}
+</code></pre><p>moonmq的任何协议，都需要带上method，我们通过method进行实际的消息处理。</p>
+<p>moonmq的method参考rabbitmq，有如下几种类型的method：</p>
+<ul>
+<li>同步request method，客户端在发送request method之后必须等待对应的response method，在等待的过程中也能够处理push，error等异步method。</li>
+<li>同步response method，对应特定的request method。</li>
+<li>异步method，发送之后无需等待。</li>
+</ul>
+<p>现阶段，moonmq支持如下同步method：</p>
+<ul>
+<li>auth, auth_ok</li>
+<li>publish, publish_o</li>
+<li>bind, bind_ok</li>
+<li>unbind, unbind_ok</li>
+</ul>
+<p>同时支持如下异步method:</p>
+<ul>
+<li>push</li>
+<li>error</li>
+<li>heartbeat</li>
+<li>ack</li>
+</ul>
+<h1 id="后续">后续</h1>
+<p>这只是moonmq的一个简单介绍，后续我们会不断完善moonmq，争取也能成为一个不错的mq产品。</p>
+<p>moonmq的代码在这里<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">https://github.com/siddontang/moonmq</a>，期待大家的反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-30T13:50:44.000Z"><a href="/2014/03/30/golang-linked-channel/">03-30-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/30/golang-linked-channel/">在go中使用linked channels进行数据广播</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>原文在<a href="http://rogpeppe.wordpress.com/2009/12/01/concurrent-idioms-1-broadcasting-values-in-go-with-linked-channels/" target="_blank" rel="external">这里</a>（需翻墙），为啥想要翻译这篇文章是因为在实际中也碰到过如此的问题，而该文章的解决方式很巧妙，希望对大家有用。</p>
+<p>在go中channels是一个很强大的东西，但是在处理某些事情上面还是有局限的。其中之一就是一对多的通信。channels在多个writer，一个reader的模型下面工作的很好，但是却不能很容易的处理多个reader等待获取一个writer发送的数据的情况。</p>
+<p>处理这样的情况，可能的一个go api原型如下：</p>
+<pre><code>type Broadcaster …
+
+func NewBroadcaster() Broadcaster
+func (b Broadcaster) Write(v interface{})
+func (b Broadcaster) Listen() chan interface{}
+</code></pre><p>broadcast channel通过NewBroadcaster创建，通过Write函数进行数据广播。为了监听这个channel的信息，我们使用Listen，该函数返回一个新的channel去接受Write发送的数据。</p>
+<p>这套解决方案需要一个中间process用来处理所有reader的注册。当调用Listen创建新的channel之后，该channel就被注册，通常该中间process的主循环如下：</p>
+<pre><code>for {
+    select {
+        case v := &lt;-inc:
+            for _, c := range(listeners) {
+                c &lt;- v
+            }
+        case c := &lt;- registeryc:
+            listeners.push(c)
+    }
+}
+</code></pre><p>这是一个通常的做法，（译者也经常这么干）。但是该process在处理数据广播的时候会阻塞，直到所有的readers读取到值。一个可选的解决方式就是reader的channel是有buffer缓冲的，缓冲大小我们可以按需调节。或者当buffer满的时候我们将数据丢弃。</p>
+<p>但是这篇blog并不是介绍上面这套做法的。这篇blog主要提出了另一种实现方式用来实现writer永远不阻塞，一个慢的reader并不会因为writer发送数据太快而要考虑分配太大的buffer。</p>
+<p>虽然这么做不会有太高的性能，但是我并不在意，因为我觉得它很酷。我相信我会找到一个很好的使用地方的。</p>
+<p>首先是核心的东西：</p>
+<pre><code>type broadcast struct {
+    c chan broadcast
+    v interface{}
+}
+</code></pre><p>这就是我说的linked channel，但是其实是<a href="http://wadler.blogspot.com/2009/11/list-is-odd-creature.html" target="_blank" rel="external">Ouroboros data structure</a>。也就是，这个struct实例在发送到channel的时候包含了自己。</p>
+<p>从另一方面来说，如果我有一个chan broadcast类型的数据，那么我就能从中读取一个broadcast b，b.v就是writer发送的任意数据，而b.c，这个原先的chan broadcast，则能够让我重复这个过程。</p>
+<p>另一个可能让人困惑的地方在于一个带有缓冲区的channel能够被用来当做一个1对多广播的对象。如果我定义如下的buffered channel：</p>
+<pre><code>var c = make(chan T, 1)
+</code></pre><p>任何试图读取c的process都将阻塞直到有数据写入。</p>
+<p>当我们想广播一个数据的时候，我们只是简单的将其写入这个channel，这个值只会被一个reader给获取，但是我们约定，只要读取到了数据，我们立刻将其再次放入该channel，如下：</p>
+<pre><code>func wait(c chan T) T {
+    v := &lt;-c
+    c &lt;-v
+    return v
+}
+</code></pre><p>结合上面两个讨论的东西，我们就能够发现如果在broadcast struct里面的channel如果能够按照上面的方式进行处理，我们就能实现一个数据广播。</p>
+<p>代码如下：</p>
+<pre><code>package broadcast
+
+type broadcast struct {
+    c   chan broadcast;
+    v   interface{};
+}
+
+type Broadcaster struct {
+    // private fields:
+    Listenc chan chan (chan broadcast);
+    Sendc   chan&lt;- interface{};
+}
+
+type Receiver struct {
+    // private fields:
+    C chan broadcast;
+}
+
+// create a new broadcaster object.
+func NewBroadcaster() Broadcaster {
+    listenc := make(chan (chan (chan broadcast)));
+    sendc := make(chan interface{});
+    go func() {
+        currc := make(chan broadcast, 1);
+        for {
+            select {
+            case v := &lt;-sendc:
+                if v == nil {
+                    currc &lt;- broadcast{};
+                    return;
+                }
+                c := make(chan broadcast, 1);
+                b := broadcast{c: c, v: v};
+                currc &lt;- b;
+                currc = c;
+            case r := &lt;-listenc:
+                r &lt;- currc
+            }
+        }
+    }();
+    return Broadcaster{
+        Listenc: listenc,
+        Sendc: sendc,
+    };
+}
+
+// start listening to the broadcasts.
+func (b Broadcaster) Listen() Receiver {
+    c := make(chan chan broadcast, 0);
+    b.Listenc &lt;- c;
+    return Receiver{&lt;-c};
+}
+
+// broadcast a value to all listeners.
+func (b Broadcaster) Write(v interface{})   { b.Sendc &lt;- v }
+
+// read a value that has been broadcast,
+// waiting until one is available if necessary.
+func (r *Receiver) Read() interface{} {
+    b := &lt;-r.C;
+    v := b.v;
+    r.C &lt;- b;
+    r.C = b.c;
+    return v;
+}
+</code></pre><p>下面就是译者的东西了，这套方式实现的很巧妙，首先它解决了reader register以及unregister的问题。其次，我觉得它很好的使用了流式化处理的方式，当reader读取到了一个值，reader可以将其传递给下一个reader继续使用，同时自己在开始监听下一个新的值的到来。</p>
+<p>译者自己的一个测试用例：</p>
+<pre><code>func TestBroadcast(t *testing.T) {
+    b := NewBroadcaster()
+
+    r := b.Listen()
+
+    b.Write(&quot;hello&quot;)
+
+    if r.Read().(string) != &quot;hello&quot; {
+        t.Fatal(&quot;error string&quot;)
+    }
+
+    r1 := b.Listen()
+
+    b.Write(123)
+
+    if r.Read().(int) != 123 {
+        t.Fatal(&quot;error int&quot;)
+    }
+
+    if r1.Read().(int) != 123 {
+        t.Fatal(&quot;error int&quot;)
+    }
+
+    b.Write(nil)
+
+    if r.Read() != nil {
+        t.Fatal(&quot;error nit&quot;)
+    }
+
+    if r1.Read() != nil {
+        t.Fatal(&quot;error nit&quot;)
+    }
+}
+</code></pre><p>当然，这套方式还有点不足，主要就在于Receiver Read函数，并不能很好的与select进行整合，具体可以参考该作者另一篇blog <a href="http://rogpeppe.wordpress.com/2010/01/04/select-functions-for-go/" target="_blank" rel="external">http://rogpeppe.wordpress.com/2010/01/04/select-functions-for-go/</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-23T08:39:08.000Z"><a href="/2014/03/23/mixer-tokenizer/">03-23-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/23/mixer-tokenizer/">Mixer MySQL词法分析</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>mixer希望在proxy这层就提供自定义路由，sql黑名单，防止sql注入攻击等功能，而这些的基石就在于将用户发上来的sql语句进行解析。也就是我最头大的词法分析和语法分析。</p>
+<p>到现在为止，我只是实现了一个比较简单的词法分析器，用以将sql语句分解成多个token。而对于从token在进行语法分析，构建sql的AST，我现在还真没啥经验（编译原理太差了），急需牛人帮忙。</p>
+<p>所以，这里只是简单介绍一下mixer的词法分析。</p>
+<h1 id="tokenize">tokenize</h1>
+<p>在很多地方，我们都需要进行词法分析，通常会有几种方式：</p>
+<ul>
+<li>使用一个强大的工具，譬如lex，mysql-proxy就用的这种方式</li>
+<li>使用正则表达式</li>
+<li>state machine</li>
+</ul>
+<p>对于使用工具，我觉得有一个不怎么好的地方在于学习成本，譬如我用lex的时候就需要学习它的语法，同时通过工具生成的代码可读性都不怎么好，代码量大，更严重的是可能会比较慢。所以mysql自身也是自己实现一个词法分析模块。</p>
+<p>而对于正则表达式，性能问题可能是一个很需要考虑的，而且复杂度并不比使用类似lex这样的工具低。</p>
+<p>状态机可能是我觉得自己动手实现词法解析一个很好的方式，对于sql的词法解析，我觉得使用state machine的方式来自己写一个难度并不大，所以mixer自己实现了一个。</p>
+<h1 id="state_machine">state machine</h1>
+<p>通常，一个状态机的实现采用的是state + action + switch的做法，可能如下：</p>
+<pre><code>switch state {
+    case state1:
+        state = action1()
+    case state2:
+        state = action2()
+    case state3:
+        state = action3()
+}
+</code></pre><p>对于一个state，我们通过switch知道它将会由哪一个action进行处理，而对于每一个action，我们则知道执行完成之后下一个state是什么。</p>
+<p>对于上面的实现，如果state过多，可能会导致太多的case语句，我们可以通过state function进行简化。</p>
+<p>一个state function就是执行当前的state action，并且直接返回下一个state function。</p>
+<p>我们可以这样做：</p>
+<pre><code>type stateFn func(*Lexer) stateFn
+
+for state := startState; state != nil {
+    state = state(lexer)
+}
+</code></pre><p>所以我们需要实现的就是每一个state function以及对应的它的下一个需要执行的state function。</p>
+<h1 id="mixer_lexer">mixer lexer</h1>
+<p>mixer的词法分析实现主要参考<a href="http://cuddle.googlecode.com/hg/talk/lex.html" target="_blank" rel="external">这个</a>。主要实现在<a href="https://github.com/siddontang/mixer/tree/master/src/parser" target="_blank" rel="external">parser模块</a>。</p>
+<p>对于一个lexer，需要提供的是NextToken的功能，供外部获取下一个token，从而进行后续的操作（譬如语法分析）。</p>
+<p>lexer的next token如下：</p>
+<pre><code>func (l *Lexer) NextToken() (Token, error) {
+    for {
+        select {
+            case t := &lt;-l.tokens:
+                return t, nil
+            default:
+                if l.state == nil {
+                    return Token{TK_EOF, &quot;&quot;}, l.err
+                }
+                l.state = l.state(l)
+                if l.err != nil {
+                    return Token{TK_UNKNOWN, &quot;&quot;}, l.err
+                }
+        }
+    }
+}
+</code></pre><p>tokens是一个channel，每次state解析的token都会emit到这个channel上面，供NextToken获取，如果channel为空了，则再次调用state function。</p>
+<p>可以看到，用go实现一个词法解析是很容易的事情，剩下的就是写相应的state function用来解析sql。</p>
+<h1 id="todo">todo</h1>
+<p>mixer的词法分析还有很多不完善的地方，譬如对于科学计数法数值的解析就不完善，后续准备参考mysql官方的词法分析模块在好好完善一下。</p>
+<p>mixer的代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>，希望感兴趣的童鞋共同完善。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-19T01:33:52.000Z"><a href="/2014/03/19/polaris-session-middleware/">03-19-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/19/polaris-session-middleware/">Polaris中间件实现</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="起因">起因</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>虽然是模仿tornado开发，但我觉得作为一个go的web框架，还需要提供一些额外的扩展支持。</p>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>现在已经支持session以及middleware，主要参加django。</p>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>对于这些额外功能的支持，采取的是注册 + json配置驱动的方式。这个跟go的database/sql有点类似，任何模块都提供一套类似如下的接口:</p>
+<pre><code>type Obj interface {
+
+}
+
+type Driver interface{
+    Open(jsonConfig json.RawMessage) (Obj, error)
+}
+
+func Register(name string, driver Driver) error
+func Open(name string, jsonConfig json.RawMessage) (Obj, error)
+</code></pre><p>如果我们需要自定义功能，只需要实现自己的driver以及对应的obj，然后Register进去，后续就可以通过Open直接使用了。</p>
+<p>对于每个模块的配置，因为<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的整体配置是json，所以我也强制要求参数是json格式的，也就是json.RawMessage，各个模块自行进行Unmarshal处理。</p>
+<h1 id="session">session</h1>
+<p>对于一个session对象，无非就是Set，Get，Delete等，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>需要关心的是这个session对应的store。store可以理解为该session的持久化保存位置，可以是db，redis，cookie或者memory。</p>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>提供的store接口如下：</p>
+<pre><code>type Store interface {
+    //get a session by id
+    //if no session exist, regenerate another id to new a session
+    Get(id string) (*Session, error)
+
+    //delete session from store
+    Delete(*Session) error
+
+    //Save session to stroe
+    Save(*Session) error
+}
+
+type Driver interface {
+    Open(jsonConfig json.RawMessage) (Store, error)
+}
+</code></pre><p>现阶段，只提供了redis的支持，这里特别说明一下，我是在现在才知道redis有一个setex命令，想想以前经常用set + expire来设置一个key以及超时，想想都汗颜。</p>
+<p>对于session的持久化，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>提供了codec的接口，外部可以注册自己的序列化方式，同时在相应的store里面实现。对于一个codec，接口如下：</p>
+<pre><code>//codec for session encode and decode
+type Codec interface {
+    Encode(values map[interface{}]interface{}) ([]byte, error)
+    Decode(buf []byte) (map[interface{}]interface{}, error)
+}
+
+func RegisterCodec(name string, codec Codec) error
+func GetCodec(name string) (Codec, error)
+</code></pre><p>现阶段，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>提供了gob方式的codec。外部通过GetCodec(“gob”)就可以获取到。</p>
+<h1 id="middleware">middleware</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的middleware主要提供如下接口：</p>
+<pre><code>type Middleware interface {
+    ProcessRequest(env *context.Env) error
+    ProcessResponse(env *context.Env) error
+}
+</code></pre><p>context.Env是该次请求的上下文环境，对于每次http请求，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>会首先调用middleware的ProcessRequest，在处理实际对应的restful接口，然后再调用ProcessResponse。</p>
+<p>如果Process的时候，返回error，或者env已经finished，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>会终止后续的process操作。这套处理流程是否合适后续在好好考量。</p>
+<p>现阶段，<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>提供了session middleware的支持。</p>
+<h1 id="Todo">Todo</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>采用注册 + json配置的方式，我觉得可以很好的处理后续模块功能的添加问题，后续可以参考django等框架继续完善。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-16T11:25:40.000Z"><a href="/2014/03/16/go-mysql-database-interface/">03-16-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/16/go-mysql-database-interface/">Go MySQL支持database/sql接口</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>已经支持golang database/sql接口，并通过<a href="https://github.com/bradfitz/go-sql-test" target="_blank" rel="external">https://github.com/bradfitz/go-sql-test</a>测试用例。</p>
+<p>现在<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>可以直接通过golang sql接口使用，如下：</p>
+<pre><code>import _ &quot;github.com/siddontang/go-mysql/mysql&quot;
+import &quot;database/sql&quot;
+</code></pre><p>后续的使用，可以直接参考相关golang sql的教程，譬如<a href="http://go-database-sql.org/index.html" target="_blank" rel="external">这个</a>。</p>
+<p>golang sql接口的兼容主要在driver.go的文件中，</p>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>支持的dsn格式为：</p>
+<pre><code>&lt;username&gt;:&lt;password&gt;@&lt;host&gt;:&lt;port&gt;/&lt;database&gt;
+</code></pre><p>因为在实现<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>的过程中，我就有意识的将一些接口设计成能跟database/sql进行适配。除了Rows接口的适配，因为我总觉得使用起来不方便，但是通过Resultset进行适配Rows也很方便。因为Resultset存储了Query之后所有的数据，所以我们可以通过一个int型iterator，就可以模拟Rows接口：</p>
+<pre><code>func (r *mysqlRows) Close() error {
+    r.iter = -1
+    return nil
+}
+
+func (r *mysqlRows) Next(dest []driver.Value) error {
+    if r.iter &gt;= r.r.RowNumber() {
+        return io.EOF
+    }
+
+    data := r.r.Data[r.iter]
+
+    for i := range data {
+        //set data[i] to dest[i]
+    }
+
+    r.iter++
+    return nil
+}
+</code></pre>
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+
+  <nav id="pagination">
+  
+    <a href="/tags/go/" class="alignleft prev">上一页</a>
+  
+  
+    <a href="/tags/go/page/3/" class="alignright next">下一页</a>
+  
+  <div class="clearfix"></div>
+</nav>
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

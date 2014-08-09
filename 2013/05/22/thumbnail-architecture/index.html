@@ -1,0 +1,301 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>缩略图架构实现 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="缩略图架构实现"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-05-22T00:03:41.000Z"><a href="/2013/05/22/thumbnail-architecture/">05-22-2013</a></time>
+      
+      
+  
+    <h1 class="title">缩略图架构实现</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>笔者最近将缩略图功能引入了私有云系统中，这里简单记录一下。</p>
+<h2 id="架构">架构</h2>
+<p>整体架构如下：</p>
+<p><img src="https://raw.github.com/siddontang/blog/master/asserts/thumbnail-architecture.png" alt="image"></p>
+<p>可以看到，笔者采用了通用的分层架构设计模式。</p>
+<ul>
+<li>file storage存放着原始的图片数据。</li>
+<li>image server用于图片的处理，同时进行图片的cache。</li>
+<li>nginx作为统一的入口，同时也作为cache。</li>
+</ul>
+<p>当用户请求一张图片的缩略图的时候，如果该图片不存在于nginx的缓存中，则nginx根据图片的fileid 通过consistent hash路由到对应的image server上面去处理，如果image server仍然没有该图片，则会从file storage下载。</p>
+<p>分层架构有一个很好的地方在于系统的可扩展性，同时我们也可以在加入一些中间层，提高cache的命中率，譬如我们就可以在image server与nginx之间引入一个cache层。不过鉴于我们的系统主要用于企业内部，不会出现图片数据量过大的情况，所以上面这套分层设计已经足够了。</p>
+<h3 id="nginx_try_files">nginx try_files</h3>
+<p>如果本地cache不存在，则去后台服务器取数据。对于这套逻辑，nginx可以通过try_files很好的处理，譬如:</p>
+<pre><code>location /abc.png {
+    root /data/image/;
+    try_files $uri @fetch;
+}
+
+location @fetch {
+    proxy_pass http://up_imageserver$request_uri;
+}
+</code></pre><p>首先try_files会尝试在本地获取对应的文件，如果没有找到，则会内部跳转到fetch这个location去远程获取数据。</p>
+<h2 id="何时处理缩略图">何时处理缩略图</h2>
+<p>既然是缩略图，那么何时生成缩略图就是需要考虑的问题了。通常来说，缩略图的生成会有两种方式：</p>
+<ul>
+<li><p>上传生成</p>
+<p>  当用户上传一张图片之后，系统自动为该图片生成对应的固定格式缩略图，然后将原图与缩略图一起存放到file storage里面去。这方面主要有facebook的<a href="http://static.usenix.org/event/osdi10/tech/full_papers/Beaver.pdf" target="_blank" rel="external">Haystack</a>系统。</p>
+</li>
+<li><p>实时生成</p>
+<p>  当用户上传一张图片之后，只保留该图片的原始数据，当请求该图的缩略图时，如果cache中不存在，由image server动态生成。这方面可以参考淘宝的图片存储介绍。</p>
+</li>
+</ul>
+<p>对于笔者来说，实际使用的是第二种方法，主要有以下几个原因的考量：</p>
+<ul>
+<li>对于实时生成的缩略图我们可以灵活的指定其大小，而不像上传生成那样只有预先定义的width和height。</li>
+<li>存储成本，额外存储缩略图会占用很大的存储空间，而且存放到file storage里面还会有冗余备份的问题，更加浪费。</li>
+<li>协同图片的冷热性问题，最近最热的图片铁定是最频繁访问的，尤其是在多人协同情况下面，而这些图片缩略图是有缓存的，不需要每次都通过原图生成，性能有保证。</li>
+</ul>
+<h2 id="如何处理缩略图">如何处理缩略图</h2>
+<p>既然选择实时生成缩略图，那么如何快速生成缩略图就是笔者需要考虑的问题了。这里笔者使用<a href="http://www.graphicsmagick.org/" target="_blank" rel="external">graphicsmagick</a>来生成缩略图，网上有太多介绍，这里不再累述。</p>
+<h2 id="安全">安全</h2>
+<p>生成缩略图之后，如何保证该图片的安全访问也是一个需要关注的问题。笔者考虑了如下解决方案：</p>
+<ul>
+<li><p>签名，任何缩略图的url都是经过签名，因为签名是通过登陆用户自身的access id和security key进行的，并且有时效性，所以外界很难伪造。或者，可以使用简单的<a href="http://wiki.nginx.org/HttpAccessKeyModule" target="_blank" rel="external">HttpAccessKeyModule</a>来进行访问控制。</p>
+</li>
+<li><p>nginx <a href="http://wiki.nginx.org/HttpRefererModule" target="_blank" rel="external">HttpRefererModule</a>，只允许特定domain的请求访问。</p>
+</li>
+</ul>
+<h2 id="存储">存储</h2>
+<p>对于如何存储大量的图片小文件，笔者觉得可以如下考虑：</p>
+<ul>
+<li>对于文件最终存放的file storage，业界有很多好的分布式解决方案，譬如<a href="http://code.taobao.org/p/tfs/src/" target="_blank" rel="external">TFS</a>，<a href="https://github.com/mogilefs" target="_blank" rel="external">mogilefs</a>等，如果想自己造一个轮子，也很不错。</li>
+<li><p>对于图片的cache，因为cache的存储文件量级我们是可以控制的，所以这里可以考虑直接使用通常的文件系统存储。</p>
+<p>  但需要注意的是，单个目录下面文件数量不能过多，目录的层次也不能过深，不然会导致很严重的性能瓶颈。为了解决上述问题，笔者建立了三层目录结构，首层100个文件夹，以1 - 100命名，每个文件夹下面1000个文件夹，以1 - 1000命名，对于任意的图片文件，根据其实际的文件名通过两次hash到特定的目录下。</p>
+</li>
+</ul>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/program/">program</a>
+  </div>
+
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

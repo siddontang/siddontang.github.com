@@ -1,0 +1,313 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>简易的C++协程库 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="简易的C++协程库"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-05T06:26:04.000Z"><a href="/2014/03/05/libcoro/">03-05-2014</a></time>
+      
+      
+  
+    <h1 class="title">简易的C++协程库</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="起因">起因</h1>
+<p>在第一个版本的<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>开发完成之后，我一直在思考如何让异步方式的网络编程更加简单。</p>
+<p>虽然<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>通过c++ shared_ptr以及function等技术很大程度上面解决了异步代码编写的一些问题，但是仍然会出现代码逻辑被强制拆分的情况。而这个则是项目中童鞋无法很好的使用其进行开发的原因。</p>
+<p>所以我考虑让<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine。</p>
+<h1 id="Coroutine">Coroutine</h1>
+<p>第一次接触coroutine的概念是在lua里面，记得当时想了很久才算弄明白了coroutine的使用以及原理。在lua中，coroutine的使用如下：</p>
+<pre><code>co = coroutine.create(function ()
+        print(&quot;begin yield&quot;)
+        coroutine.yield()
+        print(&quot;after yield&quot;)
+    end)
+
+coroutine.resume(co)
+print(&quot;after resume&quot;)
+
+coroutine.resume(co)
+</code></pre><p>我们可以通过resume执行一个新创建或者已经被挂起的coroutine，通过yield挂起当前的coroutine，这样就可以实现类似多线程方式下面的多任务调度。</p>
+<p>至于coroutine的原理，很多地方都有说明，主要就在于每个coroutine都有自己的堆栈，这样当coroutine挂起的时候，它的当前执行状态会被完整保留，下次resume的时候就可以接着执行了。</p>
+<p>而使用coroutine的好处，我觉得最大的一点在于它将拆分的异步逻辑同步化了，更利于代码编写。</p>
+<p>在使用python tornado的时候，我们开始阶段写了太多的callback回调，以至于代码的维护非常困难，而这个则在引入<a href="https://github.com/python-greenlet/greenlet" target="_blank" rel="external">greenlet</a>后有了明显好转。</p>
+<p>而后续在使用go语言中，因为它原生的支持coroutine（其实在go里面更准确的说法应该是goroutine），写代码非常的方便，所以现在go已经成为了我服务器的首选开发语言，我也用它开发了多个项目（如<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，一个mysql proxy），并且已经在公司项目中实施。</p>
+<p>当然，使用coroutine并不是毫无缺点的：</p>
+<ul>
+<li>每个coroutine都需要维护自己的堆栈，当我们需要创建数以百万计的coroutine的时候，内存的开销就需要考虑了。</li>
+<li>coroutine的切换，都需要保留当前的上下文环境，以便于下次resume的时候接着执行，如果coroutine切换频繁，开销也不小。</li>
+</ul>
+<h1 id="libcoro">libcoro</h1>
+<p>很早之前使用luajit的时候，我就知道可以在c++中实现coroutine的功能，在linux中，这通过makecontext，swapcontext等相关函数实现。虽然也可以通过setjmp/longjmp这两个古老的函数实现，但看了luajit的coco就知道，即使在linux下面，它也需要写很多define宏去适配。</p>
+<p>所以，我只考虑使用makecontext这套函数族来实现coroutine。虽然swapcontext会有性能问题，详见<a href="http://rethinkdb.com/blog/making-coroutines-fast/" target="_blank" rel="external">这里</a>，但早期我还不打算对其进行性能优化。</p>
+<p><a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>是一个简单的c++ coroutine库，只支持linux（因为我们的服务器只有linux的）。</p>
+<p>在接口上面，<a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>参考的是lua的coroutine的接口设计，使用非常简单:</p>
+<pre><code>void func1()
+{
+    coroutine.yield();
+}
+
+void func2(Coro_t co1)
+{
+    coroutine.resume(co1);    
+    coroutine.yield();
+}
+
+void func()
+{
+    Coro_t co1 = coroutine.create(std::bind(&amp;func1));    
+    coroutine.resume(co1);    
+    Coro_t co2 = coroutine.create(std::bind(&amp;func2, co1));
+    coroutine.resume(co2);
+    coroutine.resume(co2);
+}
+
+int main()
+{    
+    Coro_t co = coroutine.create(std::bind(&amp;func));
+    coroutine.resume(co);
+    return 0;
+}
+</code></pre><ul>
+<li>coroutine.create创建一个coroutine，参数为一个std::function，这样我们就可以通过std::bind非常方便的实现函数闭包了。</li>
+<li>coroutine.resume唤醒一个挂起或者新建的coroutine。</li>
+<li>coroutine.yield挂起当前coroutine。</li>
+<li>coroutine.running获取当前运行的coroutine，如果是主线程调用，则返回0。</li>
+<li>coroutine.status获取coroutine的状态。</li>
+</ul>
+<p>后续我考虑将<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine，不过这可能会成为一个新的网络库了。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/c++/">c++</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/c++/">c++</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

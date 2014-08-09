@@ -1,0 +1,312 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>高性能NoSQL LedisDB设计1 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="高性能NoSQL LedisDB设计1"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-05-30T04:28:39.000Z"><a href="/2014/05/30/ledisdb-design-1/">05-30-2014</a></time>
+      
+      
+  
+    <h1 class="title">高性能NoSQL LedisDB设计1</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>是一个用go实现的基于leveldb的高性能nosql数据库，它提供多种数据结构的支持，网络交互协议参考redis，你可以很方便的将其作为redis的替代品，用来存储大于内存容量的数据（当然你的硬盘得足够大！）。</p>
+<p>同时ledisdb也提供了丰富的api，你可以在你的go项目中方便嵌入，作为你app的主要数据存储方案。</p>
+<h2 id="与redis的区别">与redis的区别</h2>
+<p>ledisdb提供了类似redis的几种数据结构，包括kv，hash，list以及zset，（set因为我们用的太少现在不予支持，后续可以考虑加入），但是因为其基于leveldb，考虑到操作硬盘的时间消耗铁定大于内存，所以在一些接口上面会跟redis不同。</p>
+<p>最大的不同在于ledisdb对于在redis里面可以操作不同数据类型的命令，譬如（del，expire），是只支持kv操作的。也就是说，对于del命令，ledisdb只支持删除kv，如果你需要删除一个hash，你得使用ledisdb额外提供的hclear命令。</p>
+<p>为什么要这么设计，主要是性能考量。leveldb是一个高效的kv数据库，只支持kv操作，所以为了模拟redis中高级的数据结构，我们需要在存储kv数据的时候在key前面加入相关数据结构flag。</p>
+<p>譬如对于kv结构的key来说，我们按照如下方式生成leveldb的key：</p>
+<pre><code>func (db *DB) encodeKVKey(key []byte) []byte {
+    ek := make([]byte, len(key)+2)
+    ek[0] = db.index
+    ek[1] = kvType
+    copy(ek[2:], key)
+    return ek
+}
+</code></pre><p>kvType就是kv的flag，至于第一个字节的index，后面我们在讨论。   </p>
+<p>如果我们需要支持del删除任意类型，可能的一个做法就是在另一个地方存储该key对应的实际类型，然后del的时候根据查出来的类型再去做相应处理。这不光损失了效率，也提高了复杂度。</p>
+<p>另外，在使用ledisdb的时候还需要明确知道，它只是提供了一些类似redis接口，并不是redis，如果想用redis的全部功能，这个就有点无能为力了。</p>
+<h2 id="db_select">db select</h2>
+<p>redis支持select的操作，你可以根据你的业务选择不同的db进行数据的存放。本来ledisdb只打算支持一个db，但是经过再三考虑，我们决定也实现select的功能。</p>
+<p>因为在实际场景中，我们不可能使用太多的db，所以select db的index默认范围就是[0-15]，也就是我们最多只支持16个db。redis默认也是16个，但是你可以配置更多。不过我们觉得16个完全够用了，到现在为止，我们的业务也仅仅使用了3个db。</p>
+<p>要实现多个db，我们开始定了两种方案：</p>
+<ul>
+<li>一个db使用一个leveldb，也就是最多ledisdb将打开16个leveldb实例。</li>
+<li>只使用一个leveldb，每个key的第一个字节用来标示该db的索引。</li>
+</ul>
+<p>这两种方案我们也不知道如何取舍，最后决定采用使用同一个leveldb的方式。可能我们觉得一个leveldb可以更好的进行优化处理吧。</p>
+<p>所以我们任何leveldb key的生成第一个字节都是存放的该db的index信息。</p>
+<h2 id="KV">KV</h2>
+<p>kv是最常用的数据结构，因为leveldb本来就是一个kv数据库，所以对于kv类型我们可以很简单的处理。额外的工作就是生成leveldb对应的key，也就是前面提到的encodeKVKey的实现。</p>
+<h2 id="Hash">Hash</h2>
+<p>hash可以算是一种两级kv，首先通过key找到一个hash对象，然后再通过field找到或者设置相应的值。</p>
+<p>在ledisdb里面，我们需要将key跟field关联成一个key，用来存放或者获取对应的值，也就是key:field这种格式。</p>
+<p>这样我们就将两级的kv获取转换成了一次kv操作。</p>
+<p>另外，对于hash来说，（后面的list以及zset也一样），我们需要快速的知道它的size，所以我们需要在leveldb里面用另一个key来实时的记录该hash的size。</p>
+<p>hash还必须提供keys，values等遍历操作，因为leveldb里面的key默认是按照内存字节升序进行排列的，所以我们只需要找到该hash在leveldb里面的最小key以及最大key，就可以轻松的遍历出来。</p>
+<p>在前面我们看到，我们采用的是key:field的方式来存入leveldb的，那么对于该hash来说，它的最小key就是<strong>“key:”</strong>，而最大key则是<strong>“key;”</strong>，所以该hash的field一定在<strong>“(key:, key;)”</strong>这个区间范围。至于为什么是<strong>“;”</strong>，因为它比<strong>“:”</strong>大1。所以<strong>“key:field”</strong>一定小于<strong>“key;”</strong>。后续zset的遍历也采用的是该种方式，就不在说明了。</p>
+<h2 id="List">List</h2>
+<p>list只支持从两端push，pop数据，而不支持中间的insert，这样主要是为了简单。我们使用key:sequence的方式来存放list实际的值。</p>
+<p>sequence是一个int整形，相关常量定义如下：</p>
+<pre><code>listMinSeq     int32 = 1000
+listMaxSeq     int32 = 1&lt;&lt;31 - 1000
+listInitialSeq int32 = listMinSeq + (listMaxSeq-listMinSeq)/2
+</code></pre><p>也就是说，一个list最多存放1&lt;&lt;31 - 2000条数据，至于为啥是1000，我说随便定得你信不？</p>
+<p>对于一个list来说，我们会记录head seq以及tail seq，用来获取当前list开头和结尾的数据。</p>
+<p>当第一次push一个list的时候，我们将head seq以及tail seq都设置为listInitialSeq。</p>
+<p>当lpush一个value的时候，我们会获取当前的head seq，然后将其减1，新得到的head seq存放对应的value。而对于rpush，则是tail seq + 1。</p>
+<p>当lpop的时候，我们会获取当前的head seq，然后将其加1，同时删除以前head seq对应的值。而对于rpop，则是tail seq - 1。</p>
+<p>我们在list里面一个meta key来存放该list对应的head seq，tail seq以及size信息。</p>
+<h2 id="ZSet">ZSet</h2>
+<p>zset可以算是最为复杂的，我们需要使用三套key来实现。</p>
+<ul>
+<li>需要用一个key来存储zset的size</li>
+<li>需要用一个key:member来存储对应的score</li>
+<li>需要用一个key:score:member来实现按照score的排序</li>
+</ul>
+<p>这里重点说一下score，在redis里面，score是一个double类型的，但是我们决定在ledisdb里面只使用int64类型，原因一是double还是有浮点精度问题，在不同机器上面可能会有误差（没准是我想多了），另一个则是我不确定double的8字节memcmp是不是也跟实际比较结果一样（没准也是我想多了），其实更可能的原因在于我们觉得int64就够用了，实际上我们项目也只使用了int的score。</p>
+<p>因为score是int64的，我们需要将其转成大端序存储（好吧，我假设大家都是小端序的机器），这样通过memcmp比较才会有正确的结果。同时int64有正负的区别，负数最高位为1，所以如果只是单纯的进行binary比较，那么负数一定比正数大，这个我们通过在构建key的时候负数前面加”&lt;”，而正数（包括0）加”=”来解决。所以我们score这套key的格式就是这样：</p>
+<pre><code>key&lt;score:member //&lt;0
+key=score:member //&gt;=0
+</code></pre><p>对于zset的range处理，其实就是确定某一个区间之后通过leveldb iterator进行遍历获取，这里我们需要明确知道的事情是leveldb的iterator正向遍历的速度和逆向遍历的速度完全不在一个数量级上面，正向遍历快太多了，所以最好别去使用zset里面带有rev前缀的函数。</p>
+<h2 id="总结">总结</h2>
+<p>总的来说，用leveldb来实现redis那些高级的数据结构还算是比较简单的，同时根据我们的压力测试，发现性能还能接受，除了zset的rev相关函数，其余的都能够跟redis保持在同一个数量级上面，具体可以参考ledisdb里面的性能测试报告以及运行ledis-benchmark自己测试。</p>
+<p>后续ledisdb还会持续进行性能优化，同时提供expire以及replication功能的支持，预计6月份我们就会实现。</p>
+<p>ledisdb的代码在这里<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">https://github.com/siddontang/ledisdb</a>，希望感兴趣的童鞋共同参与。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/go/">go</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/go/">go</a>, <a href="/tags/ledisdb/">ledisdb</a>, <a href="/tags/nosql/">nosql</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

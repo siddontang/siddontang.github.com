@@ -1,0 +1,352 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>学习Tornado：安全 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="学习Tornado：安全"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-12-28T08:33:15.000Z"><a href="/2013/12/28/learn-tornado-security/">12-28-2013</a></time>
+      
+      
+  
+    <h1 class="title">学习Tornado：安全</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在web编程中，安全性是我们都必须面临的一个问题，包括cookie伪造，xsrf攻击等。tornado作为一个web framework，在安全性方面也提供了很多功能，这里简单介绍一下。</p>
+<h1 id="cookie">cookie</h1>
+<p>在web编程中，浏览器经常使用cookie来保存相关用户信息，用于与server交互，但是cookie有很多安全问题，譬如cookie伪造。cookie有很多方式被修改，javascript，flash，以及browser plugin等，所以首先需要保证cookie不被修改。</p>
+<h2 id="secure_cookie">secure cookie</h2>
+<p>tornado提供了secure cookie机制来保证cookie不被修改。tornado使用一个密钥用来给cookie进行签名，用来保证cookie只能被服务器修改。因为密钥只有tornado server知道，所以其它应用程序是没办法修改cookie的值。</p>
+<p>tornado使用set_secure_cookie和get_secure_cookie来设置和读取browser的cookie。使用secure cookie，只需要在tornado启动的时候设置cookie_secret就行了，如下：</p>
+<pre><code>import tornado.web 
+import tornado.httpserver 
+import tornado.ioloop 
+
+class MainHandler(tornado.web.RequestHandler):
+    def get(self):
+        count = self.get_secure_cookie(&#39;count&#39;)
+        count = (int(count) + 1) if count else 1
+
+        self.set_secure_cookie(&#39;count&#39;, str(count))
+
+        self.write(str(count))
+
+settings = {
+    &#39;cookie_secret&#39; : &#39;S6Bp2cVjSAGFXDZqyOh+hfn/fpBnaEzFh22IVmCsVJQ=&#39;
+}
+
+application = tornado.web.Application([
+    (r&quot;/&quot;, MainHandler),
+], **settings)
+
+http_server = tornado.httpserver.HTTPServer(application)
+http_server.listen(8080)
+tornado.ioloop.IOLoop.instance().start()
+</code></pre><p>cookie_secret的生成如下：</p>
+<pre><code>import base64
+import uuid
+base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes)
+</code></pre><h2 id="httponly">httponly</h2>
+<p>为了防止cross-site scripting attack，tornado可以再设置cookie的时候增加httponly字段，这样该cookie就不能够被javascript读取。同时，为了更高的安全性，可以给cookie设置secure属性，这个跟先前讨论的set_secure_cookie不一样，上面那个是对cookie进行加密签名，保证不被修改，而这个则是让browser通过ssl传输cookie。启用这些功能很简单，只需要在设置cookie的时候处理。</p>
+<pre><code>class MainHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.set_cookie(&#39;count1&#39;, &#39;1&#39;, httponly = True, secure = True)
+        self.set_secure_cookie(&#39;count2&#39;, &#39;2&#39;, httponly = True, secure = True)
+</code></pre><h1 id="XSRF">XSRF</h1>
+<p>上面介绍的方法虽然能够保证cookie的安全，但是还是防止不了<a href="http://en.wikipedia.org/wiki/Cross-site_request_forgery" target="_blank" rel="external">XSRF攻击</a>。为了防止XSRF攻击，首先设计web服务的时候就需要考虑http method的side effects。按照restful的编程模型，get只能用来获取数据，post才会去修改数据，这样就能在很大的程度上面防止XSRF，因为对于通常情况来说，XSRF攻击就是通过设置img的src为一个恶意的get请求，只要我们的get不会进行数据修改，自然就能防止。</p>
+<p>但是一些恶意的操作仍然能够发送post请求来进行攻击，譬如通过HTML forms或者XMLHTTPRequest API，所以为了防止post这种的攻击，我们需要一些额外的机制。</p>
+<p>tornado提供了一个XSRF保护机制，原理很简单，就是在post提交数据的时候额外加入一个_xsrf字段，这个字段的值是从secure cookie里面获取的，因为其它的应用程序获取不到这个cookie的值，所以我们能够保证post的安全性。开启xsrf protection也很简单。</p>
+<pre><code>settings = {
+    &#39;cookie_secret&#39; : &#39;S6Bp2cVjSAGFXDZqyOh+hfn/fpBnaEzFh22IVmCsVJQ=&#39;,
+    &#39;xsrf_cookies&#39; : True
+}
+
+application = tornado.web.Application([
+    (r&quot;/&quot;, MainHandler),
+    (r&quot;/purchase&quot;, PurchaseHandler)
+], **settings)
+</code></pre><p>在post提交的form里面，我们只需要设置如下：</p>
+<pre><code>&lt;form action=&quot;/purchase&quot; method=&quot;POST&quot;&gt;
+
+    &lt;input type=&quot;submit&quot; value=&quot;同意&quot; name=&quot;agree&quot;/&gt;
+&lt;/form&gt;
+</code></pre><h1 id="User_Authentication">User Authentication</h1>
+<p>tornado还提供了用户认证功能，当用户登录之后，会将用户的相关信息保存到一个地方，通常是在cookie里面。当用户的cookie过期，再次访问web服务的时候就会被重定向到登陆页面。</p>
+<p>要实现上述功能，只需要重载get_current_user函数，配置login_url和使用authenticated decorator就行了。如下：</p>
+<pre><code>class BaseHandler(tornado.web.RequestHandler):
+    def get_current_user(self):
+        return self.get_secure_cookie(&#39;username&#39;)
+
+class LoginHandler(BaseHandler):
+    def get(self):
+        str = &#39;&#39;&#39;&lt;body&gt;&lt;form action=&quot;/login&quot; method=&quot;POST&quot;&gt;
+                UserName: &lt;input type=&quot;text&quot; name=&quot;username&quot; /&gt;
+                          &lt;input type=&quot;submit&quot; value=&quot;Login&quot; /&gt;
+                &lt;/form&gt;&lt;/body&gt;&#39;&#39;&#39;
+        self.write(str)
+
+    def post(self):
+        self.set_secure_cookie(&#39;username&#39;, self.get_argument(&#39;username&#39;))
+        self.redirect(&#39;/&#39;)
+
+class MainHandler(BaseHandler):
+    @tornado.web.authenticated
+    def get(self):
+        user = self.current_user
+        self.write(&#39;hello &#39; + user)
+
+class LogoutHandler(BaseHandler):
+    def get(self):
+        self.clear_cookie(&#39;username&#39;)
+        self.redirect(&#39;/&#39;)
+
+settings = {
+    &#39;cookie_secret&#39; : &#39;S6Bp2cVjSAGFXDZqyOh+hfn/fpBnaEzFh22IVmCsVJQ=&#39;,
+    &#39;login_url&#39; : &#39;/login&#39;
+}
+
+application = tornado.web.Application([
+    (r&#39;/&#39;, MainHandler),
+    (r&#39;/login&#39;, LoginHandler),
+    (r&#39;/logout&#39;, LogoutHandler)
+], **settings)
+
+http_server = tornado.httpserver.HTTPServer(application)
+http_server.listen(8080)
+tornado.ioloop.IOLoop.instance().start()
+</code></pre><h1 id="总结">总结</h1>
+<p>web安全一直是一个非常严重的问题，我们在写代码的时候一定要注意，这里有一篇如何写安全web的<a href="https://wiki.mozilla.org/WebAppSec/Secure_Coding_Guidelines" target="_blank" rel="external">Guide</a>。tornado虽然提供了一些安全机制，但是仍然不能完全保证绝对安全性，所以很多时候就需要我们决定我所写的服务到底应该有什么样的安全级别，从在这个级别下面如何保证安全性就可以了。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/python/">python</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/python/">python</a>, <a href="/tags/tornado/">tornado</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

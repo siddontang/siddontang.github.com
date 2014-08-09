@@ -1,0 +1,294 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>Mixer 一个用Go实现的MySQL Proxy | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="Mixer 一个用Go实现的MySQL Proxy"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-10T01:35:51.000Z"><a href="/2014/03/10/mixer-introduction/">03-10-2014</a></time>
+      
+      
+  
+    <h1 class="title">Mixer 一个用Go实现的MySQL Proxy</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>是一个用go实现的mysql proxy，支持基本的mysql代理功能。</p>
+<p>mysql的中间件很多，对于市面上面现有的功能强大的proxy，我主要考察了如下几个：</p>
+<ul>
+<li>mysql-proxy，mysql官方的代理，使用起来并不友好，需要进行lua定制，而且本人对其稳定性和性能存疑。</li>
+<li>Cobar，阿里的东西，品质没的说，但对于我们项目，有点杀鸡用牛刀的感觉，另外我们都不会java。</li>
+<li>Atlas，360出品的基于mysql-proxy的增强版，几乎用c重写了核心框架，性能和稳定性都没话说。</li>
+</ul>
+<p>当然，还有很多强大的proxy，我不可能一一涉及，而现阶段我们项目中使用的是Atlas（这算不算给Atlas打了一个广告？）。</p>
+<p>既然有这么多的proxy，为什么我还想自己实现一个呢？可能最主要的原因在于兴趣使然吧。</p>
+<h1 id="mysql功能支持">mysql功能支持</h1>
+<p>当开始着手进行<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>开发的时候，我就知道，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>不是mysql，它不可能proxy所有mysql的功能。所以，我决定<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只支持如下mysql命令：</p>
+<ul>
+<li>COM_QUERY<ul>
+<li>select, insert, update, delete, replace</li>
+<li>set autocommit</li>
+<li>set names</li>
+<li>begin, commit, rollback</li>
+</ul>
+</li>
+<li>COM_PING</li>
+<li>COM_INIT_DB</li>
+<li>COM<em>STMT_PREPARE, COM_STMT_EXEC等COM_STMT</em>*命令，仅支持上述COM_QUERY命令的prepare</li>
+</ul>
+<p>[mixer](<a href="https://github.com/siddontang/mixer不支持命令挺多的，列举一些：" target="_blank" rel="external">https://github.com/siddontang/mixer不支持命令挺多的，列举一些：</a></p>
+<ul>
+<li>set variable。如果支持，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>需要维护每一个变量的状态，增加了复杂度。但<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>支持autocommit和names的设置。</li>
+<li>sql text模式的prepare statement。</li>
+<li>show命令。</li>
+<li>存储过程。</li>
+</ul>
+<p>虽然很多功能现阶段没有，但不排除后续支持。</p>
+<h1 id="高可用方案">高可用方案</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>提供了一套mysql高可用使用方案，现阶段主要功能如下：</p>
+<ul>
+<li>读写分离，将select发送到slave，其余发送到master执行，事物所有在master执行。现阶段只支持一主一备。</li>
+<li>主备自动切换，当主mysql不可用，根据相关规则切换到backup mysql执行。</li>
+</ul>
+<h1 id="Todo">Todo</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>还不完善，很多功能需要实现，后续优先需要实现的功能：</p>
+<ul>
+<li>parser，将sql进行语法解析，构建AST，在proxy层面就防止一些mysql隐患，譬如注入攻击，delete没有where等。</li>
+<li>自定义路由，根据路由规则将sql路由到不同mysql执行。譬如根据主键将select语句hash到不同的slave上面执行。</li>
+<li>统计功能。</li>
+</ul>
+<p>代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>。非常希望对proxy感兴趣的童鞋参与进来，共同完善<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，使其成为另一个mysql中间件解决方案。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/go/">go</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/go/">go</a>, <a href="/tags/mysql/">mysql</a>, <a href="/tags/proxy/">proxy</a>, <a href="/tags/mixer/">mixer</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

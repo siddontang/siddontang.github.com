@@ -1,0 +1,872 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>c++ | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+<h2 class="archive-title category">c++</h2>
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-05T06:26:04.000Z"><a href="/2014/03/05/libcoro/">03-05-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/05/libcoro/">简易的C++协程库</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="起因">起因</h1>
+<p>在第一个版本的<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>开发完成之后，我一直在思考如何让异步方式的网络编程更加简单。</p>
+<p>虽然<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>通过c++ shared_ptr以及function等技术很大程度上面解决了异步代码编写的一些问题，但是仍然会出现代码逻辑被强制拆分的情况。而这个则是项目中童鞋无法很好的使用其进行开发的原因。</p>
+<p>所以我考虑让<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine。</p>
+<h1 id="Coroutine">Coroutine</h1>
+<p>第一次接触coroutine的概念是在lua里面，记得当时想了很久才算弄明白了coroutine的使用以及原理。在lua中，coroutine的使用如下：</p>
+<pre><code>co = coroutine.create(function ()
+        print(&quot;begin yield&quot;)
+        coroutine.yield()
+        print(&quot;after yield&quot;)
+    end)
+
+coroutine.resume(co)
+print(&quot;after resume&quot;)
+
+coroutine.resume(co)
+</code></pre><p>我们可以通过resume执行一个新创建或者已经被挂起的coroutine，通过yield挂起当前的coroutine，这样就可以实现类似多线程方式下面的多任务调度。</p>
+<p>至于coroutine的原理，很多地方都有说明，主要就在于每个coroutine都有自己的堆栈，这样当coroutine挂起的时候，它的当前执行状态会被完整保留，下次resume的时候就可以接着执行了。</p>
+<p>而使用coroutine的好处，我觉得最大的一点在于它将拆分的异步逻辑同步化了，更利于代码编写。</p>
+<p>在使用python tornado的时候，我们开始阶段写了太多的callback回调，以至于代码的维护非常困难，而这个则在引入<a href="https://github.com/python-greenlet/greenlet" target="_blank" rel="external">greenlet</a>后有了明显好转。</p>
+<p>而后续在使用go语言中，因为它原生的支持coroutine（其实在go里面更准确的说法应该是goroutine），写代码非常的方便，所以现在go已经成为了我服务器的首选开发语言，我也用它开发了多个项目（如<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，一个mysql proxy），并且已经在公司项目中实施。</p>
+<p>当然，使用coroutine并不是毫无缺点的：</p>
+<ul>
+<li>每个coroutine都需要维护自己的堆栈，当我们需要创建数以百万计的coroutine的时候，内存的开销就需要考虑了。</li>
+<li>coroutine的切换，都需要保留当前的上下文环境，以便于下次resume的时候接着执行，如果coroutine切换频繁，开销也不小。</li>
+</ul>
+<h1 id="libcoro">libcoro</h1>
+<p>很早之前使用luajit的时候，我就知道可以在c++中实现coroutine的功能，在linux中，这通过makecontext，swapcontext等相关函数实现。虽然也可以通过setjmp/longjmp这两个古老的函数实现，但看了luajit的coco就知道，即使在linux下面，它也需要写很多define宏去适配。</p>
+<p>所以，我只考虑使用makecontext这套函数族来实现coroutine。虽然swapcontext会有性能问题，详见<a href="http://rethinkdb.com/blog/making-coroutines-fast/" target="_blank" rel="external">这里</a>，但早期我还不打算对其进行性能优化。</p>
+<p><a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>是一个简单的c++ coroutine库，只支持linux（因为我们的服务器只有linux的）。</p>
+<p>在接口上面，<a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>参考的是lua的coroutine的接口设计，使用非常简单:</p>
+<pre><code>void func1()
+{
+    coroutine.yield();
+}
+
+void func2(Coro_t co1)
+{
+    coroutine.resume(co1);    
+    coroutine.yield();
+}
+
+void func()
+{
+    Coro_t co1 = coroutine.create(std::bind(&amp;func1));    
+    coroutine.resume(co1);    
+    Coro_t co2 = coroutine.create(std::bind(&amp;func2, co1));
+    coroutine.resume(co2);
+    coroutine.resume(co2);
+}
+
+int main()
+{    
+    Coro_t co = coroutine.create(std::bind(&amp;func));
+    coroutine.resume(co);
+    return 0;
+}
+</code></pre><ul>
+<li>coroutine.create创建一个coroutine，参数为一个std::function，这样我们就可以通过std::bind非常方便的实现函数闭包了。</li>
+<li>coroutine.resume唤醒一个挂起或者新建的coroutine。</li>
+<li>coroutine.yield挂起当前coroutine。</li>
+<li>coroutine.running获取当前运行的coroutine，如果是主线程调用，则返回0。</li>
+<li>coroutine.status获取coroutine的状态。</li>
+</ul>
+<p>后续我考虑将<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine，不过这可能会成为一个新的网络库了。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-01-01T06:04:17.000Z"><a href="/2014/01/01/libtnet-comettest/">01-01-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/01/01/libtnet-comettest/">Libtnet 百万连接测试</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>最近在用go语言做一个挂载大量长连接的推送服务器，虽然已经完成，但是内存占用情况让我不怎么满意，于是考虑使用libtnet来重新实现一个。后续我会使用comet来表明推送服务器。</p>
+<p>对于comet来说，单机能支撑大量的并发连接，是最优先考虑的事项。虽然现在业界已经有了很多数据，说单机支撑200w，300w，但我还是先把目标定在100w上面，主要的原因在于实际运行中，comet还会有少量逻辑功能，我得保证在单机挂载100w的基础上，完全能无压力的处理这些逻辑。</p>
+<h1 id="CometServer_Test">CometServer Test</h1>
+<p>首先我用libtnet简单写了一个comet server。它接受http请求，并将其挂起，过一段随机时间之后在返回200。</p>
+<pre><code>void onTimeout(const TimingWheelPtr_t&amp; wheel, const WeakHttpConnectionPtr_t&amp; conn)
+{
+    HttpConnectionPtr_t c = conn.lock();
+    if(c)
+    {
+        c-&gt;send(200);
+    } 
+}
+
+void onHandler(const HttpConnectionPtr_t&amp; conn, const HttpRequest&amp; request)
+{
+    int timeout = random() % 60 + 30;
+    comet.wheel-&gt;add(std::bind(&amp;onTimeout, _1, WeakHttpConnectionPtr_t(conn)), timeout * 1000);
+}
+
+int main()
+{
+    TcpServer s;        
+    s.setRunCallback(std::bind(&amp;onServerRun, _1));
+    HttpServer httpd(&amp;s);
+    httpd.setHttpCallback(&quot;/&quot;, std::bind(&amp;onHandler, _1, _2));
+    httpd.listen(Address(11181));
+    s.start(8);
+    return 0; 
+}
+</code></pre><p>可以看到comet server只是负责了挂载长连接的事情，而没有消息的推送。在实际项目中，我已经将挂载连接和推送消息分开到两个服务去完成。所以这里comet仅仅是挂载连接测试。</p>
+<h1 id="测试机器准备">测试机器准备</h1>
+<p>因为linux系统上面一个网卡tcp连接端口数量是有限制的，我们调整ip_local_port_range使其能支撑60000个tcp连接：</p>
+<pre><code>net.ipv4.ip_local_port_range = 1024 65535
+</code></pre><p>对于100w连接来说，我们至少需要16台机器，但实际我只有可怜的3台4G内存的虚拟机。所以就要运维的童鞋在每台机器上面装了6块网卡。这样我就能建立100w的连接了。</p>
+<p>测试客户端也非常简单，每秒向服务器请求1000个连接，但是需要注意的是，因为一台机器上面有多块网卡，所以在创建socket之后，我们需要将socket绑定到某一块网卡上面。</p>
+<p>实际测试中，因为内存问题，每台机器顶多能支撑34w左右的tcp连接，对我来说已经足够，所以也懒得去调优了。</p>
+<h1 id="CometServer_Linux调优">CometServer Linux调优</h1>
+<p>首先我们需要调整最大打开文件数，在我的机器上面，nr_open最大的值为1048576，对我来说已经足够，所以我将最大文件描述符数量调整为1040000。</p>
+<pre><code>fs.file-max = 1040000
+</code></pre><p>然后就是对tcp一些系统参数的调优：</p>
+<pre><code>net.core.somaxconn = 60000
+net.core.rmem_default = 4096
+net.core.wmem_default = 4096
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 4096 16777216
+net.ipv4.tcp_wmem = 4096 4096 16777216
+net.ipv4.tcp_mem = 786432 2097152 3145728
+net.core.netdev_max_backlog = 60000
+net.ipv4.tcp_fin_timeout = 15
+net.ipv4.tcp_max_syn_backlog = 60000
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_tw_recycle = 1
+net.ipv4.tcp_max_orphans = 131072
+net.ipv4.tcp_keepalive_time = 1200
+net.ipv4.tcp_max_tw_buckets = 60000
+net.netfilter.nf_conntrack_max = 1000000
+net.netfilter.nf_conntrack_tcp_timeout_established = 1200
+</code></pre><p>对于如何调节这些值，网上都是各有各的说法，建议直接man 7 tcp。我在实践中也会通过查看dmesg输出的tcp错误来动态调节。这里单独需要说明的是tcp buffer的设置，我最小和默认都是4k，这主要是考虑到推送服务器不需要太多太频繁的数据交互，所以需要尽可能的减少tcp的内存消耗。</p>
+<h1 id="测试结果">测试结果</h1>
+<p>实际的测试比较让我满意。</p>
+<p>cometserver test8个进程cpu消耗都比较低，因为有轮训timing wheel然后再发送200的逻辑，所以铁定有cpu消耗，如果只是挂载，cpu应该会更低。</p>
+<pre><code>PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND                                                                                                       
+ 4685 root      20   0  187m 171m  652 S 19.9  1.1   2:19.20 cometserver_test                                                                                                
+ 4691 root      20   0  191m 175m  656 S 16.6  1.1   2:17.80 cometserver_test                                                                                                
+ 4686 root      20   0  170m 155m  652 S 16.3  1.0   2:09.54 cometserver_test                                                                                                
+ 4690 root      20   0  183m 167m  652 S 16.3  1.1   2:11.44 cometserver_test                                                                                                
+ 4692 root      20   0  167m 152m  652 S 16.3  1.0   2:11.29 cometserver_test                                                                                                
+ 4689 root      20   0  167m 152m  652 S 15.3  1.0   2:03.08 cometserver_test                                                                                                
+ 4687 root      20   0  173m 158m  652 S 14.3  1.0   2:07.34 cometserver_test                                                                                                
+ 4688 root      20   0  129m 114m  652 S 12.3  0.7   1:35.77 cometserver_test
+</code></pre><p>socket的统计情况：</p>
+<pre><code>[root@localhost ~]# cat /proc/net/sockstat
+sockets: used 1017305
+TCP: inuse 1017147 orphan 0 tw 0 alloc 1017167 mem 404824
+UDP: inuse 0 mem 0
+UDPLITE: inuse 0
+RAW: inuse 0
+FRAG: inuse 0 memory 0
+</code></pre><p>可以看到，总共有1017147个tcp链接，同时占用了将近4G（1017167是页数，需要乘以4096）的内存。</p>
+<p>系统内存的情况：</p>
+<pre><code>[root@localhost ~]# free
+             total       used       free     shared    buffers     cached
+Mem:      16334412   11210224    5124188          0     179424    1609300
+-/+ buffers/cache:    9421500    6912912
+Swap:      4194296          0    4194296
+</code></pre><p>系统有16G内存，还有5G可用，所以不出意外单机应该还能承载更多的tcp连接。</p>
+<h1 id="总结">总结</h1>
+<p>使用libtnet开发的一个简单的comet server支撑了百万级的连接，加深了我对其应用的信心。</p>
+<p>libnet地址<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">https://github.com/siddontang/libtnet</a>，欢迎围观。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-12-29T08:27:12.000Z"><a href="/2013/12/29/libtnet-http/">12-29-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/12/29/libtnet-http/">Libtnet HTTP实现</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="HTTP">HTTP</h1>
+<p>libtnet提供了简单的http支持，使用也很简单。</p>
+<p>一个简单的http server：</p>
+<pre><code>void onHandler(const HttpConnectionPtr_t&amp; conn, const HttpRequest&amp; request)
+{
+    HttpResponse resp;
+    resp.statusCode = 200;
+    resp.setContentType(&quot;text/html&quot;);
+    resp.body.append(&quot;Hello World&quot;);    
+    conn-&gt;send(resp);
+}
+
+TcpServer s;
+HttpServer httpd(&amp;s);
+httpd.setHttpCallback(&quot;/test&quot;, std::bind(&amp;onHandler, _1, _2));
+httpd.listen(Address(80));
+s.start(4);
+</code></pre><p>我们对http server的<strong>“/test”</strong>注册了一个handler，当用户访问该url的时候，就会显示”Hello World”。</p>
+<p>同样，http client的使用也很简单：</p>
+<pre><code>void onResponse(IOLoop* loop, const HttpResponse&amp; resp)
+{
+    cout &lt;&lt; resp.body &lt;&lt; endl;
+    loop-&gt;stop();
+}
+
+IOLoop loop;
+HttpClientPtr_t client = std::make_shared&lt;HttpClient&gt;(&amp;loop);
+client-&gt;request(&quot;http://127.0.0.1:80/test&quot;, std::bind(&amp;onResponse, &amp;loop, _1));
+loop.start(); 
+</code></pre><p>这里，我们使用了一个http client，向server请求”/test”的内容，当服务器有响应之后，会调用响应的回调函数。</p>
+<h1 id="HTTP_Parser">HTTP Parser</h1>
+<p>对于http的解析，我采用的是<a href="https://github.com/joyent/http-parser" target="_blank" rel="external">http parser</a>，因为它采用的是流式解析，同时非常容易集成进libtnet。</p>
+<p>使用http parser只需要设置相应的回调函数即可。http parser有如下几种回调：</p>
+<ul>
+<li>message begin，解析开始的时候调用</li>
+<li>url，解析url的时候调用</li>
+<li>status complete，http response解析status的时候调用</li>
+<li>header field，解析http header的field调用</li>
+<li>header value，解析http header的value调用</li>
+<li>headers complete，解析完成http header调用</li>
+<li>body，解析http body调用</li>
+<li>message complete，解析完成调用</li>
+</ul>
+<p>这里特别需要注意的是http header的解析，因为http parser将其拆分成了两种回调，所以我们在处理的时候需要记录上一次header callback是field的还是value的。在解析field的时候，如果上一次是value callback，那我们就需要将上一次解析的field和value保存下来，而该次的解析则是一个新的field了。</p>
+<p>另外，http parser还提供了upgrade的支持，所以我们很方便的就能区分该次请求是否为websocket。</p>
+<h1 id="Websocket">Websocket</h1>
+<p>libtnet也提供了websocket的支持，现阶段，只支持<a href="http://tools.ietf.org/html/rfc6455" target="_blank" rel="external">RFC6455</a>。</p>
+<p>当libtnet通过http parser发现该次请求为websocket的时候，就进入了websocket的流程。websocket的使用也很简单，当握手成功之后，后续的所有通讯就是纯粹的tcp通信了。</p>
+<p>一个简单的websocket server：</p>
+<pre><code>void onWsCallback(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
+{
+    switch(event)
+    {
+        case Ws_CloseEvent:
+            break;
+        case Ws_MessageEvent:
+            {
+                const string&amp; str = *(const string*)context;
+                conn-&gt;send(str);
+            }
+            break;
+        case Ws_PongEvent:
+            break;
+        default:
+            break;
+    }
+}
+
+TcpServer s;
+HttpServer httpd(&amp;s);
+httpd.setWsCallback(&quot;/push/ws&quot;, std::bind(&amp;onWsCallback, _1, _2, _3));    
+httpd.listen(Address(80));
+s.start();
+</code></pre><p>可以看到，websocket的callback机制也类似于libtnet connection的callback机制，用户需通过event + context的方式来处理该次回调的数据。</p>
+<p>libtnet对websocket的frame的处理参照的是tornado的websocket模块。也能够组合多frame的数据，外部只需要关注Ws_MessageEvent即可。</p>
+<p>websocket client的实现也很简单：</p>
+<pre><code>void onWsConnEvent(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
+{
+    switch(event)
+    {
+        case Ws_OpenEvent:
+            conn-&gt;send(&quot;Hello world&quot;);
+            break;    
+        case Ws_MessageEvent:
+            {
+                const string&amp; msg = *(const string*)context;
+
+                LOG_INFO(&quot;message %s&quot;, msg.c_str());
+                conn-&gt;close();                        
+            }
+            break;
+        default:
+            break;
+    }    
+}
+
+IOLoop loop;
+WsClientPtr_t client = std::make_shared&lt;WsClient&gt;(&amp;loop);    
+client-&gt;connect(&quot;ws://127.0.0.1:80/push/ws&quot;, std::bind(&amp;onWsConnEvent, _1, _2, _3));
+loop.start();
+</code></pre>
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-12-28T10:28:49.000Z"><a href="/2013/12/28/libtnet-connection/">12-28-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/12/28/libtnet-connection/">Libtnet Connection实现</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>libtnet只支持IPv4 TCP Connection，之所以这么做都是为了使得实现尽可能的简单。我们主要在Connection类中封装了对tcp连接的操作。</p>
+<p>Connection继承自std::enable_shared_from_this，也就意味着外部我们会操作其shared_ptr<connection>，libtnet几乎所有的对象都采用智能指针的方式来进行内存管理。</connection></p>
+<p>当Connection创建成功之后，会通过IOLoop的addHandler接口，将其绑定到ioloop上面：</p>
+<pre><code>ConnectionPtr_t conn = shared_from_this();
+m_loop-&gt;addHandler(m_fd, TNET_READ, std::bind(&amp;Connection::onHandler, conn, _1, _2));
+</code></pre><p>因为我们直接在std::bind里面使用了shared_ptr，所以ioloop自然引用了该Connection，外部不需要在存储Connection，以防内存泄露。</p>
+<p>对于一个connection而言，它只可能有几种状态，</p>
+<ul>
+<li>Connecting，表明正在尝试连接，发生在connect返回EINPROGRESS。</li>
+<li>Connected，连接已经建立成功，发生在connect成功或者accept成功。</li>
+<li>Disconnecting，表明连接正在断开，发生在用户主动调用shutDown之后。</li>
+<li>Disconnected，连接已经断开，这时候对应的socket也会被close掉。</li>
+</ul>
+<h1 id="Event_Callback">Event Callback</h1>
+<p>在Connection中，我们使用一个event callback来绑定相应事件的回调。主要有如下connection event：</p>
+<ul>
+<li>Conn_EstablishedEvent, 当server accept成功，创建了Connection对象之后，触发。</li>
+<li>Conn_ConnectEvent，当client connect成功，触发。</li>
+<li>Conn_ConnectingEvent，当client connect返回EINPROGRESS，触发。</li>
+<li>Conn_ReadEvent，当连接可读，触发。</li>
+<li>Conn_WriteCompleteEvent，当发送的数据都发送完毕，触发。</li>
+<li>Conn_ErrorEvent，当连接有错误发生，触发。</li>
+<li>Conn_CloseEvent，当连接主动或者被动关闭，触发。</li>
+</ul>
+<p>event callback原型如下：</p>
+<pre><code>typedef shared_ptr&lt;Connection&gt; ConnectionPtr_t;
+typedef std::function&lt;void (const ConnectionPtr_t&amp;, ConnEvent, const void* context)&gt; ConnEventCallback_t;
+</code></pre><p>对应不同的事件，触发的时候context的内容不同。现阶段，只有ReadEvent的时候context为StackBuffer，原型如下：</p>
+<pre><code>class StackBuffer
+{
+public:
+    StackBuffer(const char* buf, size_t c) : buffer(buf), count(c) {}
+
+    const char* buffer;
+    size_t count;    
+};
+</code></pre><p>当连接可读的时候，Connection会将数据读取到栈上面，并用StackBuffer来指代，这样当外部处理ReadEvent的时候就能通过将context转换成StackBuffer获取到读取的数据。</p>
+<p>下面简单说明一下一些设计上面的取舍：</p>
+<ul>
+<li><p>为什么只提供一个event callback，而不提供read callback，write complete callback，close callback多个回调接口？</p>
+<p>  libtnet的所有callback都采用的是std::function实现，而该对象占用32字节，如果每个event都提供一个对应的callback，那么内存的开销会有点大，同时大部分时候很多callback我们是不感兴趣的。</p>
+<p>  还有一个重要的原因在于只提供一个event callback，外部的一些对象就可以通过该callback跟Connection绑定，也就是将其自身的生命周期与Connection绑定在了一起，当Connection删除的时候该对象也自行删除。libtnet中，HttpConnection，WsConnection都是采用该方法，因为对于一个Http连接来说，如果底层的Tcp连接都断开无效了，基于Tcp的Http连接自然就无效了。</p>
+</li>
+<li><p>Connection为什么不缓存读取的数据，而是交由外部callback去处理？</p>
+<p>  Connection作为一个底层的类，对于读取的数据，并不知道具体需要如何处理，所以还不如将数据直接发到外层，供上层实际的应用逻辑处理。但是如果后续Connection考虑支持ssl，那么就需要进行缓存数据了。</p>
+</li>
+</ul>
+<h1 id="Write">Write</h1>
+<p>Connection建立之后，默认只会在ioloop中设置TNET_READ事件，因为epoll采用的水平触发模式，如果直接设置TNET_WRITE事件，那么epoll会一直通知socket可写，但实际上并没有可以发送的数据。</p>
+<p>所以，libtnet采用如下的方式进行数据发送：</p>
+<ul>
+<li>直接调用writev函数进行数据发送</li>
+<li>如果数据未发送完毕，则向ioloop注册TNET_WRITE事件，下次触发可写的时候继续发送，直至发送成功，清除TNET_WRITE事件。</li>
+</ul>
+<p>另外，在发送的时候，我们还需要考虑signal pipe的情况，所以需要忽略该singal。使用如下方式：</p>
+<pre><code>class IgnoreSigPipe
+{
+public:
+    IgnoreSigPipe()
+    {
+        signal(SIGPIPE, SIG_IGN);    
+    }    
+};
+
+static IgnoreSigPipe initObj;
+</code></pre><p>当libtnet启动的时候，就忽略了signal pipe信号。虽然这样做稍微有一点副作用，但大部分时候我们并不需要关注SIGPIPE信号。</p>
+<h1 id="Kick_Off_Connection">Kick Off Connection</h1>
+<p>通常，为了处理不活跃连接，程序都会将每个connection设置一个timer，如果timer到了该连接仍然没有交互，则会删除该连接，否则则继续更新timer。另一种做法就是提供一个time wheel，将connection放置在该wheel中，如果有交互，则在wheel中移动。</p>
+<p>libtnet采用了一种更简单，但是精度比较差的做法。</p>
+<p>当server成功创建一个connection之后，将会添加到一个ConnChecker中，checker保存的是该connection的weak_ptr。每隔一段时间，checker检查一批connection：</p>
+<ul>
+<li>如果connection weak_ptr无法lock提升至shared_ptr，证明该连接已经删除，checker直接移除。</li>
+<li>如果connection处于connecting状态，并且超过了设置的最大连接超时时间，shutDown该connection。</li>
+<li>如果connection处于connected状态，并且在一段时间内没有任何交互，shutDown。</li>
+</ul>
+<p>ConnChecker的检查间隔以及每次检查步数都可以通过外部设置。使用ConnChecker虽然简单，但是在连接数过大的情况下面，一些过期的connection不能立刻被清理掉。对于这个问题，我觉得可以接受，一个连接一秒之后被关闭还是两秒之后被关闭，差别真的不大。如果我们真的需要对一些connection做精确的时间控制，那直接可以对其使用timer。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-12-28T10:28:23.000Z"><a href="/2013/12/28/libtnet-ioloop/">12-28-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/12/28/libtnet-ioloop/">Libtnet事件循环</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>libtnet采用的是prefork + event loop的架构方式，prefork就是server在启动的时候预先fork多个子进程同时工作，而event loop则是基于epoll的事件处理机制。</p>
+<p>在最新的linux系统中，提供了timerfd，eventfd，signalfd，加上原先的socket，大部分功能都可以抽象成io事件来处理了。而在libtnet中，这一切的基础就是IOLoop。</p>
+<p>类似于tornado，libtnet的IOLoop也提供了相似的接口。其中最核心的就是以下三个：</p>
+<pre><code>typedef std::function&lt;void (IOLoop*, int)&gt; IOHandler_t;
+
+int addHandler(int fd, int events, const IOHandler_t&amp; handler);
+int updateHandler(int fd, int events);
+int removeHandler(int fd);  
+</code></pre><p>对于任意的IO，我们可以注册感兴趣的事件（TNET_READ和TNET_WRITE），并绑定一个对应的callback回调。</p>
+<p>callback的回调采用的是std::function的方式，这也就意味着，你可以在外部通过std::bind绑定任意不同的实现，再加上shared_ptr技术模拟闭包。</p>
+<p>假设现在我们需要创建了一个socket对象，并将其添加到IOLoop中，我们可以这么做：</p>
+<pre><code>std::shared_ptr&lt;Connection&gt; conn = std::make_shared&lt;Connection&gt;(socketfd);
+
+ioloop-&gt;addHandler(socketfd, TNET_READ, std::bind(&amp;Connection::onHandler, conn, _1, _2));
+</code></pre><p>这样，当该socket有读事件发生的时候，对应的onHandler就会被调用。在这里，我是用了shared_ptr技术，主要是为了方便进行对象生命周期的管理。</p>
+<p>在上面的例子中，因为std::bind的时候引用了conn，只要不将socketfd进行removeHandler，conn对象就会一直存在。所以libtnet在IOLoop内部，自行维护了conn对象的生命周期。外面不需要在将其保存到另一个地方（如果真保存了该shared_ptr的conn，反而会引起内存泄露）。在libtnet的基础模块中，我都使用的是weak_ptr来保存相关对象，每次使用都通过lock来判定是否该对象存活。</p>
+<p>在IOLoop内部，我使用一个vector来存放注册的handler，vector的索引就是io的fd。这样，我们通过io的fd就可以非常快速的查找到对应的handler了。为什么可以这样设计，是因为在linux系统中，进程中新建文件的file descriptor都是系统当前最小的可用整数。譬如，我创建了一个socket，fd为10，然后我关闭了该socket，再次新建一个socket，这时候新的socket的fd仍然为最小可用的整数，也就是10。</p>
+<h1 id="EPoll">EPoll</h1>
+<p>提到linux下面的高性能网络编程，epoll是一个铁定绕不开的话题，关于epoll的使用，网上有太多的讲解，这里就不展开了。</p>
+<p>libtnet在Poller中集成了epoll，参考了libev的实现。epoll有两种工作模式，水平触发和边沿触发，各有利弊。libtnet使用的是水平触发方式，主要原因在于水平触发方式在有消息但是没处理的时候会一直通知你处理，实现起来不容易出错，也比较简单。</p>
+<h2 id="fork_and_epoll_create">fork and epoll_create</h2>
+<p>这里顺便记录一下我在实现prefork模型的时候遇到的一个坑。这个问题就是epoll fd应该在fork之前还是之后创建？</p>
+<p>大家都知道，linux fork的时候采用COW（copy on write）方式复制父进程的内容，然后我想当然的以为各个子进程会拥有独立的epoll内核空间，于是在fork之前创建了epoll fd。但是后面我却惊奇的发现一个子进程对epoll的操作竟然会影响另一个子进程。也就是说，各个子进程共享了父进程的epoll内核空间。</p>
+<p>所以，epoll fd的创建应该在fork之后，各个子进程独立创建。</p>
+<h1 id="Example">Example</h1>
+<h2 id="Timer">Timer</h2>
+<p>IOLoop提供了一个简单的runAfter函数，用以实现定时器功能，使用非常简单：</p>
+<pre><code>void func(IOLoop* loop)
+{
+    cout &lt;&lt; &quot;hello world&quot; &lt;&lt; endl;
+    loop-&gt;stop();
+}
+
+IOLoop loop;
+loop.runAfter(10 * 1000， std::bind(&amp;func, &amp;loop));
+loop.start();
+</code></pre><p>loop启动十秒之后，会打印hello world，然后整个loop退出。更多定制化的timer使用，可以使用libtnet提供的Timer class。</p>
+<h2 id="Callback">Callback</h2>
+<p>libtnet是一个单线程单ioloop的模型，但是不排除仍然会有其他线程希望与IOLoop进行通信，所以IOLoop提供了addCallback功能，这是libtnet唯一一个线程安全的函数。因为加入callback是一个很快速的操作，IOLoop使用了spinlock。在IOLoop每次循环的末尾，会将全部的callback取出，依次执行。</p>
+<pre><code>void callback(IOLoop* loop)
+{
+    cout &lt;&lt; &quot;tell to exit&quot; &lt;&lt; endl;
+    loop-&gt;stop();
+}
+
+IOLoop loop;
+loop.addCallback(std::bind(&amp;func, &amp;loop));
+loop.start();
+</code></pre>
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-12-28T10:25:49.000Z"><a href="/2013/12/28/libtnet-introduction/">12-28-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/12/28/libtnet-introduction/">高性能网络库Libtnet介绍</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>libtnet是一个用c++编写的高性能网络库，它在设计上面主要参考tornado，为服务端网络编程提供简洁而高效的接口，非常易于使用。</p>
+<h1 id="Echo_Server">Echo Server</h1>
+<pre><code>void onConnEvent(const ConnectionPtr_t&amp; conn, ConnEvent event, const void* context)
+{
+    switch(event)
+    {
+        case Conn_ReadEvent:
+            {
+                const StackBuffer* buffer = static_cast&lt;const StackBuffer*&gt;(context);
+                conn-&gt;send(string(buffer-&gt;buffer, buffer-&gt;count));
+            }
+            break;
+        default:
+            break;
+    }    
+}
+
+int main()
+{
+    TcpServer s;
+    s.listen(Address(11181), std::bind(&amp;onConnEvent, _1, _2, _3));
+
+    s.start();
+
+    return 0;
+}
+</code></pre><p>当程序启动，服务监听本地11181端口，我们使用telnet测试：</p>
+<pre><code>root@tnet:~# telnet 127.0.0.1 11181
+Trying 127.0.0.1...
+Connected to 127.0.0.1.
+Escape character is &#39;^]&#39;.
+hello world
+hello world
+</code></pre><p>可以看到，libtnet在使用上面非常简单，在listen的时候，指定一个回调函数，当有新的连接到来的时候，该回调函数就会与该connection进行绑定，这样该connection的任何事件都能通过回调进行处理。</p>
+<p>在上面那个例子中，我们只关心了connection的ReadEvent，也就是读事件，然后将读取到的所有数据原封不动的转发回去。</p>
+<h1 id="Http_Server">Http Server</h1>
+<pre><code>void onHandler(const HttpConnectionPtr_t&amp; conn, const HttpRequest&amp; request)
+{
+    HttpResponse resp;
+    resp.statusCode = 200;
+    resp.body.append(&quot;Hello World&quot;);
+
+    conn-&gt;send(resp);
+}
+
+int main()
+{
+    TcpServer s;
+    HttpServer httpd(&amp;s);   
+    httpd.setHttpCallback(&quot;/abc&quot;, std::bind(&amp;onHandler, _1, _2));
+
+    httpd.listen(Address(11181));    
+    s.start(4);
+
+    return 0;
+} 
+</code></pre><p>当server启动，程序使用本机11181端口提供http服务。我们使用curl测试。</p>
+<pre><code>curl http://127.0.0.1:11181/abc
+
+return: hello world
+</code></pre><p>可以看到，使用http server也非常简单，我们只需要对相应的路径绑定一个callback回调，当有请求发生的时候，对应的callback执行。</p>
+<p>使用benchmark测试，发现性能也不错RPS能到16000+，在512MB，单核CPU下面进行ab压测，具体可以参考<a href="https://github.com/siddontang/libtnet/wiki/Benchmark" target="_blank" rel="external">benchmark</a>。</p>
+<h1 id="Webscoket_Server">Webscoket Server</h1>
+<pre><code>void onWsCallback(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
+{
+    switch(event)
+    {
+        case Ws_MessageEvent:
+            {
+                const string&amp; str = *(const string*)context;
+                conn-&gt;send(&quot;hello &quot; + str);
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+int main()
+{
+    TcpServer s;
+
+    HttpServer httpd(&amp;s);
+
+    httpd.setWsCallback(&quot;/push/ws&quot;, std::bind(&amp;onWsCallback, _1, _2, _3));    
+
+    httpd.listen(Address(11181));
+
+    s.start();
+
+    return 0; 
+}
+</code></pre><p>libtnet同样提供了websocket <a href="http://tools.ietf.org/html/rfc6455" target="_blank" rel="external">RFC6455</a>的支持，使用方法同http server，只需要对相应的path注册特定的回调，就可以很方便的进行websocket交互。</p>
+<h1 id="Client">Client</h1>
+<p>libtnet不光提供了server层面的相关功能，同时也集成了<strong>http client</strong>，<strong>websocket client</strong>以及<strong>redis client</strong>。使得libtnet也能方便的进行客户端网络功能的开发。对于具体的使用，可以参考<a href="https://github.com/siddontang/libtnet/tree/master/test" target="_blank" rel="external">example</a>。</p>
+<h1 id="设计上面的考量">设计上面的考量</h1>
+<p>libtnet只支持linux版本，虽然做一个跨平台的通用库是一件吸引力非常大的事情，但是综合考虑之后，我决定只做linux版本的，主要有以下几个原因：</p>
+<ul>
+<li>Linux下面使用prefork + epoll是一种非常高效的网络编程模型，性能强悍，实现简单。虽然unix下面有kqueue，windows下面有IOCP，但是没必要为了适配所有得操作系统将代码写的复杂。</li>
+<li>Linux在系统层面上面就提供了很多高性能的函数，譬如timerfd，eventfd等，不光性能提升，同时也简化了很多代码实现。</li>
+<li>Linux在服务器编程领域的使用率很高，专门做精一个平台就够了。</li>
+</ul>
+<p>因为高性能的网络编程通常都是使用异步的编程方式，所以经常可以看到代码被异步拆的特别分散，不利于编写。所以我在libtnet里面大量的使用了c++ bind以及shared_ptr技术，用来模拟函数闭包，以及解决对象生命周期管理问题，简化代码的编写。并且我也使用了c++ 0x相关技术，gcc的版本至少要在4.4以上。</p>
+<p>对于如何设计以及使用libtnet，后续我会有更加详细的说明。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+
+  <nav id="pagination">
+  
+  
+  <div class="clearfix"></div>
+</nav>
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

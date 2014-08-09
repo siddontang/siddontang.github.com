@@ -1,0 +1,837 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>第 3 页 | go | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+<h2 class="archive-title tag">go</h2>
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-13T03:16:31.000Z"><a href="/2014/03/13/mixer-protocol/">03-13-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/13/mixer-protocol/">Mixer MySQL通讯协议解析</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="综述">综述</h1>
+<p>要实现一个mysql proxy，首先需要做的就是理解并实现mysql通讯协议。这样才能通过proxy架起client到server之间的桥梁。</p>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>的mysql协议实现主要参考mysql官方的<a href="http://dev.mysql.com/doc/internals/en/client-server-protocol.html" target="_blank" rel="external">internal manual</a>，并用Wireshark同时进行验证。在实现的过程中，当然踩了很多坑，这里记录一下，算是对协议分析的一个总结。</p>
+<p>需要注意的是，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>并没有支持所有的mysql协议，譬如备份，存储过程等，主要在于精力有限，同时也为了实现简单。</p>
+<h1 id="数据类型">数据类型</h1>
+<p>mysql协议只有两种基本的数据类型，integer和string。</p>
+<h2 id="integer">integer</h2>
+<p>integer包括fixed length integer和length encoded integer两种，对于length encoded integer，用的地方比较多，这里详细说明一下。</p>
+<p>对于一个integer，我们按照如下的方式将其转成length encoded integer：</p>
+<ul>
+<li>如果value &lt; 251，使用1 byte</li>
+<li>如果value &gt;= 251 同时 value &lt; 2 ** 16，使用fc + 2 byte</li>
+<li>如果value &gt;= 2 ** 16 同时 value &lt; 2 ** 24，使用fd + 3 byte </li>
+<li>如果value &gt;= 2 ** 24 同时 value &lt; 2 ** 64，使用fe + 8 byte</li>
+</ul>
+<p>相应的，对于一个length encoded integer，我们可以通过判断第一个byte的值来转成相应的integer。</p>
+<h2 id="string">string</h2>
+<p>string包括：</p>
+<ul>
+<li>fixed length string，固定长度string</li>
+<li>null terminated string，以null结尾的string</li>
+<li>variable length string，通过另一个值决定长度的string</li>
+<li>length encoded string，通过起始length encoded integer决定长度的string</li>
+<li>rest of packet string，从当前位置到包结尾的string</li>
+</ul>
+<h1 id="Packet">Packet</h1>
+<p>在mysql中，如果client或server要发送数据，它需要将数据按照(2 ** 24 - 1)拆分成packet，给每一个packet添加header，然后再以此发送。</p>
+<p>对于一个packet，格式如下：</p>
+<pre><code>3              payload length
+1              sequence id
+string[len]    payload
+</code></pre><p>前面3个字节表明的是该packet的长度，每个packet最大不超过16MB。第4个字节表明的是该packet的序列号，从0开始，对于多个packet依次递增，等到下一个新的命令发送数据的时候才重置为0。前面4个字节组成了一个packet的header，后面就是该packet实际的数据。</p>
+<p>因为一个packet最大能发送的数据位16MB，所以如果需要发送大于16MB的数据，就需要拆分成多个packet进行发送。</p>
+<p>通常，server会回给client三种类型的packet</p>
+<ul>
+<li>OK Packet，操作成功</li>
+<li>Err Packet，操作失败</li>
+<li>EOF Packet，end of file</li>
+</ul>
+<h1 id="登陆交互">登陆交互</h1>
+<p>要实现proxy，首先需要解决的就是登陆问题，包括proxy模拟server处理client的登陆，proxy模拟client登陆server。</p>
+<p>为了简单，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只支持username + password的方式进行登陆，这应该也是最通用的登陆方式。同时不支持ssl以及compression。</p>
+<p>一个完整的登陆流程如下：</p>
+<ul>
+<li>client首先connect到server</li>
+<li>server发送initial handshake packet，包括支持的capability，一个用于加密的随机salt等</li>
+<li>client返回handshake结果，包括自己支持的capability，以及用salt加密的密码</li>
+<li>server验证，如果成功，返回ok packet，否则返回err packet并关闭连接</li>
+</ul>
+<p>这里，不得不说实现登陆协议的时候踩过的一个很大的坑，因为我使用的是HandshakeV10协议，在文档里面，协议有这样的规定：</p>
+<pre><code>if capabilities &amp; CLIENT_SECURE_CONNECTION {
+    string[$len]   auth-plugin-data-part-2 ($len=MAX(13, length of auth-plugin-data - 8))
+}
+</code></pre><p>如果根据文档的说明，算出来auth-plugin-data-part-2的长度是13，因为auth-plugin-data的长度是20。但是，实际情况是，auth-plugin-data-part-2的长度应该为12，第13位一直为0。只有这样，我们才能根据salt算出正确的加密密码。这一点，在mysql-proxy官方的文档，以及多个msyql client driver上面，Wireshark的分析中都是如此，在go-sql-driver中，作者都直接写了如下的注释：</p>
+<pre><code>// second part of the password cipher [12? bytes]
+// The documentation is ambiguous about the length.
+// The official Python library uses the fixed length 12
+// which is not documented but seems to work.
+</code></pre><p>可想而知，这个坑有多坑爹。至少我开始是栽在上面了。加密老是不对。</p>
+<h1 id="Command">Command</h1>
+<p>搞定了登陆，剩下的就是mysql的命令支持，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只实现了基本的命令。主要集中在text protocol以及prepared statment里面。</p>
+<h2 id="COM_PING">COM_PING</h2>
+<p>最基本的ping实现，用来检查mysql是否存活。</p>
+<h2 id="COM_INIT_DB">COM_INIT_DB</h2>
+<p>虽然叫init db，其实压根干的事情就跟use db一样，用来切换使用db的。</p>
+<h2 id="COM_QUERY">COM_QUERY</h2>
+<p>可以算是最重要的一个命令，我们在命令行使用的多数mysql语句，都是通过该命令发送的。</p>
+<p>在COM_QUERY中，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>主要支持了select，update，insert，delete，replace等基本的操作语句，同时支持begin，commit，rollback事物操作，还支持set names和set autocommit。</p>
+<p>COM_QUERY有4中返回packet</p>
+<ul>
+<li>OK Packet</li>
+<li>Err Packet</li>
+<li>Local In File（不支持）</li>
+<li>Text Resultset</li>
+</ul>
+<p>这里重点说明一下text resultset，因为它包含的就是我们最常用的select的结果集。</p>
+<p>一个text resultset，包括如下几个包：</p>
+<ul>
+<li>一个以length encoded integer编码的column-count packet</li>
+<li>column-count个column定义packet</li>
+<li>eof packet</li>
+<li>一个或者多个row packet，每个row packet有column-count个数据</li>
+<li>eof packet或者err packet</li>
+</ul>
+<p>对于一个row packet的里面的数据，我们通过如下方式获取：</p>
+<ul>
+<li>如果值为NULL，那么就是0xfb</li>
+<li>否则，任何值都是用length encoded string表示</li>
+</ul>
+<h2 id="COMSTMT*">COM<em>STMT</em>*</h2>
+<p>COM<em>STMT</em>族协议就是通常的prepared statement，当我在atlas群里面说支持prepared statement的时候，很多人以为我支持的是在COM_QUERY中使用的prepare，execute和deallocate prepare这组语句。其实这两个还是很有区别的。</p>
+<p>为什么我不现在不想支持COM_QUERY的prepare，主要在于这种prepare需要进行变量设置，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>在后端跟server是维护的一个连接池，所以对于client设置的变量，proxy维护起来特别麻烦，并且每次跟server使用新的连接的时候，还需要将所有的变量重设，这增大了复杂度。所以我不支持变量的设置，这点看cobar也是如此。既然不支持变量，所以COM_QUERY的prepare我也不会支持了。</p>
+<p>COM<em>STMT</em>*这组命令，主要用在各个语言的client driver中，所以我觉得只支持这种的prepare就够了。</p>
+<p>对于COM_STMT_EXECUTE的返回结果，因为prepare的语句可能是select，所以会返回binary resultset，binary resultset组成跟前面text resultset差不多，唯一需要注意的就是row packet采用的是binary row packet。</p>
+<p>对于每一个binary row packet，第一个byte为0，后面紧跟着一个null bitmap，然后才是实际的数据。</p>
+<p>在binary row packet中，使用null bitmap来表明该行某一列的数据为NULL。null bitmap长度通过 (column-count + 7 + 2) / 8计算得到，而对于每列数据，如果为NULL，那么它在null bitmap中的位置通过如下方式计算：</p>
+<pre><code>NULL-bitmap-byte = ((field-pos + offset) / 8)
+NULL-bitmap-bit  = ((field-pos + offset) % 8)
+</code></pre><p>offset在binary resultset中为2，field-pos为该列的位置。</p>
+<p>对于实际非NULL数据，则是根据每列定义的数据类型来获取，譬如如果type为MYSQL_TYPE_LONGLONG，那么该数据值的长度就是8字节，如果type为MYSQL_TYPE_STRING，那么该数据值就是一个length encoded string。</p>
+<h1 id="后记">后记</h1>
+<p>我通过Wireshark分析了一些mysql protocol，主要在<a href="https://github.com/siddontang/mixer/blob/master/doc/protocol.txt" target="_blank" rel="external">这里</a>，这里不得不强烈推荐wireshark，它让我在学习mysql protocol过程中事半功倍。</p>
+<p>mixer的代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>，欢迎反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-12T06:16:43.000Z"><a href="/2014/03/12/polaris-introduction/">03-12-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/12/polaris-introduction/">Polaris 一个用Go实现的Restful Web框架</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>是一个用go实现的支持restful的web框架，主要参考tornado进行设计。</p>
+<p>虽然在go里面搭建一个http server非常的简单，这里强烈推荐<a href="http://www.gorillatoolkit.org/" target="_blank" rel="external">gorilla</a>，但并没有很好的对restful模型进行支持。考察了很多开源实现，我决定还是重新造一个轮子，毕竟难度也不怎么大，而且能够根据项目的使用慢慢调整完善。</p>
+<h1 id="使用">使用</h1>
+<p>设计<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>还是参考了tornado，虽然一段时间不用python了，但是我还是对tornado念念不忘。</p>
+<p>在<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>，我现在只支持get，post，put，head和delete这几种method，剩下的貌似我也没用到过。只要一个对象，它提供了以上一个或多个接口，就能注册进<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的router中。</p>
+<p>先上一个例子：</p>
+<pre><code>type Handler1 struct {
+
+}
+
+func (h *Handler1) Prepare(env *Env) {
+    fmt.Println(&quot;hello prepare&quot;)
+}
+
+func (h *Handler1) Get(env *Env) {
+    env.WriteString(&quot;hello get&quot;)
+}
+
+func (h *Handler1) Post(env *Env) {
+    env.WriteString(&quot;hello post&quot;)
+}
+
+type Handler2 struct {
+
+}
+
+//id is a captured submatch for regexp url below
+func (h *Handler2) Get(env *Env, id string) {
+    env.WriteString(&quot;hello &quot; + id)
+}
+
+r = NewRouter()
+
+r.Handle(&quot;/handler1&quot;, new(Handler1))
+r.Handle(&quot;/handler2/([0-9]+)&quot;, new(Handler2))
+
+http.Handle(&quot;/&quot;, r)
+http.ListenAndServe(&quot;127.0.0.1:11181&quot;, nil)
+</code></pre><p>上面，我们实现了两个handler，对于每一个handler，需要实现以下一个或多个接口:</p>
+<pre><code>Get(env *Env)
+Post(env *Env)
+Head(env *Env)
+Put(env *Env)
+Delete(env *Env)
+</code></pre><p>Env用以表明该次请求的上下文环境，主要是为了纪念一个内部库stars，以此命名。</p>
+<p>鉴于tornado也提供了prepare支持，所以，如果handler提供了Prepare(env *Env)接口，每次调用相应的函数的时候，会优先调用Prepare。</p>
+<p>在handler2中，我们可以看到，Get函数多了一个参数id，这主要是为了处理对应的正则url里面含有group的情况。上面handler2对应的url里面有一个([0-9]+) group，所以当url匹配成功之后，我们会将该group实际的数据传递给handler2。</p>
+<p>因为正则匹配的结果都是string，所以Get后面的参数都必须是string类型的。实际的类型转换需要handler自行处理。</p>
+<h1 id="路由规则">路由规则</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的路由规则比较简单，参考nginx分为literal pattern和regexp pattern两种。当有请求需要处理的时候，首先查看是否在literal pattern中，如果不是，则根据注册的regexp pattern依次匹配。</p>
+<p>上面的例子中，<strong>/handler1</strong>就是literal pattern，而<strong>/handler2/([0-9]+)</strong>则是regexp pattern。在go中，判断一个字符串是否是正则表达式，只要通过regexp.QuoteMeta就可以了，如果得到的值跟原字符串一样，该字符串就是literal pattern。</p>
+<h1 id="实现">实现</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>核心实现是基于reflect，这里列举一些：</p>
+<h2 id="判断一个handler是否具有相关接口">判断一个handler是否具有相关接口</h2>
+<ul>
+<li>reflect.ValueOf(handler)得到handler的value v</li>
+<li>v.MethodByName(“Get”)得到get function的value m</li>
+<li>m.Kind() == reflect.Func判断是否存在Get函数</li>
+</ul>
+<h2 id="判断接口是否满足规范">判断接口是否满足规范</h2>
+<ul>
+<li>m.NumIn()获取该函数输入参数的个数</li>
+<li>m.In(0).Kind() == reflect.Ptr和m.In(0).String() == “<em>polaris.Env”判断第一个参数必须为\</em>Env</li>
+<li>m.In(i).Kind() == reflect.String判断第i(i&gt;=1)个参数必须为string</li>
+</ul>
+<h2 id="根据传入的参数调用相应的函数">根据传入的参数调用相应的函数</h2>
+<ul>
+<li>根据传入的http request method找到对应的函数 m</li>
+<li>values = make([]relfect.Value, nArgs)</li>
+<li>通过reflect.ValueOf填充参数，第一个参数为*Env</li>
+<li>m.Call(values)，使用Call进行函数调用</li>
+</ul>
+<h1 id="后续">后续</h1>
+<p>现在的<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>只支持基本的restful模型，后续我考虑将自己开发的其他库，譬如log，mysql等进行整合，使其真正成为一个可用的restful web framework。</p>
+<p>代码在这里<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">https://github.com/siddontang/polaris</a>，欢迎大家反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-10T01:35:51.000Z"><a href="/2014/03/10/mixer-introduction/">03-10-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/10/mixer-introduction/">Mixer 一个用Go实现的MySQL Proxy</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>是一个用go实现的mysql proxy，支持基本的mysql代理功能。</p>
+<p>mysql的中间件很多，对于市面上面现有的功能强大的proxy，我主要考察了如下几个：</p>
+<ul>
+<li>mysql-proxy，mysql官方的代理，使用起来并不友好，需要进行lua定制，而且本人对其稳定性和性能存疑。</li>
+<li>Cobar，阿里的东西，品质没的说，但对于我们项目，有点杀鸡用牛刀的感觉，另外我们都不会java。</li>
+<li>Atlas，360出品的基于mysql-proxy的增强版，几乎用c重写了核心框架，性能和稳定性都没话说。</li>
+</ul>
+<p>当然，还有很多强大的proxy，我不可能一一涉及，而现阶段我们项目中使用的是Atlas（这算不算给Atlas打了一个广告？）。</p>
+<p>既然有这么多的proxy，为什么我还想自己实现一个呢？可能最主要的原因在于兴趣使然吧。</p>
+<h1 id="mysql功能支持">mysql功能支持</h1>
+<p>当开始着手进行<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>开发的时候，我就知道，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>不是mysql，它不可能proxy所有mysql的功能。所以，我决定<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只支持如下mysql命令：</p>
+<ul>
+<li>COM_QUERY<ul>
+<li>select, insert, update, delete, replace</li>
+<li>set autocommit</li>
+<li>set names</li>
+<li>begin, commit, rollback</li>
+</ul>
+</li>
+<li>COM_PING</li>
+<li>COM_INIT_DB</li>
+<li>COM<em>STMT_PREPARE, COM_STMT_EXEC等COM_STMT</em>*命令，仅支持上述COM_QUERY命令的prepare</li>
+</ul>
+<p>[mixer](<a href="https://github.com/siddontang/mixer不支持命令挺多的，列举一些：" target="_blank" rel="external">https://github.com/siddontang/mixer不支持命令挺多的，列举一些：</a></p>
+<ul>
+<li>set variable。如果支持，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>需要维护每一个变量的状态，增加了复杂度。但<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>支持autocommit和names的设置。</li>
+<li>sql text模式的prepare statement。</li>
+<li>show命令。</li>
+<li>存储过程。</li>
+</ul>
+<p>虽然很多功能现阶段没有，但不排除后续支持。</p>
+<h1 id="高可用方案">高可用方案</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>提供了一套mysql高可用使用方案，现阶段主要功能如下：</p>
+<ul>
+<li>读写分离，将select发送到slave，其余发送到master执行，事物所有在master执行。现阶段只支持一主一备。</li>
+<li>主备自动切换，当主mysql不可用，根据相关规则切换到backup mysql执行。</li>
+</ul>
+<h1 id="Todo">Todo</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>还不完善，很多功能需要实现，后续优先需要实现的功能：</p>
+<ul>
+<li>parser，将sql进行语法解析，构建AST，在proxy层面就防止一些mysql隐患，譬如注入攻击，delete没有where等。</li>
+<li>自定义路由，根据路由规则将sql路由到不同mysql执行。譬如根据主键将select语句hash到不同的slave上面执行。</li>
+<li>统计功能。</li>
+</ul>
+<p>代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>。非常希望对proxy感兴趣的童鞋参与进来，共同完善<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，使其成为另一个mysql中间件解决方案。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-02-24T05:41:38.000Z"><a href="/2014/02/24/go-mysql-introduction/">02-24-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/02/24/go-mysql-introduction/">Go MySQL接口开发</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>是一个用go写的mysql driver，使用接口类似于go自身的database sql，但是稍微有一点不同，现阶段还不支持集成进go database/sql中，但实现难度并不大，后续可能会接入。</p>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>最先开始于<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>（一个用go实现的mysql proxy）中，随着mixer的演化，我觉得有必要将其mysql模块独立出来使用。对于<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，后续我会详细介绍。</p>
+<p>为什么要自己实现一套新的接口，而不是go自身的sql接口呢？最主要的原因在于我很不习惯使用Query的查询方式。go自身的query例子：</p>
+<pre><code>age := 27
+rows, err := db.Query(&quot;SELECT name FROM users WHERE age=?&quot;, age)
+if err != nil {
+    log.Fatal(err)
+}
+for rows.Next() {
+    var name string
+    if err := rows.Scan(&amp;name); err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf(&quot;%s is %d\n&quot;, name, age)
+}
+if err := rows.Err(); err != nil {
+    log.Fatal(err)
+}
+</code></pre><p>可以看到，使用起来非常的繁琐复杂，如果代码里面select语句很多（恰恰我们代码里面n多select），那么如果每次select都要靠这种方式得到我们需要的结果，那我可能写代码会写崩溃的。所以势必我们需要提供一套封装用来简化select的结果集获取。</p>
+<h1 id="Resultset">Resultset</h1>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>跟go自身的sql接口最大的不一样在于Query的时候直接返回了一个resultset，而这个resultset定义如下：</p>
+<pre><code>type Field struct {
+    Name []byte
+    Type uint8
+    Flag uint16
+}
+
+type Resultset struct {
+    Status uint16 //server status for this query resultset
+
+    Fields     []Field
+    FieldNames map[string]int
+
+    Data [][]interface{}
+}
+</code></pre><p>Field用来表示查询的时候返回的数据每列的名字，数据类型以及一些特定的Flag。而resultset中的Data则是存放了query结果中对于的实际数据。因为对于mysql select来说，它返回的是一个<strong>“m x n”</strong>的结果集，我们直接使用[][]interface{}在go中表示。</p>
+<p>Resultset提供了非常方便的接口用于select数据的获取：</p>
+<pre><code>//指定某一行，某一列获取数据，结果为string
+func (r *Resultset) GetString(row, column int) (string, error)
+//执行某一行，某一列的名字获取数据，结果为string
+func (r *Resultset) GetStringByName(row int, columnName int) (string, error)
+</code></pre><h1 id="接口">接口</h1>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>除了query之外，几乎提供了与go database/sql一样的接口使用方式：</p>
+<pre><code>//创建一个db，最大允许保活16个空闲连接
+//dsn格式为：&lt;username&gt;:&lt;password&gt;@&lt;host&gt;:&lt;port&gt;/&lt;database&gt;
+db := NewDB(&quot;qing:admin@127.0.0.1:3306/mixer&quot;, 16)
+
+//ping一下，看mysql server是不是还是活的
+db.Ping()
+
+//执行exec，包括insert,update,delete,replace
+r, err := db.Exec(&quot;insert into mixer_conn (id, str) values (1, `abc`)&quot;)
+println(r.LastInsertId(), r.RowsAffected())
+
+//执行exec，语句中包含 ？占位符，需要传递相应的参数
+r, err := db.Exec(&quot;insert into mixer_conn (id, str) values (?, ?)&quot;, 2, &quot;efg&quot;)
+println(r.LastInsertId(), r.RowsAffected())
+
+//执行select，得到结果集，并获取相关数据
+r, err := db.Query(&quot;select str from mixer_conn where id     = 1&quot;)
+str, _ = r.GetString(0, 0)
+str, _ = r.GetStringByName(0, &quot;str&quot;)
+
+//开始一个事物
+tx, err = db.Begin()
+
+//在事物里面执行语句
+tx.Exec(&quot;insert into mixer_conn (id, str) values (3, `abc`)&quot;)
+
+//提交事物
+tx.Commit()
+
+//创建一个prepare statement
+s, err := db.Prepare(&quot;insert into mixer_conn (id, str) values(?, ?)&quot;)
+
+//执行 prepare statement
+s.Exec(5, &quot;abc&quot;)
+
+//关闭 prepare statement
+s.Close()
+</code></pre><p>不光如此，<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>还提供单独获取一个conn，用于给外部额外使用的功能，譬如:</p>
+<pre><code>conn, err := db.GetConn()
+
+//我需要设置conn的字符集为gb2312
+conn.SetCharset(&quot;gb2312&quot;)    
+
+conn.Close()
+</code></pre><p>可以看到，<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>的使用非常简单，现阶段正逐渐在我们项目中使用，也非常期待您的反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-02-21T01:51:40.000Z"><a href="/2014/02/21/golang-rpc-frame/">02-21-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/02/21/golang-rpc-frame/">使用go reflect实现一套简易的rpc框架</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h2 id="go_jsonrpc">go jsonrpc</h2>
+<p>在实际项目中，我们经常会碰到服务之间交互的情况，如何方便的与远端服务进行交互，就是一个需要我们考虑的问题。</p>
+<p>通常，我们可以采用restful的编程方式，各个服务提供相应的web接口，相互之间通过http方式进行调用。或者采用rpc方式，约定json格式进行数据交互。</p>
+<p>在我们的项目中，服务端对用户客户端提供的是restful的接口方式，而在服务器内部，我们则采用rpc方式进行服务之间的交互。</p>
+<p>go语言本来就提供了jsonrpc的支持，所以自然开始我们就直接使用jsonrpc。jsonrpc的使用非常简单，对于调用端来说，就如同一个函数调用，如下：</p>
+<pre><code>args := &amp;Args{7, 8}
+reply := new(Reply)
+err := client.Call(&quot;Arith.Add&quot;, args, reply)
+</code></pre><p>上面是go jsonrpc自带的一个例子，可以看到，虽然我们通过call(rpcName, inParams, outParams)这样的形式可以很方便的进行rpc的调用，但是跟go实际的函数调用还是稍微有一点区别，对我来说，这么使用总觉得很别扭。</p>
+<h2 id="我觉得方便的rpc使用方式">我觉得方便的rpc使用方式</h2>
+<p>对于go jsonrpc来说，它的调用格式是这样的</p>
+<pre><code>err := call(name, in, out)
+</code></pre><p>但是对我来说，我希望采用这样的调用方式：</p>
+<pre><code>out, err := RpcFunc(in)
+</code></pre><p>假设server端有如下的一个RPC函数，注册的rpc name为testrpc。</p>
+<pre><code>func Test(id int) (int, error)
+</code></pre><p>对于client端来说，我希望的使用方式是这样:</p>
+<pre><code>var rpcTest func(id int) (int, error)
+MakeRpc(&quot;testrpc&quot;, &amp;rpcTest)
+
+id, err := rpcTest(10)
+</code></pre><p>在client端，我们首先声明了跟server Test类型完全一致的一个函数变量。然后通过MakeRpc接口将其命名为testrpc，并且将rpcTest绑定到实际的rpc函数上面，最后rpcTest就跟普通函数的调用一样。</p>
+<p>可以看到，这种使用方式跟jsonrpc最大的不同在于rpc的返回值直接就是函数自身的返回值。而这个可能更符合我使用go函数的习惯。</p>
+<h2 id="实现">实现</h2>
+<p>实现一套rpc框架需要考虑server，client以及包协议的问题。</p>
+<h3 id="包协议">包协议</h3>
+<p>我使用了最简单的包头 + 实际数据的做法，包头使用一个4字节的int表示后续数据的长度。而对于实际的rpc数据，我采用的是gob进行打包解包。</p>
+<p>为什么选用gob而不是json？主要在于我不想自己做数据类型的转换，在json中，int类型的encode，decode会变成float类型的，如果函数需要的参数是int，json decode之后还需要我们自己根据参数实际的类型进行转换。增加了复杂度。而gob则在encode时候会加上实际的数据类型，这样decode之后我就能直接使用。</p>
+<p>而且gob还支持注册自定义的类型，但是为了简单，建议只支持基本的数据类型，因为对于rpc来说，传递复杂的数据类型进行函数调用，我总觉得有点复杂，这在设计上面已经有问题了。</p>
+<h3 id="server">server</h3>
+<p>在server需要解决的问题就是rpc函数注册并通过名字能进行该rpc函数调用。而这个通过reflect就能非常方便的实现，一个通过函数名字进行函数调用的例子：</p>
+<pre><code>func Test(id int) (string, error) {
+    return &quot;abc&quot;, nil
+}
+
+funcmap  = map[string]reflect.Value{}
+
+v := reflect.ValueOf(Test)
+
+funcmap[&quot;test_rpc&quot;] = v
+
+args := []reflect.Value{reflect.ValueOf(10)}
+
+funcmap[&quot;test_rpc&quot;](args)
+</code></pre><h3 id="client">client</h3>
+<p>在client层，我们需要关注在声明一个rpc原型的函数变量之后，如何将其替换成另一个函数进行rpc调用。我们可以通过reflect的MakeFunc函数方便的做到，go自身的例子：</p>
+<pre><code>swap := func(in []reflect.Value) []reflect.Value {
+    return []reflect.Value{in[1], in[0]}
+}
+
+ makeSwap := func(fptr interface{}) {
+    fn := reflect.ValueOf(fptr).Elem()
+    v := reflect.MakeFunc(fn.Type(), swap)
+    fn.Set(v)
+}
+
+var intSwap func(int, int) (int, int)
+makeSwap(&amp;intSwap)
+fmt.Println(intSwap(0, 1))
+</code></pre><p>MakeFunc的原理在于，根据传入的函数变量的类型，创建一个新的函数，该函数调用的是我们指定的另一个函数。</p>
+<p>同时，我们得到传入变量的指针，并用新的函数重新给该变量赋值。</p>
+<h3 id="error处理">error处理</h3>
+<p>因为rpc调用可能会出现其他错误，譬如网络断线，gob encode错误等，client在调用的时候必须得处理这些错误，暴力的作法就是如果是这种内部错误，我们直接panic，但是我觉得太不友好，所以我们约定，所有的rpc函数在最后一个返回值必须是error。这样就是是rpc内部的错误，我们也能够通过error返回。</p>
+<p>在注册rpc的时候，我们可以通过判断最后一个返回值是否是interface，同时是否具有Error函数来强制要求必须为error。如下</p>
+<pre><code>v := reflect.ValueOf(rpcFunc)
+
+nOut := v.Type().NumOut()
+
+if nOut == 0 || v.Type().Out(nOut-1).Kind() != reflect.Interface {
+    err = fmt.Errorf(&quot;%s return final output param must be error interface&quot;, name)
+    return
+}
+
+_, b := v.Type().Out(nOut - 1).MethodByName(&quot;Error&quot;)
+if !b {
+    err = fmt.Errorf(&quot;%s return final output param must be error interface&quot;, name)
+    return
+}
+</code></pre><p>但是，如果在MakeFunc里面直接返回error，会出现“reflect: function created by MakeFunc using closure returned wrong type: have *errors.errorString for error”这样的问题，主要在于reflect.Value需要知道我们error的接口类型，参考<a href="http://grokbase.com/t/gg/golang-nuts/139qpwv48h/go-nuts-returning-interface-value-from-reflect-makefunc" target="_blank" rel="external">这里</a>。</p>
+<p>所以，我们通过如下方式对error进行处理，转成相应的reflect.Value</p>
+<pre><code>v := reflect.ValueOf(&amp;e).Elem()
+</code></pre><h3 id="nil处理">nil处理</h3>
+<p>在实际rpc中，我们可能还会面临参数为nil的问题，如果直接对nil进行reflect.ValueOf，是得不到我们期望的类型的，这时候的Kind是0，reflect压根不能将其正确的转换成函数实际的类型。</p>
+<p>当碰到nil的情况，我们只需要根据当前函数参数实际的类型，生成一个Zero Value，就可以很方便的解决这个问题：</p>
+<p>假设函数第一个返回值为nil，那么我们这样</p>
+<pre><code>v := reflect.Zero(fn.Type().Out(0))
+</code></pre><h2 id="代码">代码</h2>
+<p>最开始写了一个代码片段验证自己的想法，在<a href="https://gist.github.com/siddontang/9088489" target="_blank" rel="external">这里</a>。</p>
+<p>一个rpc frame的完整<a href="https://github.com/siddontang/golib/tree/master/rpc" target="_blank" rel="external">实现</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-01-16T08:22:05.000Z"><a href="/2014/01/16/golang-mylib-timingwheel/">01-16-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/01/16/golang-mylib-timingwheel/">Go实现简易的TimingWheel</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="Ticker">Ticker</h1>
+<p>最近的项目用go实现的服务器需要挂载大量的socket连接。如何判断连接是否还存活就是我们需要考虑的一个问题了。</p>
+<p>通常情况下面，socket如果被客户端正常close，服务器是能检测到的，但是如果客户端突然拔掉网线，或者是断电，那么socket的状态在服务器看来可能仍然是established。而实际上该socket已经不可用了。</p>
+<p>为了判断连接是否可用，通常我们会用timer机制来定时检测，在go里面，这非常容易实现，如下：</p>
+<pre><code>ticker := time.NewTicker(60 * time.Second)
+
+for {
+    select {
+        case &lt;-ticker.C:
+            if err := ping(); err != nil {
+                close()
+            }
+    }
+}
+</code></pre><p>上面我们使用一个60s的ticker，定时去ping，如果ping失败了，证明连接已经断开了，这时候就需要close了。</p>
+<p>这套机制比较简单，也运行的很好，直到我们的服务器连上了10w+的连接。因为每一个连接都有一个ticker，所以同时会有大量的ticker运行，cpu一直在30%左右徘徊，性能不能让人接受。</p>
+<p>其实，我们只需要的是一套高效的超时通知机制。</p>
+<h1 id="Close_channel_to_broadcast">Close channel to broadcast</h1>
+<p>在go里面，channel是一个很不错的东西，我们可以通过close channel来进行broadcast。如下：</p>
+<pre><code>ch := make(bool)
+
+for i := 0; i &lt; 10; i++ {
+    go func() {
+        println(&quot;begin&quot;)
+        &lt;-ch
+        println(&quot;end&quot;)
+    }
+}
+
+time.Sleep(10 * time.Second)
+
+close(ch)
+</code></pre><p>上面，我们启动了10个goroutine，它们都会因为等待ch的数据而block，10s之后close这个channel，那么所有等待该channel的goroutine就会继续往下执行。</p>
+<h1 id="TimingWheel">TimingWheel</h1>
+<p>通过channel这种close broadcast机制，我们可以非常方便的实现一个timer，timer有一个channel ch，所有需要在某一个时间 “T” 收到通知的goroutine都可以尝试读该ch，当T到达时候，close该ch，那么所有的goroutine都能收到该事件了。</p>
+<p>timingwheel的使用很简单，首先我们创建一个wheel</p>
+<pre><code>//这里我们创建了一个timingwheel，精度是1s，最大的超时等待时间为3600s
+w := timingwheel.NewTimingWheel(1 * time.Second, 3600)
+
+//等待10s
+&lt;-w.After(10 * time.Second)
+</code></pre><p>因为timingwheel只有一个1s的ticker，并且只创建了3600个channel，系统开销很小。当我们程序换上timingwheel之后，10w+连接cpu开销在10%以下，达到了优化效果。</p>
+<p>timingwheel的代码在<a href="https://github.com/siddontang/golib/tree/master/timingwheel" target="_blank" rel="external">这里</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+
+  <nav id="pagination">
+  
+    <a href="/tags/go/page/2/" class="alignleft prev">上一页</a>
+  
+  
+  <div class="clearfix"></div>
+</nav>
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

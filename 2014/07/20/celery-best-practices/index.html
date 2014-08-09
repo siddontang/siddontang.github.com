@@ -1,0 +1,311 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>celery最佳实践 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="celery最佳实践"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/celery-best-practices/">07-20-2014</a></time>
+      
+      
+  
+    <h1 class="title">celery最佳实践</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>作为一个Celery使用重度用户，看到<a href="https://denibertovic.com/posts/celery-best-practices/" target="_blank" rel="external">Celery Best Practices</a>这篇文章，不由得菊花一紧。干脆翻译出来，同时也会加入我们项目中celery的实战经验。</p>
+<p>通常在使用Django的时候，你可能需要执行一些长时间的后台任务，没准你可能需要使用一些能排序的任务队列，那么Celery将会是一个非常好的选择。</p>
+<p>当把Celery作为一个任务队列用于很多项目中后，作者积累了一些最佳实践方式，譬如如何用合适的方式使用Celery，以及一些Celery提供的但是还未充分使用的特性。</p>
+<h2 id="1，不要使用数据库作为你的AMQP_Broker">1，不要使用数据库作为你的AMQP Broker</h2>
+<p>数据库并不是天生设计成能用于AMQP broker的，在生产环境下，它很有可能在某时候当机（PS，当掉这点我觉得任何系统都不能保证不当吧！！！）。</p>
+<p>作者猜想为啥很多人使用数据库作为broker主要是因为他们已经有一个数据库用来给web app提供数据存储了，于是干脆直接拿来使用，设置成Celery的broker是很容易的，并且不需要再安装其他组件（譬如RabbitMQ）。</p>
+<p>假设有如下场景：你有4个后端workers去获取并处理放入到数据库里面的任务，这意味着你有4个进程为了获取最新任务，需要频繁地去轮询数据库，没准每个worker同时还有多个自己的并发线程在干这事情。</p>
+<p>某一天，你发现因为太多的任务产生，4个worker不够用了，处理任务的速度已经大大落后于生产任务的速度，于是你不停去增加worker的数量。突然，你的数据库因为大量进程轮询任务而变得响应缓慢，磁盘IO一直处于高峰值状态，你的web应用也开始受到影响。这一切，都因为workers在不停地对数据库进行DDOS。</p>
+<p>而当你使用一个合适的AMQP（譬如RabbitMQ）的时候，这一切都不会发生，以RabbitMQ为例，首先，它将任务队列放到内存里面，你不需要去访问硬盘。其次，consumers（也就是上面的worker）并不需要频繁地去轮询因为RabbitMQ能将新的任务推送给consumers。当然，如果RabbitMQ真出现问题了，至少也不会影响到你的web应用。</p>
+<p>这也就是作者说的不用数据库作为broker的原因，而且很多地方都提供了编译好的RabbitMQ镜像，你都能直接使用，譬如<a href="https://registry.hub.docker.com/search?q=rabbitmq" target="_blank" rel="external">这些</a>。</p>
+<p>对于这点，我是深表赞同的。我们系统大量使用Celery处理异步任务，大概平均一天几百万的异步任务，以前我们使用的mysql，然后总会出现任务处理延时太严重的问题，即使增加了worker也不管用。于是我们使用了redis，性能提升了很多。至于为啥使用mysql很慢，我们没去深究，没准也还真出现了DDOS的问题。</p>
+<h2 id="2，使用更多的queue（不要只用默认的）">2，使用更多的queue（不要只用默认的）</h2>
+<p>Celery非常容易设置，通常它会使用默认的queue用来存放任务（除非你显示指定其他queue）。通常写法如下：</p>
+<pre><code>@app.task()
+def my_taskA(a, b, c):
+    print(&quot;doing something here...&quot;)
+
+@app.task()
+def my_taskB(x, y):
+    print(&quot;doing something here...&quot;)
+</code></pre><p>这两个任务都会在同一个queue里面执行，这样写其实很有吸引力的，因为你只需要使用一个decorator就能实现一个异步任务。作者关心的是taskA和taskB没准是完全两个不同的东西，或者一个可能比另一个更加重要，那么为什么要把它们放到一个篮子里面呢？（鸡蛋都不能放到一个篮子里面，是吧！）没准taskB其实不怎么重要，但是量太多，以至于重要的taskA反而不能快速地被worker进行处理。增加workers也解决不了这个问题，因为taskA和taskB仍然在一个queue里面执行。</p>
+<h2 id="3，使用具有优先级的workers">3，使用具有优先级的workers</h2>
+<p>为了解决2里面出现的问题，我们需要让taskA在一个队列Q1，而taskB在另一个队列Q2执行。同时指定<strong>x</strong> workers去处理队列Q1的任务，然后使用其它的workers去处理队列Q2的任务。使用这种方式，taskB能够获得足够的workers去处理，同时一些优先级workers也能很好地处理taskA而不需要进行长时间的等待。</p>
+<p>首先手动定义queue</p>
+<pre><code>CELERY_QUEUES = (
+    Queue(&#39;default&#39;, Exchange(&#39;default&#39;), routing_key=&#39;default&#39;),
+    Queue(&#39;for_task_A&#39;, Exchange(&#39;for_task_A&#39;), routing_key=&#39;for_task_A&#39;),
+    Queue(&#39;for_task_B&#39;, Exchange(&#39;for_task_B&#39;), routing_key=&#39;for_task_B&#39;),
+)
+</code></pre><p>然后定义routes用来决定不同的任务去哪一个queue</p>
+<pre><code>CELERY_ROUTES = {
+    &#39;my_taskA&#39;: {&#39;queue&#39;: &#39;for_task_A&#39;, &#39;routing_key&#39;: &#39;for_task_A&#39;},
+    &#39;my_taskB&#39;: {&#39;queue&#39;: &#39;for_task_B&#39;, &#39;routing_key&#39;: &#39;for_task_B&#39;},
+}
+</code></pre><p>最后再为每个task启动不同的workers</p>
+<pre><code>celery worker -E -l INFO -n workerA -Q for_task_A
+celery worker -E -l INFO -n workerB -Q for_task_B
+</code></pre><p>在我们项目中，会涉及到大量文件转换问题，有大量小于1mb的文件转换，同时也有少量将近20mb的文件转换，小文件转换的优先级是最高的，同时不用占用很多时间，但大文件的转换很耗时。如果将转换任务放到一个队列里面，那么很有可能因为出现转换大文件，导致耗时太严重造成小文件转换延时的问题。</p>
+<p>所以我们按照文件大小设置了3个优先队列，并且每个队列设置了不同的workers，很好地解决了我们文件转换的问题。</p>
+<h2 id="4，使用Celery的错误处理机制">4，使用Celery的错误处理机制</h2>
+<p>大多数任务并没有使用错误处理，如果任务失败，那就失败了。在一些情况下这很不错，但是作者见到的多数失败任务都是去调用第三方API然后出现了网络错误，或者资源不可用这些错误，而对于这些错误，最简单的方式就是重试一下，也许就是第三方API临时服务或者网络出现问题，没准马上就好了，那么为什么不试着重试一下呢？</p>
+<pre><code>@app.task(bind=True, default_retry_delay=300, max_retries=5)
+def my_task_A():
+    try:
+        print(&quot;doing stuff here...&quot;)
+    except SomeNetworkException as e:
+        print(&quot;maybe do some clenup here....&quot;)
+        self.retry(e)
+</code></pre><p>作者喜欢给每一个任务定义一个等待多久重试的时间，以及最大的重试次数。当然还有更详细的参数设置，自己看文档去。</p>
+<p>对于错误处理，我们因为使用场景特殊，例如一个文件转换失败，那么无论多少次重试都会失败，所以没有加入重试机制。</p>
+<h2 id="5，使用Flower">5，使用Flower</h2>
+<p><a href="http://celery.readthedocs.org/en/latest/userguide/monitoring.html#flower-real-time-celery-web-monitor" target="_blank" rel="external">Flower</a>是一个非常强大的工具，用来监控celery的tasks和works。</p>
+<p>这玩意我们也没怎么使用，因为多数时候我们都是直接连接redis去查看celery相关情况了。貌似挺傻逼的对不，尤其是celery在redis里面存放的数据并不能方便的取出来。</p>
+<h2 id="6，没事别太关注任务退出状态">6，没事别太关注任务退出状态</h2>
+<p>一个任务状态就是该任务结束的时候成功还是失败信息，没准在一些统计场合，这很有用。但我们需要知道，任务退出的状态并不是该任务执行的结果，该任务执行的一些结果因为会对程序有影响，通常会被写入数据库（例如更新一个用户的朋友列表）。</p>
+<p>作者见过的多数项目都将任务结束的状态存放到sqlite或者自己的数据库，但是存这些真有必要吗，没准可能影响到你的web服务的，所以作者通常设置<code>CELERY_IGNORE_RESULT = True</code>去丢弃。</p>
+<p>对于我们来说，因为是异步任务，知道任务执行完成之后的状态真没啥用，所以果断丢弃。</p>
+<h2 id="7，不要给任务传递_Database/ORM_对象">7，不要给任务传递 Database/ORM 对象</h2>
+<p>这个其实就是不要传递Database对象（例如一个用户的实例）给任务，因为没准序列化之后的数据已经是过期的数据了。所以最好还是直接传递一个user id，然后在任务执行的时候实时的从数据库获取。</p>
+<p>对于这个，我们也是如此，给任务只传递相关id数据，譬如文件转换的时候，我们只会传递文件的id，而其它文件信息的获取我们都是直接通过该id从数据库里面取得。</p>
+<h2 id="最后">最后</h2>
+<p>后面就是我们自己的感触了，上面作者提到的Celery的使用，真的可以算是很好地实践方式，至少现在我们的Celery没出过太大的问题，当然小坑还是有的。至于RabbitMQ，这玩意我们是真没用过，效果怎么样不知道，至少比mysql好用吧。</p>
+<p>最后，附上作者的一个Celery Talk <a href="https://denibertovic.com/talks/celery-best-practices/" target="_blank" rel="external">https://denibertovic.com/talks/celery-best-practices/</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/python/">python</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/python/">python</a>, <a href="/tags/celery/">celery</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

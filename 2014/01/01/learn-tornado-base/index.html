@@ -1,0 +1,336 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>学习Tornado：基本 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="学习Tornado：基本"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-01-01T01:32:56.000Z"><a href="/2014/01/01/learn-tornado-base/">01-01-2014</a></time>
+      
+      
+  
+    <h1 class="title">学习Tornado：基本</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="前言">前言</h1>
+<p>在python里面，有许多<a href="http://wiki.python.org/moin/WebFrameworks" target="_blank" rel="external">web framework</a>。对于我来说，因为很长一段时间都在使用tornado，所以有了一些心得体会。</p>
+<p>在这里，要说明一下，tornado采用的是<strong>2.4</strong>版本。</p>
+<h1 id="架构">架构</h1>
+<p>tornado是一个典型的prefork + io event loop的web server架构，<img src="https://raw.github.com/siddontang/blog/master/asserts/tornado-architecture.png" alt="Alt text" title="architecture"></p>
+<p>从图上可以看出，tornado的架构是很简单清晰的。</p>
+<ul>
+<li>ioloop是tornado的核心，它就是一个io event loop，底层封装了select，epoll和kqueue，并根据不同的平台选择不同的实现。</li>
+<li>iostream封装了non-blocking socket，用它来进行实际socket的数据读写。</li>
+<li>TCPServer则是通过封装ioloop实现了一个简易的server，同时我们也在这里进行prefork的处理</li>
+<li>HTTPServer则是继承TCPServer实现了一个能够处理http协议的server。</li>
+<li>Application则是实际处理http请求的模块，HTTPServer收到http请求并解析之后会通过Application进行处理。</li>
+<li>RequestHandler和WebSocketHandler则是注册给Application用来处理对应url的。</li>
+<li>WSGIApplication则是tornado用于支持WSGI标准的接口，通过WSGIContainer包装共HTTPServer使用。</li>
+</ul>
+<h1 id="例子">例子</h1>
+<p>通过上面的分析，直到tornado的架构是很简单明了的，所以自然我们也能够通过简短的一些代码就能搭建起自己的http server。以一个hello world开始：</p>
+<pre><code>import tornado.web 
+import tornado.httpserver 
+import tornado.ioloop 
+
+class MainHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write(&#39;Hello World&#39;)
+
+application = tornado.web.Application([
+    (r&quot;/&quot;, MainHandler),
+])
+http_server = tornado.httpserver.HTTPServer(application)
+http_server.listen(8080)
+tornado.ioloop.IOLoop.instance().start()
+</code></pre><p>流程很简单，如下：</p>
+<ul>
+<li>定义了一个MainHandler，该handler用来处理对应url</li>
+<li>生成一个Application实例，并设置url dispatch规则，(r”/“, MainHandler)就是一个规则，第一个pattern用来表明需要处理的url，内部会使用正则匹配，第二个就是对应url处理的handler</li>
+<li>生成一个HTTPServer实例，使用Application进行构造，这样HTTPServer处理的http请求就会转给application处理。</li>
+<li>HTTPServer监听一个端口8080，该listen socket会加入ioloop中，用于监听连接的建立。</li>
+<li>ioloop启动，程序进入io event loop模式。</li>
+</ul>
+<p>当ioloop start之后，服务器就启动了，后续就是一个http server最基本的流程处理了。</p>
+<h1 id="ReuqestHandler">ReuqestHandler</h1>
+<h2 id="pattern_and_handler">pattern and handler</h2>
+<p>从上面例子可以看出，搭建一个http server很简单，所以我们重点只需要考虑的是如何处理不同的url http请求，这也就是RequestHandler需要做的事情。</p>
+<p>我们在创建Application的时候，会指定不同的url pattern需要处理的handler。如下：</p>
+<pre><code>import tornado.web 
+import tornado.httpserver 
+import tornado.ioloop 
+
+class Index1Handler(tornado.web.RequestHandler):
+    def get(self):
+        self.write(&#39;Index1&#39;)
+
+class Index2Handler(tornado.web.RequestHandler):
+    def get(self, data):
+        self.write(&#39;Index2&#39;)
+        self.write(data)
+
+application = tornado.web.Application([
+    (r&quot;/index1&quot;, Index1Handler),
+    (r&quot;/index2/(\w+)&quot;, Index2Handler),
+])
+
+http_server = tornado.httpserver.HTTPServer(application)
+http_server.listen(8080)
+tornado.ioloop.IOLoop.instance().start()
+</code></pre><p>在上面的例子中，我们有两个handler，分别处理url path为index1和index2的情况，对于index2来说，我们看到，它后面还需要匹配一个单词。我们通过curl访问如下：</p>
+<pre><code>$ curl http://127.0.0.1:8080/index1
+index1
+
+$ curl http://127.0.0.1:8080/index2/abc
+index2abc
+</code></pre><h2 id="http_method">http method</h2>
+<p>RequestHandler支持任何http mthod，包括get，post，head和delete，也就是说，tornado天生支持restful编程模型。</p>
+<pre><code>class MainHandler(tornado.web.RequestHandler):
+    def get(self):
+        pass
+
+    def post(self):
+        pass
+
+    def head(self):
+        pass
+
+    def delete(self):
+        pass
+</code></pre><p>从上面可以看到，我们只需要在handler里面实现自己的get，post，head和delete函数就可以了，这点再次说明tornado的简洁与强大。</p>
+<h1 id="后续next">后续next</h1>
+<p>这里，只是简单了介绍了一下tornado，后续将会从template，asynchronous，security等分别介绍一下。希望通过这个能让自己对tornado的理解更加深刻，同时也为后续使用其他python web framework做参考。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/python/">python</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/python/">python</a>, <a href="/tags/tornado/">tornado</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

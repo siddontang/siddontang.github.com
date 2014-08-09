@@ -1,0 +1,352 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>高性能网络库Libtnet介绍 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="高性能网络库Libtnet介绍"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-12-28T10:25:49.000Z"><a href="/2013/12/28/libtnet-introduction/">12-28-2013</a></time>
+      
+      
+  
+    <h1 class="title">高性能网络库Libtnet介绍</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>libtnet是一个用c++编写的高性能网络库，它在设计上面主要参考tornado，为服务端网络编程提供简洁而高效的接口，非常易于使用。</p>
+<h1 id="Echo_Server">Echo Server</h1>
+<pre><code>void onConnEvent(const ConnectionPtr_t&amp; conn, ConnEvent event, const void* context)
+{
+    switch(event)
+    {
+        case Conn_ReadEvent:
+            {
+                const StackBuffer* buffer = static_cast&lt;const StackBuffer*&gt;(context);
+                conn-&gt;send(string(buffer-&gt;buffer, buffer-&gt;count));
+            }
+            break;
+        default:
+            break;
+    }    
+}
+
+int main()
+{
+    TcpServer s;
+    s.listen(Address(11181), std::bind(&amp;onConnEvent, _1, _2, _3));
+
+    s.start();
+
+    return 0;
+}
+</code></pre><p>当程序启动，服务监听本地11181端口，我们使用telnet测试：</p>
+<pre><code>root@tnet:~# telnet 127.0.0.1 11181
+Trying 127.0.0.1...
+Connected to 127.0.0.1.
+Escape character is &#39;^]&#39;.
+hello world
+hello world
+</code></pre><p>可以看到，libtnet在使用上面非常简单，在listen的时候，指定一个回调函数，当有新的连接到来的时候，该回调函数就会与该connection进行绑定，这样该connection的任何事件都能通过回调进行处理。</p>
+<p>在上面那个例子中，我们只关心了connection的ReadEvent，也就是读事件，然后将读取到的所有数据原封不动的转发回去。</p>
+<h1 id="Http_Server">Http Server</h1>
+<pre><code>void onHandler(const HttpConnectionPtr_t&amp; conn, const HttpRequest&amp; request)
+{
+    HttpResponse resp;
+    resp.statusCode = 200;
+    resp.body.append(&quot;Hello World&quot;);
+
+    conn-&gt;send(resp);
+}
+
+int main()
+{
+    TcpServer s;
+    HttpServer httpd(&amp;s);   
+    httpd.setHttpCallback(&quot;/abc&quot;, std::bind(&amp;onHandler, _1, _2));
+
+    httpd.listen(Address(11181));    
+    s.start(4);
+
+    return 0;
+} 
+</code></pre><p>当server启动，程序使用本机11181端口提供http服务。我们使用curl测试。</p>
+<pre><code>curl http://127.0.0.1:11181/abc
+
+return: hello world
+</code></pre><p>可以看到，使用http server也非常简单，我们只需要对相应的路径绑定一个callback回调，当有请求发生的时候，对应的callback执行。</p>
+<p>使用benchmark测试，发现性能也不错RPS能到16000+，在512MB，单核CPU下面进行ab压测，具体可以参考<a href="https://github.com/siddontang/libtnet/wiki/Benchmark" target="_blank" rel="external">benchmark</a>。</p>
+<h1 id="Webscoket_Server">Webscoket Server</h1>
+<pre><code>void onWsCallback(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
+{
+    switch(event)
+    {
+        case Ws_MessageEvent:
+            {
+                const string&amp; str = *(const string*)context;
+                conn-&gt;send(&quot;hello &quot; + str);
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+int main()
+{
+    TcpServer s;
+
+    HttpServer httpd(&amp;s);
+
+    httpd.setWsCallback(&quot;/push/ws&quot;, std::bind(&amp;onWsCallback, _1, _2, _3));    
+
+    httpd.listen(Address(11181));
+
+    s.start();
+
+    return 0; 
+}
+</code></pre><p>libtnet同样提供了websocket <a href="http://tools.ietf.org/html/rfc6455" target="_blank" rel="external">RFC6455</a>的支持，使用方法同http server，只需要对相应的path注册特定的回调，就可以很方便的进行websocket交互。</p>
+<h1 id="Client">Client</h1>
+<p>libtnet不光提供了server层面的相关功能，同时也集成了<strong>http client</strong>，<strong>websocket client</strong>以及<strong>redis client</strong>。使得libtnet也能方便的进行客户端网络功能的开发。对于具体的使用，可以参考<a href="https://github.com/siddontang/libtnet/tree/master/test" target="_blank" rel="external">example</a>。</p>
+<h1 id="设计上面的考量">设计上面的考量</h1>
+<p>libtnet只支持linux版本，虽然做一个跨平台的通用库是一件吸引力非常大的事情，但是综合考虑之后，我决定只做linux版本的，主要有以下几个原因：</p>
+<ul>
+<li>Linux下面使用prefork + epoll是一种非常高效的网络编程模型，性能强悍，实现简单。虽然unix下面有kqueue，windows下面有IOCP，但是没必要为了适配所有得操作系统将代码写的复杂。</li>
+<li>Linux在系统层面上面就提供了很多高性能的函数，譬如timerfd，eventfd等，不光性能提升，同时也简化了很多代码实现。</li>
+<li>Linux在服务器编程领域的使用率很高，专门做精一个平台就够了。</li>
+</ul>
+<p>因为高性能的网络编程通常都是使用异步的编程方式，所以经常可以看到代码被异步拆的特别分散，不利于编写。所以我在libtnet里面大量的使用了c++ bind以及shared_ptr技术，用来模拟函数闭包，以及解决对象生命周期管理问题，简化代码的编写。并且我也使用了c++ 0x相关技术，gcc的版本至少要在4.4以上。</p>
+<p>对于如何设计以及使用libtnet，后续我会有更加详细的说明。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/c++/">c++</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/c++/">c++</a>, <a href="/tags/libtnet/">libtnet</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

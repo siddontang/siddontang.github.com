@@ -1,0 +1,337 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>Go MySQL接口开发 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="Go MySQL接口开发"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-02-24T05:41:38.000Z"><a href="/2014/02/24/go-mysql-introduction/">02-24-2014</a></time>
+      
+      
+  
+    <h1 class="title">Go MySQL接口开发</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>是一个用go写的mysql driver，使用接口类似于go自身的database sql，但是稍微有一点不同，现阶段还不支持集成进go database/sql中，但实现难度并不大，后续可能会接入。</p>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>最先开始于<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>（一个用go实现的mysql proxy）中，随着mixer的演化，我觉得有必要将其mysql模块独立出来使用。对于<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，后续我会详细介绍。</p>
+<p>为什么要自己实现一套新的接口，而不是go自身的sql接口呢？最主要的原因在于我很不习惯使用Query的查询方式。go自身的query例子：</p>
+<pre><code>age := 27
+rows, err := db.Query(&quot;SELECT name FROM users WHERE age=?&quot;, age)
+if err != nil {
+    log.Fatal(err)
+}
+for rows.Next() {
+    var name string
+    if err := rows.Scan(&amp;name); err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf(&quot;%s is %d\n&quot;, name, age)
+}
+if err := rows.Err(); err != nil {
+    log.Fatal(err)
+}
+</code></pre><p>可以看到，使用起来非常的繁琐复杂，如果代码里面select语句很多（恰恰我们代码里面n多select），那么如果每次select都要靠这种方式得到我们需要的结果，那我可能写代码会写崩溃的。所以势必我们需要提供一套封装用来简化select的结果集获取。</p>
+<h1 id="Resultset">Resultset</h1>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>跟go自身的sql接口最大的不一样在于Query的时候直接返回了一个resultset，而这个resultset定义如下：</p>
+<pre><code>type Field struct {
+    Name []byte
+    Type uint8
+    Flag uint16
+}
+
+type Resultset struct {
+    Status uint16 //server status for this query resultset
+
+    Fields     []Field
+    FieldNames map[string]int
+
+    Data [][]interface{}
+}
+</code></pre><p>Field用来表示查询的时候返回的数据每列的名字，数据类型以及一些特定的Flag。而resultset中的Data则是存放了query结果中对于的实际数据。因为对于mysql select来说，它返回的是一个<strong>“m x n”</strong>的结果集，我们直接使用[][]interface{}在go中表示。</p>
+<p>Resultset提供了非常方便的接口用于select数据的获取：</p>
+<pre><code>//指定某一行，某一列获取数据，结果为string
+func (r *Resultset) GetString(row, column int) (string, error)
+//执行某一行，某一列的名字获取数据，结果为string
+func (r *Resultset) GetStringByName(row int, columnName int) (string, error)
+</code></pre><h1 id="接口">接口</h1>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>除了query之外，几乎提供了与go database/sql一样的接口使用方式：</p>
+<pre><code>//创建一个db，最大允许保活16个空闲连接
+//dsn格式为：&lt;username&gt;:&lt;password&gt;@&lt;host&gt;:&lt;port&gt;/&lt;database&gt;
+db := NewDB(&quot;qing:admin@127.0.0.1:3306/mixer&quot;, 16)
+
+//ping一下，看mysql server是不是还是活的
+db.Ping()
+
+//执行exec，包括insert,update,delete,replace
+r, err := db.Exec(&quot;insert into mixer_conn (id, str) values (1, `abc`)&quot;)
+println(r.LastInsertId(), r.RowsAffected())
+
+//执行exec，语句中包含 ？占位符，需要传递相应的参数
+r, err := db.Exec(&quot;insert into mixer_conn (id, str) values (?, ?)&quot;, 2, &quot;efg&quot;)
+println(r.LastInsertId(), r.RowsAffected())
+
+//执行select，得到结果集，并获取相关数据
+r, err := db.Query(&quot;select str from mixer_conn where id     = 1&quot;)
+str, _ = r.GetString(0, 0)
+str, _ = r.GetStringByName(0, &quot;str&quot;)
+
+//开始一个事物
+tx, err = db.Begin()
+
+//在事物里面执行语句
+tx.Exec(&quot;insert into mixer_conn (id, str) values (3, `abc`)&quot;)
+
+//提交事物
+tx.Commit()
+
+//创建一个prepare statement
+s, err := db.Prepare(&quot;insert into mixer_conn (id, str) values(?, ?)&quot;)
+
+//执行 prepare statement
+s.Exec(5, &quot;abc&quot;)
+
+//关闭 prepare statement
+s.Close()
+</code></pre><p>不光如此，<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>还提供单独获取一个conn，用于给外部额外使用的功能，譬如:</p>
+<pre><code>conn, err := db.GetConn()
+
+//我需要设置conn的字符集为gb2312
+conn.SetCharset(&quot;gb2312&quot;)    
+
+conn.Close()
+</code></pre><p>可以看到，<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>的使用非常简单，现阶段正逐渐在我们项目中使用，也非常期待您的反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/go/">go</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/go/">go</a>, <a href="/tags/mysql/">mysql</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

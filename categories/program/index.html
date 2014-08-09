@@ -1,0 +1,1258 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>program | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+<h2 class="archive-title category">program</h2>
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-06-22T13:29:26.000Z"><a href="/2014/06/22/program-lang-experience/">06-22-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/06/22/program-lang-experience/">我的编程语言经历</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>Alan Perlis 说过：“一种不改变你编程的思维方式的语言，不值得去学。”，虽然写了这么多年程序，用了这么多的语言，但我自认还没悟道编程语言如何改变我的思维方式。</p>
+<p>几天前，我需要用python来为<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>写一个客户端，我突然发现，对于c++，go这种语言，我如果需要实现一个功能，首先想到的是问题是代码应该怎么写。但是当我使用python的时候，我首先考虑的问题是在哪里去找一个库用来解决我的问题。可能这就是使用不同语言带给我的不同思考方式吧。</p>
+<p>我的编程语言经历没有那么复杂，没用过很多，但是其实也够我受的了，尤其是在不同语言语法糖之间切换的时候，有种让人崩溃的感觉。没准我应该升级一下我的大脑cpu，使其能够更快速的进行中断处理。</p>
+<h2 id="c">c</h2>
+<p>我是从大学才开始学习编程的，相比现在的小朋友来说，可以叫做输在了起跑线上面。谁叫以前生活在山区，没机会接触电脑这玩意。</p>
+<p>我的第一门编程语言是c，不同于很多童鞋使用的谭浩强神书，我用的是周纯杰的&lt;<c语言程序设计>&gt;，不知道每年有多少同学受到过它的摧残，当然还有那哥们蹩脚的普通话。</c语言程序设计></p>
+<p>在大学里面，很多同学的c的毕业设计都是我帮其完成，但我始终觉得自己仍然是个半吊子，除了c的基础稍微强一点之外，很多方面譬如操作系统，算法等完全不会。（现在随着工作年限的增加让我越发后悔，当初怎么就不稍微学点这些知识，尤其是编译原理。）</p>
+<p>我几乎没怎么用c开发过项目，只在tencent可怜的维护过别人的c项目，但至少能看懂c代码，这就够了。</p>
+<p>因为大多数时候，我用的是c++，而不是c来解决我的问题。</p>
+<h2 id="c++">c++</h2>
+<p>c++是我工作使用的第一门语言，也是我使用时间最长的一门语言，都七年之痒了，不过还是有点不离不弃的。</p>
+<p>以前上学的时候有一句口头禅，叫学好c++，走遍天下都不怕。但是有几个人能把它学好的？所以千万别说自己精通c++，那会被人鄙视的。</p>
+<p>我使用c++可以分为三个阶段：</p>
+<h3 id="类c阶段">类c阶段</h3>
+<p>这个阶段主要是我第一份工作的时候，那时候才毕业，c的烙印很深，面向对象除了有个概念，真正是啥完全不知道。所以最喜欢的方式还是写着一堆函数来解决问题，当初VIA身边那帮c++的牛人竟然能忍受我这样的代码，真佩服他们。</p>
+<h3 id="面向对象阶段">面向对象阶段</h3>
+<p>后来去了第二家公司linekong，开始做游戏，才开始真正意义上的用c++写代码了。</p>
+<p>记得最开始去第一家公司面试的时候，被问了啥是面向对象，当时不假思索的答了继承，多态和封装。</p>
+<p>啥叫封装？整一个class，把该包的都包了，一个同事曾告诉我，他见过有几万行代码的class，看来我这个几千行的太小儿科了。</p>
+<p>啥叫继承？先来一个父类，干脆叫bird，有一个fly方法，再来一个子类，叫duck吧，继承了bird，不过duck会fly吗？一个父类不够，再来一个，搞个多重继承，什么？出现了菱形继承，那干脆在来一个virtual继承得了。</p>
+<p>啥叫多态？不就是virtual function，然后父类指针能在运行时根据实际情况调用相应的子类实现。那c++的多态是怎么实现的？看看&lt;&lt;深度探索c++对象模型&gt;&gt;不就行了。</p>
+<p>这段时间，可以算是我写c++代码最多的时候，都快写到吐了，尤其还要忍受那龟速的编译。我们竟然都实现了直接通过汇编改c++的虚表，使其调用自己的函数这种变态的东西。在那时候我就得出结论，如果不想早死，尽量别用这个东西写代码。可是到如今我都在不停的慢性自杀。</p>
+<h3 id="现代C++阶段">现代C++阶段</h3>
+<p>不知道从什么时候开始，我突然觉得我应该来点modern c++的编写方式了，c++0x都出了，还不玩一下就晚了。当然新特性那么多，不可能全部都拿来用的，Bjarne Stroustrup貌似都说过，c++0x应该算是另一门语言了。</p>
+<p>于是哥就走上了伪modern c++之路，class还是需要的，不然数据怎么封装。继承吗，比重减轻吧，最好采用面向接口的编程方式。而多态，能不用就不用吧，反而觉得bing + function的方式实现的delegate模型反而更方便，没准也更酷哟。</p>
+<p>shared_ptr，weak_ptr是需要用的了，c++没有gc，所以一套好的内存管理方式是必不可少的，每次new之后还要记得delete也比较烦，最严重的是可能忘记那就内存泄露了。</p>
+<p>于是，我就自认为我进化了，最典型的例子就是我写的高性能网络库<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>，感觉很modern了。</p>
+<h2 id="lua">lua</h2>
+<p>最开始知道lua，是云风那本编程感悟的书，当时可是菊花一紧，觉得这东西是啥，为什么能跟c结合到一起使用？</p>
+<p>后来自己开发游戏了，才发现lua真的是一门很强大的语言，短小精悍，嵌入简单，性能超强，完全是作为游戏脚本语言开发的不二人选。不过我最开始使用lua的经历不怎么happy，最开始就是接手了一个c++与lua的粘合层库，关于这个库的传说，见这里<a href="http://blog.codingnow.com/2008/08/lua_is_not_c_plus_plus.html" target="_blank" rel="external">Lua 不是 C++</a>。后来，在踩了无数个坑，填了无数个坑之后，我终于弄得相对稳定了。貌似现在我以前的同事还在使用，不过正如我在<a href="http://blog.csdn.net/siddontang/article/details/18727645" target="_blank" rel="external">lua c函数注册器</a>中说明的那样，对于语言的交互，简单一点才好。现在以前做的游戏已经开源，见<a href="https://xp-dev.com/svn/YBTX_Public/" target="_blank" rel="external">这里</a>，那个传说中的蛋疼粘合层也见了世面。当然，我可不会告诉你们好多搓代码是我写的。</p>
+<p>后来，在现在的公司，因为项目的需要，我们急需解决python的很多性能大坑问题，于是我开始推广使用openresty，一个用lua包裹的nginx，用了之后，腰不痛了，腿不痛了，性能妥妥的。</p>
+<p>因为lua，我第一次尝到了在代码里面直接写配置的便捷，用一个table搞定，相比起来，c++处理ini，json这些的弱爆了。另外，动态语言的热更新机制使其代码升级异常方便，不过你得非常小心lua的闭包，没准你重新加载了代码运行还是老样子。</p>
+<p>lua是一个动态语言，所以不用我们管内存释放问题，但是仍然可能会有引用泄露，在开发游戏的时候，为了解决我们程序lua内存泄露的问题，我曾经干过直接从_G递归遍历，扫描整个lua数据的事情。相比在c++使用valgrind这些程序的工具，lua配套的东西还是太小儿科了。</p>
+<p>lua的调试也是一个大头问题，我曾今写过几个lua的调试器，例如<a href="https://github.com/siddontang/luahelper" target="_blank" rel="external">这个</a>，甚至都支持了类似gdb那样ctrl+c之后动态的设置断点，可是仍然没觉得比gdb方便，所以多数时候，我都是写log为主。</p>
+<h2 id="python">python</h2>
+<p>虽然小时候吃过很多蛇，但是蟒蛇可是从来没吃过的，现在看来python味道还不错。</p>
+<p>我是来了kingsoft之后才开始正式使用python的。对于为啥使用python，我曾跟拉我进来的技术老大讨论过，他直接就说，开发快速，上手容易。</p>
+<p>python开发的快速很大程度是建立在丰富的第三方库上面的，我们也使用了很多库，譬如tornado，gevent，django等，但是正如我最开始说的，因为我们有太多的选择，面对一个问题的时候，往往考虑的是如何选择一个库，而不是自己如何实现，这其实在某种程度上面使得很多童鞋知其然而不知其所以然。这点，lua可能是另一个极端，lua的定位在于嵌入式和高性能，所以自然地，你得自己动手造轮子（当然，现在也有很多好的第三方库了），虽然有时候写起来很不方便，但是至少自己很清楚程序怎么跑的。</p>
+<p>当然，我绝对没有贬低python的意思，我很喜欢这门语言，用它来开发了很多东西，同时也知道很多公司使用python构建了很多大型稳定的系统（我们的产品应该也算吧）。</p>
+<p>只是现在我越发觉得，看起来简单的语言，如果没有扎实的基本功底，写出来的东西也很烂，而python，恰恰给人放了一个很大的烟雾弹，你以为它有多容易，其实它是在玩你。</p>
+<h2 id="go">go</h2>
+<p>好了，终于开始说go了，let’s go！！！</p>
+<p>我使用go的历史不长，可能也就一年多，但是它现在完全成了我最爱的语言，go具有了python开发的迅速，同时也有着c运行的性能。（当然，还是有差距的！）</p>
+<p>网上有太多的语言之争，包括go，有人恨，有人爱。但萝卜白菜，各有所爱，对于我来说，能帮我解决问题，让我用着舒服的语言就是好语言。</p>
+<p>go非常适用于服务端程序开发，比起用c++开发，我陡然觉得有一种很幸福的感觉，譬如对于网络编程，在c++里面，我需要自己写epoll的事件处理，而且这种异步的机制完全切分了整个逻辑，使得代码不怎么好写，我在开发<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>的时候感触尤其深刻。但是在go里面，因为天生coroutine的支持，使得异步代码同步化了，非常利于代码的编写。</p>
+<p>现在我的主要在项目中推动go的使用，我们已经用go搭建了一个高性能的推送服务器，后续还有几个系统会上线，而且开发的进度并不比使用python差，另外也很稳定，这让我对go的未来充满了期待。</p>
+<p>我也用go写了很多的开源程序，也算是拿的出手了，譬如：</p>
+<ul>
+<li><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>：一个基于leveldb的提供类似redis高级数据结果的高性能NoSQL，真挺绕口的，简单点就是一个高性能NoSQL。</li>
+<li><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">Mixer</a>：一个mysql-proxy，现在支持通用的mysql命令代理，读写分离，以及自动主备切换。后续将要参考vitess支持分区，为此一直在恶补编译原理的知识。</li>
+<li><a href="https://github.com/siddontang/go-log" target="_blank" rel="external">go-log</a>：一个类似python log模块的东西，支持多种handler，以及不同的log级别。</li>
+</ul>
+<p>还有一些，可以参考我的<a href="https://github.com/siddontang" target="_blank" rel="external">github</a>，譬如<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">moonmq</a>（一个高性能push模型的消息服务器），<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>（一个类似tornado的restful web框架），因为go，我开始热衷于开源了，并且认识了很多的好基友，这算得上一个很大的收获吧。</p>
+<h2 id="其它">其它</h2>
+<p>好了，说完了上面我的长时间使用语言（至少一年以上），我也用了很多其他的语言，现在虽然使用时间比较短，但不排除后续会长久使用。</p>
+<h3 id="Objective-C">Objective-C</h3>
+<p>因为我家终于有了苹果三件套，所以决定开发app了，首要的任务就是得学会使用Objective-C。我承认这真是一门奇葩的语言，如果没有xcode的自动补齐，我真不知道写起来是神马样的感觉。</p>
+<p>而且第一次见到了一门推荐写函数名，变量名就像写文章的语言，至少我写c++，go这些的一个函数名字不会写成一个句子。</p>
+<p>我现在在自学iOS的开发，慢慢在整出点东西，毕竟答应给老婆的iphone做点啥的。后续干脆就写一个《小白学iOS》系列blog吧（如果我有精力！），反正对于iOS，我真是一个小白。</p>
+<h3 id="java">java</h3>
+<p>好吧，我也在android上面写过程序，build到我的S3上面去过，对于java，我的兴趣真不大，貌似自己还买过两本《java编程思想》，那时候脑袋铁定秀逗了。</p>
+<p>但是不得不承认，java在服务器领域具有非常强的优势，很多很多的大企业采用java作为其服务器的编程语言。典型的就是淘宝，据传杭州的很多软件公司都不用java的，你用java就等于给淘宝培养人才了。（不过我发现他们很多基础组件譬如TFS这些的可是c++的哟！）</p>
+<p>java是门好语言，只是我个人不怎么喜欢，可能我就是太小众了，只对c语言体系的感兴趣。所以很多公司我去不了，哈哈！</p>
+<h3 id="erlang">erlang</h3>
+<p>受《计算机程序的构造与解释》影像，我一直想学一门函数式编程语言，最开始玩的是elisp，谁叫以前我是个深度的emacser（后来竟然变成了一个vimer，再后来就是sublimer，这世界真神奇）。</p>
+<p>后来还是决定好好学习一下erlang，也第一次领略到了函数式编程的魅力。自己唯一用erlang开发过的东西就是bt下载的客户端，不过后来发现用处不大就没继续进行下去了。（好吧，我承认当时想下岛国的东西）</p>
+<p>学习erlang之后最大的优势在于现在能看懂很多优秀的erlang项目，譬如我在做<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">moonmq</a>以及公司的推送服务的时候，研究了rabbitmq，这玩意可是用erlang写的，而我竟然还能看懂，太佩服我了。</p>
+<h3 id="还有么？">还有么？</h3>
+<p>想想自己还学了哪些语言？貌似没了，不知道awk算不算一门。看来我会得语言真不多。</p>
+<h2 id="后续可能会学的">后续可能会学的</h2>
+<p>逆水行舟，不进则退，计算机发展这么迅速，我也需要不断提升自己，其中学习一门新的语言可能是一个很好的提升途径，至少能为我打开一扇门。譬如，如果掌握了日文，就能更好的理解岛国片的精髓。我不会日文，所以还是个门外汉。</p>
+<h3 id="ruby">ruby</h3>
+<p>ruby是一门很优雅的语言，很多大神级别的人物推荐，github貌似也是ruby的幕后推手。</p>
+<p>因为ROR的兴起，使得ruby更加流行。看来，一个好的框架库对于语言的推广帮助真挺大的。相比而言，python有django，tornado等，光选择适合自己的就得费点时间。</p>
+<p>ruby可以算是一门完全面向对象的语言，连number这种的都是对象，而且看了几本Matz的书，觉得这哥们挺不错的，对技术的感悟很深，所以更让我有兴趣去了解ruby了。</p>
+<h3 id="javascript">javascript</h3>
+<p>作为一个技术人员，没一个自己的个人网站怎么行，我的阿里云都是包年买的（明年还是买国外的vps吧），自己的个人站点还无影无踪。</p>
+<p>好吧，我完全不会javscript，看着css就头疼，没准我从一开始想自己写代码搭建个人站点这个步子就迈的太大，扯着蛋了。如果先用一个开源的框架搭建起来，再自己调整完善，可能会更好。但无论怎样，javascript这门语言还是要学习了解的，尤其是以后随着html5的流行，加之node.js疯狂流行，这门语言也会愈发的发光发热。</p>
+<h3 id="C\">C\</h3>
+<p>其实本来不准备跟ms的东西扯上关系的，虽然vs是一个很强大的开发工具，但是我自从换成mac之后就不准备再迁回windows。</p>
+<p>只是c#我可能是必须要学会的，因为那个坑爹的unity3d，虽然unity3d也提供了其它语言的支持（譬如伪javascript），但是大量的开发者还是选用了c#，至少在中国我问过很多朋友，都妥妥的用c#，既然这样，我也只能考虑学习使用了。</p>
+<p>至于我为啥蛋疼的想玩unity3d，毕竟干了很多年游戏开发，一直有自己弄一个简单小游戏的梦想，还是妥妥的unity3d吧。</p>
+<h3 id="自己造一个？">自己造一个？</h3>
+<p>语言千千万，我不可能全部学会的，而且以后没准因为业务的需要，没准都会自己造一门语言，也就是DSL。不过这个貌似还离我比较遥远，编译原理的东西太差了（说多了都是泪呀）。自己写词法分析还成，后面就菜了。这也是<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">Mixer</a>一直没啥进展的原因。不过已经买了龙书，在学习屠龙秘籍，希望成为顶尖高手吧。</p>
+<h2 id="后记">后记</h2>
+<p>写了这么多，看来随着年岁的增加，越来越啰嗦了。不是有一句古话：吾生也有涯，而知也无涯 。以有涯随无涯，殆已。不过不停地追逐不也是乐趣一件？</p>
+<p>只是，现在我首先要做的就是向我老婆申请资金升级电脑了吧！</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-30T00:29:09.000Z"><a href="/2014/04/30/make-wheel/">04-30-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/30/make-wheel/">谈谈自己造轮子</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>写下这篇文章，主要是对我近段时间工作的反思。</p>
+<h1 id="为啥要造轮子">为啥要造轮子</h1>
+<p>对于一些程序员来说，喜欢自己造轮子可算是一个很平常的事情，我想可能有如下原因：</p>
+<ul>
+<li>对于一些小的功能，不需要借助外部库，直接能够自己写完搞定。</li>
+<li>对于一些大的功能，很多外部库不能很好的与自己项目整合，有时候还不如自己写一个。</li>
+<li>有时候即使能用的外部库，因为程序员相轻的思想，就觉得自己写的nb，不用。</li>
+<li>还有可能就是想深入学习某一个知识点，自己动手造一个。</li>
+</ul>
+<p>我不觉得造轮子不好，曾今很长一段时间我都认为造轮子是体现自己能力很好的一种方式，但是现在越来越觉得，不要过分的去造轮子。</p>
+<h1 id="造轮子的教训">造轮子的教训</h1>
+<p>昨天，我需要对接amazon s3的存储，官方没有go语言的sdk，所以我就动了自己写一个的想法，即使我知道铁定有第三方的实现。</p>
+<p>amazon s3的接口因为都是restful形式，同时签名机制已经非常熟悉（国内的存储服务接口几乎都按照这套设计的，除了几个奇葩的公司），所以我就开始写了，写完了之后，我在看一个第三方的<a href="https://launchpad.net/goamz" target="_blank" rel="external">goamz</a>实现，发现跟我相差不了多少，一下子碉堡了。</p>
+<p>我真的叫做没屁事了，这么浪费时间。</p>
+<h1 id="造还是不造？">造还是不造？</h1>
+<p>很多时候，我们要克服自己造轮子的冲动。</p>
+<p>对于一个需要实现的功能，我觉得首先可以考虑该需求是否有成熟的解决方案，如果有，使用的成本有多大？</p>
+<p>譬如对于python来说，如果我们现在需要一套web框架，如果自己去写，而不用成熟的tornado，django这些的，我真觉得蛋疼了。而对于go来说，我到现在还没发现我们用起来趁手的web框架，所以就有了自己造的<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>。</p>
+<p>如果项目进度有压力，多数时候我都倾向于通过集成外部解决方案来实现，而不是费时的自己去造轮子，因为这时候体现你能力的不是你写了多少nb的东西，而是将程序运行起来，提供服务。当然，你也不能找太挫的，或者完全无法驾驭的程序，那样后面就够你疼了。</p>
+<p>即使真的需要自己去写一个轮子，还需要不停的问自己：我这个轮子稳定性如何，能否高效的运行，后续随着需求的变更我能不能很容易的掌控？如果发现自己搞不定，还是求助一下别人比较好。</p>
+<p>如果我对某一个知识点特别有兴趣，想去深入研究并且有时间，那我觉得自己造几个轮子也算是很不错的事情。譬如我前段时间想重新深入了解网络编程，虽然有libev这些好用的开源库，我也基于他们封装了很多东西，譬如<a href="https://github.com/siddontang/tnet" target="_blank" rel="external">tnet</a>，<a href="https://github.com/siddontang/tpush" target="_blank" rel="external">tpush</a>，但是我仍然自己写了一个<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>，写完了，我才有“啊哈，原来是这样“这种豁然开朗的感觉。</p>
+<h1 id="写在后面">写在后面</h1>
+<p>随着现在github这类网站的流行，找到高质量的第三方实现已经变成一件很容易的事情，作为一个程序员，不能固步自封，总认为我自己写的才是好的，有时候“自己动手，丰衣足食”这种想法反而会累死自己。</p>
+<p>今天刚好看到了一篇文章<a href="http://it.deepinmind.com/%E5%85%B6%E5%AE%83/2014/04/29/knowing-the-bits.html" target="_blank" rel="external">一位码农的几点思考</a>，里面的观点我很赞同，与大家共勉。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-01-01T05:03:54.000Z"><a href="/2014/01/01/my-2013/">01-01-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/01/01/my-2013/">我的2013</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="前言">前言</h1>
+<p>每年到这个时候，总需要回顾过去，展望未来。2013这一年学到了很多东西，收货了很多，也成长了很多。主要在技术和生活上面，让自己有了记录一下的冲动。</p>
+<h1 id="技术">技术</h1>
+<p>在技术上面，这一年接触了很多新的东西，让自己眼界开阔不少，同时也开始自我提升，疯狂的在github上面玩<a href="https://github.com/siddontang" target="_blank" rel="external">开源</a>，只是很多都惨不忍睹。</p>
+<h2 id="Openresty">Openresty</h2>
+<p>今年最开始接触的新东西就是<a href="http://openresty.org/" target="_blank" rel="external">openresty</a>，一个集成nginx的web应用开发框架。</p>
+<p>最开始，我们项目的架构采用的是前端nginx做proxy，然后将请求反向代理到后端python tornado的方式实现的。但是随着压力的增加以及一些新功能的上线，这套架构开始显现其局限性，首当其冲的在于慢，虽然可以通过增加tornado进程的方式来进行负载均衡处理，但我总觉得不是长久之计。</p>
+<p>同时，随着业务逻辑的复杂，一些操作需要多个service协同完成，然后在返回给用户，而在什么地方组织多个service的数据以及逻辑也成了我们的一个难题。</p>
+<p>鉴于上述几个原因，我开始研究openresty，因为之前有3年多lua开发的经验，所以非常容易上手。同时，通过研读openresty的一整套源码，真正的了解了nginx以及之上的openresty的运行机制。可以这么说，这段时间我从一个连nginx配置都不会写的小白程序员一跃成为了名义上精通nginx开发的屌丝程序员。</p>
+<p>自然，我开始在项目中推广openresty，这也得到了大家的支持，现在虽然我们很多代码仍然是使用python在编写，但是对于很多高性能模块我们已经逐步转向了openresty。</p>
+<p>在使用openresty的时候，还提交了几个bug，这点颇为自豪，同时也写了一些东西，譬如 <a href="http://siddontang.github.io/introduction-to-nginx/" target="_blank" rel="external">Introduction To Nginx</a></p>
+<h2 id="Go">Go</h2>
+<p>接触go纯属偶然，在上半年终于完结了一个持续时间特长的项目之后，整个组的童鞋都陷于一个无事可干的真空期，也就是在这段时间，第一次学习了go，立刻就被它的简单强大所吸引，尤其是在服务器并发编程方面，那可是非常的强悍。</p>
+<p>于是，我带着两个完全不懂go的童鞋开始了我们推送服务器的编程之旅。最开始的时候，因为两位童鞋只会python，为了尽快的出功能，一些后台的服务采用tornado搭建，而我用go写了挂载大量长连接的comet服务。</p>
+<p>这里不得不说go开发服务的快捷，在goroutine以及channel的机制下面，没有了层层的callback，没有了死锁，我只用了3天就弄出了comet，而且能持续稳定运行。</p>
+<p>鉴于用go成功开发了comet，我让另外两个童鞋也开始用go重构先前写的python逻辑，进展也很顺利。</p>
+<p>不过对于我来说，go现在最大的一个问题在于内存占用，go现在默认的stack大小为8k，对于需要挂载百万连接的comet来说，内存开销实在太大，虽然现在机器的配置完全不需要我担心，但总觉得有点不爽。不过如果优化，也是后续的事情了。</p>
+<p>今年，对于我来说，竟然吃了两次螃蟹，第一个就是openresty，而第二个就是go，而且很幸运的是都能在项目中实施。</p>
+<h2 id="Libtnet">Libtnet</h2>
+<p>今年，我真正的开始了一个算是比较大的开源项目：<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>，它是一个参考tornado的c++高性能网络库。之所以写libtnet，主要是为了后续能用到comet上面，同时也让我自己对多年的网络编程做一个总结。</p>
+<p>以前总说自己精通网络编程啥啥的，其实心里面也知道是用来忽悠的，毕竟精通这个词没多少年的沉淀是不可能的。但是通过写libtnet，不说精通，至少让我又对很多网络编程的东西了解了。</p>
+<p>不过libtnet的问题在于使用c++进行开发，同时大量采用function + bind的开发模式，对于组内的童鞋来说理解上面还比较困难，如果在项目中实施很有可能面临只有我一个人维护的窘境。</p>
+<h2 id="移动开发">移动开发</h2>
+<p>今年没事的时候也涉猎了一些移动开发的方面，包括android以及ios。在android上面开发了一些小应用，只是都是自娱自乐。在ios上面使用cocos2d-x开发了一个小游戏demon，也当是消遣了。</p>
+<p>不过在明年准备好好的尝试一下该领域的开发。尤其是ios上面，毕竟老婆都有了土豪金了，为了展示老公的程序员风采，再怎么也得弄一个出来。</p>
+<h1 id="工作">工作</h1>
+<p>今年在公司，我开始尝试站着上班，不得不说这对我工作效率的提升有很大的帮助，站着上班，不光减肥，还能让我专心工作，因为任何的聊天浏览网页都是一件很耗费力气的事情。这里也不得不佩服自己的毅力，每天竟然都能坚持站7，8个小时。</p>
+<h1 id="生活">生活</h1>
+<p>生活上面今年最主要就是几件事情：</p>
+<ul>
+<li>举办了婚礼</li>
+<li>老婆怀了孩子</li>
+<li>拿到驾照</li>
+<li>买了小车</li>
+</ul>
+<p>可能对于我来说，明年在生活上面最大的事情就是要照顾孩子了。</p>
+<h1 id="总结">总结</h1>
+<p>总之，2013过的很快，但也过的很充实，希望自己在2014里面越来越好，能有更大的突破。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-05-22T00:03:41.000Z"><a href="/2013/05/22/thumbnail-architecture/">05-22-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/05/22/thumbnail-architecture/">缩略图架构实现</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>笔者最近将缩略图功能引入了私有云系统中，这里简单记录一下。</p>
+<h2 id="架构">架构</h2>
+<p>整体架构如下：</p>
+<p><img src="https://raw.github.com/siddontang/blog/master/asserts/thumbnail-architecture.png" alt="image"></p>
+<p>可以看到，笔者采用了通用的分层架构设计模式。</p>
+<ul>
+<li>file storage存放着原始的图片数据。</li>
+<li>image server用于图片的处理，同时进行图片的cache。</li>
+<li>nginx作为统一的入口，同时也作为cache。</li>
+</ul>
+<p>当用户请求一张图片的缩略图的时候，如果该图片不存在于nginx的缓存中，则nginx根据图片的fileid 通过consistent hash路由到对应的image server上面去处理，如果image server仍然没有该图片，则会从file storage下载。</p>
+<p>分层架构有一个很好的地方在于系统的可扩展性，同时我们也可以在加入一些中间层，提高cache的命中率，譬如我们就可以在image server与nginx之间引入一个cache层。不过鉴于我们的系统主要用于企业内部，不会出现图片数据量过大的情况，所以上面这套分层设计已经足够了。</p>
+<h3 id="nginx_try_files">nginx try_files</h3>
+<p>如果本地cache不存在，则去后台服务器取数据。对于这套逻辑，nginx可以通过try_files很好的处理，譬如:</p>
+<pre><code>location /abc.png {
+    root /data/image/;
+    try_files $uri @fetch;
+}
+
+location @fetch {
+    proxy_pass http://up_imageserver$request_uri;
+}
+</code></pre><p>首先try_files会尝试在本地获取对应的文件，如果没有找到，则会内部跳转到fetch这个location去远程获取数据。</p>
+<h2 id="何时处理缩略图">何时处理缩略图</h2>
+<p>既然是缩略图，那么何时生成缩略图就是需要考虑的问题了。通常来说，缩略图的生成会有两种方式：</p>
+<ul>
+<li><p>上传生成</p>
+<p>  当用户上传一张图片之后，系统自动为该图片生成对应的固定格式缩略图，然后将原图与缩略图一起存放到file storage里面去。这方面主要有facebook的<a href="http://static.usenix.org/event/osdi10/tech/full_papers/Beaver.pdf" target="_blank" rel="external">Haystack</a>系统。</p>
+</li>
+<li><p>实时生成</p>
+<p>  当用户上传一张图片之后，只保留该图片的原始数据，当请求该图的缩略图时，如果cache中不存在，由image server动态生成。这方面可以参考淘宝的图片存储介绍。</p>
+</li>
+</ul>
+<p>对于笔者来说，实际使用的是第二种方法，主要有以下几个原因的考量：</p>
+<ul>
+<li>对于实时生成的缩略图我们可以灵活的指定其大小，而不像上传生成那样只有预先定义的width和height。</li>
+<li>存储成本，额外存储缩略图会占用很大的存储空间，而且存放到file storage里面还会有冗余备份的问题，更加浪费。</li>
+<li>协同图片的冷热性问题，最近最热的图片铁定是最频繁访问的，尤其是在多人协同情况下面，而这些图片缩略图是有缓存的，不需要每次都通过原图生成，性能有保证。</li>
+</ul>
+<h2 id="如何处理缩略图">如何处理缩略图</h2>
+<p>既然选择实时生成缩略图，那么如何快速生成缩略图就是笔者需要考虑的问题了。这里笔者使用<a href="http://www.graphicsmagick.org/" target="_blank" rel="external">graphicsmagick</a>来生成缩略图，网上有太多介绍，这里不再累述。</p>
+<h2 id="安全">安全</h2>
+<p>生成缩略图之后，如何保证该图片的安全访问也是一个需要关注的问题。笔者考虑了如下解决方案：</p>
+<ul>
+<li><p>签名，任何缩略图的url都是经过签名，因为签名是通过登陆用户自身的access id和security key进行的，并且有时效性，所以外界很难伪造。或者，可以使用简单的<a href="http://wiki.nginx.org/HttpAccessKeyModule" target="_blank" rel="external">HttpAccessKeyModule</a>来进行访问控制。</p>
+</li>
+<li><p>nginx <a href="http://wiki.nginx.org/HttpRefererModule" target="_blank" rel="external">HttpRefererModule</a>，只允许特定domain的请求访问。</p>
+</li>
+</ul>
+<h2 id="存储">存储</h2>
+<p>对于如何存储大量的图片小文件，笔者觉得可以如下考虑：</p>
+<ul>
+<li>对于文件最终存放的file storage，业界有很多好的分布式解决方案，譬如<a href="http://code.taobao.org/p/tfs/src/" target="_blank" rel="external">TFS</a>，<a href="https://github.com/mogilefs" target="_blank" rel="external">mogilefs</a>等，如果想自己造一个轮子，也很不错。</li>
+<li><p>对于图片的cache，因为cache的存储文件量级我们是可以控制的，所以这里可以考虑直接使用通常的文件系统存储。</p>
+<p>  但需要注意的是，单个目录下面文件数量不能过多，目录的层次也不能过深，不然会导致很严重的性能瓶颈。为了解决上述问题，笔者建立了三层目录结构，首层100个文件夹，以1 - 100命名，每个文件夹下面1000个文件夹，以1 - 1000命名，对于任意的图片文件，根据其实际的文件名通过两次hash到特定的目录下。</p>
+</li>
+</ul>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-05-05T13:23:20.000Z"><a href="/2013/05/05/think-for-web-server-architecture/">05-05-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/05/05/think-for-web-server-architecture/">关于web服务器架构的思考</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>笔者最近一年都在从事企业私有云存储的开发，主导并推动了服务器架构的重构。在架构演化的过程中，有了很多的心得体会，这里记录一下，算是对自己架构成长的一个总结。 </p>
+<h2 id="原则">原则</h2>
+<p>对于笔者来说，设计一个web服务器架构方案，最先考虑的就是简单以及可扩展性。而这两个也是笔者设计架构的首要原则。</p>
+<h3 id="简单">简单</h3>
+<p>对于一个企业级web产品来说，它其实是由非常多的基础服务来组合起来的。以私有云产品来说，如果想实现一个简单的文件共享功能，至少需要共享服务，文件服务，账号服务三个服务来共同实现。</p>
+<ul>
+<li>共享服务，用来管理文件共享关系，如用户A给用户B共享了一个文件abc.txt</li>
+<li>文件服务，用来提供共享文件下载，如用户B需要在哪里以及如何下载abc.txt这个文件</li>
+<li>账号服务，用来提供共享人员的相关信息，如用户A和B的账号，姓名等信息</li>
+</ul>
+<p>上面三个服务，缺少了任何一个都不能实现共享功能。但是为了实现一个功能就要与3个服务进行交互，有些童鞋就觉得非常麻烦，简单起见，他们将其糅合在一起，这样就能很好的进行代码编写了。但是这样做的弊端也非常明显，可维护性非常的差，因为功能都是耦合在一起了，如果这时候我们想用另一套企业自己的账号数据，那么完全无法实现。</p>
+<p>上面说的只是笔者列举的一个例子，实际项目中，共享功能还是很好的进行了切分，但是仍然有很多功能过于耦合，以至于笔者的团队在很长的一段时间里面都在为以前的某些童鞋的错误设计买单。</p>
+<p>鉴于有了上面的经验教训，笔者在考虑架构方案的时候最先想的就是<strong>简单</strong>。 </p>
+<p>所谓简单，其实很好理解，就是一个服务就干一件事情，不同的功能逻辑别糅在一个服务里面实现。更上层的服务是通过集成底层的服务来实现。其实这个就跟程序设计里面模块化的思想一样，只不过这里的模块就是单个服务。</p>
+<p>一个服务一个模块，好处是很多的，但也不可能100%的完美，仍然很多问题需要考虑，譬如：</p>
+<ul>
+<li>服务的可用性问题，如何判断一个服务是否可用，以及当机服务的恢复。</li>
+<li>服务的运维管理问题，系统可能随着功能的增多而有了太多的服务，对这些服务的监控管理就是一个很难的问题，毕竟每个人都不希望凌晨因为服务当掉了这些问题被电话叫醒。</li>
+</ul>
+<p>上面的这些问题，笔者认为已经涉及到服务的高可用问题了，与是否采用简单服务方案无关。而对于服务的高可用，分布式这些问题，笔者反而认为在简单这个原则下面，反而能更好的处理解决。</p>
+<h3 id="可扩展性">可扩展性</h3>
+<p>对于大规模web系统来说，随时可能面临着突然大并发量访问而造成系统负载撑不住的问题。对于这种情况，我们就需要扩展我们的系统使其能够处理过载的情况。</p>
+<p>对于web系统的扩展，通常采用横向扩展的方式，当某一个服务出现性能瓶颈，我们只需要动态增加该服务就能减轻过载问题。因为服务是可以动态进行横向扩展的，所以服务提供的功能都应该是<strong>状态无关</strong>的。所谓无状态性，就是每一次服务器的请求都应该是独立的，如果服务是有状态的，为了维护调用的状态，我们会做非常多的事情，这非常不利于扩展，同时也增加了系统的复杂性。</p>
+<h2 id="stars">stars</h2>
+<p>stars是私有云项目开始的时候葱头写的一套web服务器框架。</p>
+<p>在项目开始的时候，大部分的开发同学都没有web服务器开发的经验，为了解决这个问题，葱头设计了stars，使得大家能够非常的使用python进行web服务器的开发。stars有很多设计巧妙以及值得学习的地方。虽然现在看来有些设计无法满足现有的需求。但是笔者一直认为<strong>没有最好的架构，只有合适的架构</strong>，作为一个架构师，即使你考虑了很多后续扩展的问题，但是仍然有一些需求变化是你考虑不到的。</p>
+<h3 id="rpc">rpc</h3>
+<p>stars最大的特点，就在于封装了复杂的http调用，使得开发的同学不需要关注底层http知识。而做到这一点，就是将http的调用封装变成了大家熟悉的函数调用RPC。譬如我们有如下的一个http请求：</p>
+<pre><code>http://domain.com/file/getFileInfo?fileId=1
+</code></pre><p>该HTTP请求获取一个fileId为1的文件相关信息，在stars里面，我们可以这样写：</p>
+<pre><code>remote = RPC(&quot;domain.com&quot;)
+remote.file.getFileInfo(fileId = 1)
+</code></pre><p>而stars不光封装了http调用，同时为了方便大家的开发，也定义了一套API规范，只要大家写的API满足一定规则，就自动能够被注册到stars里面，这样外面就能使用RPC来调用。</p>
+<p>对于web服务API的模式，笔者认为，通常有RPC以及Restful等几种方式：</p>
+<pre><code>RPC Pattern:
+GET http://domain.com/file/getFileInfo?fileId=1
+GET http://domain.com/file/deleteFile?fileId=1
+
+Restful Pattern:
+GET http://domain.com/file/1
+DELETE http://domain.com/file/1
+</code></pre><p>stars采用的是RPC Pattern，对于这种模式，它对于开发同学很好理解，因为它就跟普通的函数调用一样，使用起来则比较自然。反而Restful Pattern则对于开发同学不怎么好理解。只是随着现今系统规模的扩大，笔者越发觉得stars遇到了问题：</p>
+<ul>
+<li>每实现一个功能，就新增一个API，导致API越来越多，管理越来越复杂。</li>
+<li>第三方开发者难于对接。API过多，开发者不知道如何使用哪些API。</li>
+</ul>
+<p>对于这种情况，可能Restful是一个很好的解决方案，如果有机会，笔者可能会在后续的新的项目中考虑实施。</p>
+<h3 id="stub">stub</h3>
+<p>对于web服务来说，如何信任客户端的HTTP请求？如何高效的与客户端进行交互？这些都是需要考虑的问题。stars采用了stub方式，在高效交互的情况下也能保证不错的安全性。</p>
+<ul>
+<li>客户端首先通过username + password的方式登陆系统，使用https协议保证其安全性。</li>
+<li>登陆成功之后，服务器会下发一个stub作为后续客户端与服务器交互的凭证。</li>
+<li>客户端的任何HTTP请求都需要带上stub。</li>
+<li>stub不会一直有效，一段时间之后过期，客户端需要重新请求申请新的stub。</li>
+</ul>
+<p>因为使用了stub，客户端与服务器能高效的交互，但是stub有如下问题：</p>
+<ul>
+<li>因为每次请求都会带上stub，只要该stub被外部截获，那么就可能伪装成该用户进行访问了。所以stub在很短的一段时间之后就会过期，但即使过期也仍然有风险。</li>
+<li>stub是放到url的请求参数上面传递给服务器的，即使采用HTTPS方式，该stub也能在浏览器上面看到，无法保证安全。</li>
+<li>stub放置在web服务一个总控服务的内存中，无持久化策略，只要该服务重启，先前所有的stub都会失效。</li>
+<li>每个服务一个stub，随着服务的增多，客户需要关注过多的stub管理。</li>
+<li>对于服务的任何HTTP请求，都需要在该服务对应的总控服务中进行stub验证，造成单点问题。</li>
+</ul>
+<p>可以看到，stub虽然提供了很好的与web服务交互的方式，但是在web系统规模扩大之后，不利于后续的扩展，安全性也有漏洞。</p>
+<h3 id="信任链">信任链</h3>
+<p>stars另一个设计巧妙的地方在于其信任链机制。实际会遇到如下情况，假设现在客户端已经生成了一个服务的stub，可以与该服务交互，但这时候客户端需要访问另一个服务的某个API，可是这时候没有该服务的stub，那如何处理呢？</p>
+<p>信任链机制其实就是这样一种情况，服务相互之间是可信任的，因为这些服务都是我们部署的，同时我们也可以通过很多其他方法保证可信任。</p>
+<p>当客户端与服务A建立信任之后，如果客户端想访问服务B，客户端可以通过A向B申请一个stub，这样就可以通过该stub访问服务B。</p>
+<h2 id="resty">resty</h2>
+<p>通过上面可以看到，stars架构是项目初期为了解决服务器快速开发等问题而提出的一套实现方案，当web系统越来越复杂的时候，stars就有了一些局限性，这时候就需要有另一套架构来满足现有的情况。</p>
+<p>对于新架构的选择，笔者决定从如下几个方面考虑：</p>
+<ul>
+<li>吸收stars精华，以其为基础演化，而不是完全重来。架构可能跟进化论一样，是不断进化的。而推倒重来，就如同突然基因突变一样，你自认为变好了，没准可能更差。</li>
+<li>平滑升级，系统已经部署到很多企业里面，如何保证升级的平稳，以及升级数据的完整性，都是我们需要面临的问题。</li>
+<li>简单，参考业界最通用的解决方案，不需要引入复杂的自造轮子。</li>
+</ul>
+<h3 id="签名">签名</h3>
+<p>为了解决stars stub相关问题，笔者认为可以采用最通用的HTTP签名机制。</p>
+<ul>
+<li>客户端使用username + password登陆成功之后，服务器下发一对id和key，因为登陆采用HTTPS方式，所以id和key不会被外部截获。</li>
+<li>客户端发送HTTP请求，使用key对其签名，并带上id一起发送给服务器。</li>
+<li>任何外部的HTTP请求，首先会通过验证服务器对其验证，如果验证通过，则证明是一个合法的url。</li>
+<li>验证通过之后，系统将会把HTTP请求路由到实际处理的服务上处理。</li>
+</ul>
+<p>url签名可以算是一种非常通过的安全交互模式，amazon s3，阿里云等云存储服务都使用了该方式。虽然引入验证服务器，增加了处理HTTP请求的时间，但是将验证与逻辑分离解耦，笔者认为更好，同时，后续我们可以通过很多方法优化验证服务。</p>
+<h3 id="原子api">原子api</h3>
+<p>前面说了，stars的RPC模式会导致API越来越多，以至于开发者为了实现一个功能，可能会与多个API进行交互，这明显提升了第三方开发的复杂性。所以笔者提出了原子API的概念，其实就是在服务器级别整合API，使得开发者只需要通过调用简单的API就能实现相应的功能。</p>
+<p>对于如何提供原子级别的API，笔者觉得可以使用如下方法：</p>
+<ul>
+<li>如果某一个功能需要多个API顺序执行，每个API的执行结果都可能影响该功能的最终结果，这样的功能我们就需要提供一个原子API来整合。</li>
+<li>如果某一个功能只是需要调用多个API查询相关数据，那么我们只需要提供批量查询的API即可，不需要提供原子API整合。</li>
+</ul>
+<p>既然引入了原子级别的API，那么在哪里进行整合呢？譬如有一个功能，需要服务A和服务B的API，我们不可能写一个服务C来特意的整合这个功能，这样会导致服务越来越多。所以笔者决定在nginx这一层提供原子API功能的整合。使用nginx的好处在于只需要增多一个location，该location里面进行API的整合。</p>
+<p>不过，为nginx开发一个module去处理这一个location其实也是一件非常困难的事情，虽然nginx的module开发看起来很简单，但是实际做起来会发现非常的复杂。幸运的是，我们有openresty，直接可以使用lua进行nginx的开发。现在我们已经大量在使用openresty，这也是为什么笔者将这次的架构命名为resty的原因。</p>
+<h3 id="统一入口">统一入口</h3>
+<p>stars有一个比较严重的问题，在于各个服务之间都是互相知道地址的，这样就有几个问题：</p>
+<ul>
+<li>对外暴漏的入口地址太多，客户端知道太多的服务地址。</li>
+<li>不利于动态部署，服务之间地址固定，重启某一个服务，相关服务都需要重启。</li>
+</ul>
+<p>为了解决这个问题，笔者决定在nginx这一层做统一入口，所有的服务地址由nginx这边进行管理，这样有如下几个好处：</p>
+<ul>
+<li>地址解耦，配置统一，只有nginx知道所有服务的地址，便于集中管理 </li>
+<li>隔离，服务与服务之间，服务与客户端之间完全隔离 </li>
+<li>动态部署，任何服务的动态变更，只需要nginx处理，该服务的相关服务完全不用重启。</li>
+</ul>
+<h2 id="总结">总结</h2>
+<p>以上只是简单的记录进来服务的架构演化，虽然现有的架构能满足系统的需求，但是没准一段时间之后就又会出现局限性。笔者一直认为，没有最好的架构，只有合适的架构。但是无论怎样，保持简单就可以了。</p>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-03-02T10:00:00.000Z"><a href="/2013/03/02/re-think-server-architecture-2/">03-02-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/03/02/re-think-server-architecture-2/">最近关于服务器架构的一点思考（2)</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>在前一篇”最近关于服务器架构的一点思考”，我主要考虑的是现阶段服务架构的易交互性以及安全性，包括客户端与服务器之间的签名访问，通过access id和security key交互，这套机制虽然简单，但是足够方便与高效。所以，后续碰到了服务器的问题，我也会基于这个原则，简单就好。</p>
+<p>因为我们的产品是部署到大型企业内部，供企业内部使用，也就是在内网环境里面，所以在很早期的时候是没考虑企业员工在外网访问的问题的。但是随着部署的企业对这方面的要求越来越高，我们现在不得不考虑我们的服务支持内外网访问，并且要保证足够的安全性。</p>
+<h1 id="http代理服务器">http代理服务器</h1>
+<p>最开始为了快速部署，我提出了一种可行的解决方案，因为我们采用http进行通讯，所以很自然的就可以通过配置一台HTTP代理服务器来解决内外网访问的问题，在外网使用的员工，通过代理服务器访问内部的服务。</p>
+<p>这个方案很简单，用户也觉得不错，使用了一段时间之后，一些用户就提意见了。主要有以下两点</p>
+<ul>
+<li>我在外网使用填写代理地址之后，拿到内网工作，发现无法使用了，因为还是走的外网代理</li>
+<li>我的企业服务器有内外网地址，我不想用代理方式，你让你们的服务直接部署在有内外网ip的机器上面，这样内外网都能访问</li>
+</ul>
+<p>对于第一个问题，我们可以考虑不用解决，因为对于浏览器的使用来说，用户也需要手动去管理自己的代理设置，所以不需要自动处理的。但是对于第二点，直接在具有内外网ip的机器上面部署，则对我们是一个难题了。</p>
+<h1 id="早期的服务架构">早期的服务架构</h1>
+<p>为什么不好解决直接将服务部署到具有内外网ip的机器上面，是因为早期的服务架构导致的，如图：<br><img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/re-think-server-architecture-2/origin-architecture.png" alt="Alt text" title="origin-architecture"></p>
+<p>我们的服务会有多个，并且这些service可能会分布到不同的物理机器上面，但是这些service又是直接对客户端提供服务的，也就是说，如果我们现在需要直接内外功能，那么我们需要将这些service都部署到具有内外网ip的机器上面，假设有10个service，则需要10台这样的机器，这个对于企业是铁定无法接受的。但是如果把这些service都部署到一台内外网ip的机器上面，则服务的性能会大打折扣。</p>
+<h2 id="一点对架构碎碎念">一点对架构碎碎念</h2>
+<p>为什么早期会如此架构，不便考量了，至少优势在于交互简单，快捷方便，但是有如下几个缺点：</p>
+<ul>
+<li>内外网ip问题，这个在上面已经说明</li>
+<li>service的地址全部对外暴露，client知道的东西太多了</li>
+<li>service之间的地址信息也绑定的太死，不利于动态部署，任何service的变化都需要重启所有相关联的service </li>
+</ul>
+<p>可能还有一些问题，但是我要说的是早期的架构不是不行，在当时，可能它是最好的一套解决方案，只是到了现在，随着需求不断演化，程序的不断复杂，这套架构已经有点不适宜了。所以我认为，<strong>任何的架构方案只是在当时特定的条件下面提出的较好的解决方案</strong>，至于说什么可扩展性，可维护性，我觉得都是逐渐演化的。架构师不是神，不可能预见所有的东西。</p>
+<p>所以，对于一个功能，一套架构体系，你拿到手之后立马提一堆问题，说就不应这么设计，然后提出一堆自己认为很好的设计，我只能觉得你这个人不尊重别人的成果，不实事求是，至于其他的评价大家自己去yy吧。</p>
+<p>发了一堆的牢骚，只是想说明，没有完美的架构，只有合适的架构。即使我现在设计的这一套方案，没准不久之后我自己又想到了另一套更好的方案也说不定。</p>
+<h1 id="如何解决？">如何解决？</h1>
+<p>既然现有的架构不足以解决内外网的问题，那么我们就需要一套新的架构来实现，对于我个人来说，设计新的方案，一般会有如下几点考量：</p>
+<ul>
+<li>尽量做到架构的演化，而不是推倒重来。以前的东西也有可取的东西，那么我们是可以借鉴的，架构可能跟进化论一样，是不断进化的。而推倒重来，就如同突然基因突变一样，你自认为变好了，没准可能更差。</li>
+<li>易升级，毕竟我们的程序已经部署到很多企业里面，如何平滑的升级是一个很大的问题，升级就一定要保证数据的完整性。</li>
+<li>后续面临的问题，这些一定要想清楚，新的架构会面临什么样的情况，性能压力怎样，可扩展性怎样，如果出问题会在什么地方有问题，这些都需要考量。虽然不可能预料到所有情况，但多多益善。</li>
+<li>简单。架构一定要简单，这算是我一直坚持的原则了，这套体系不光我们能很好明白，对于技术支持人员，运维人员也能很好理解。</li>
+</ul>
+<p>那对于现有问题，我们如何解决呢？</p>
+<h2 id="黑盒！！！">黑盒！！！</h2>
+<p>所有的service都在黑盒里面，通过一个统一的代理服务对外提供访问，同时service之间也互相隔离，通过统一的代理服务进行访问。如图：</p>
+<p><img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/re-think-server-architecture-2/reverse-proxy-server.png" alt="Alt text" title="reverse-proxy-server"> </p>
+<p>这一套架构，很简单，无非就是引入了一个中间代理层，虽然多了间接层性能上面有损失，但是优势也是显而易见的：</p>
+<ul>
+<li>地址解耦，配置统一，只有proxy server知道所有service的地址信息，便于集中管理 </li>
+<li>隔离，service与service之间，service与client之间完全隔离 </li>
+<li>动态部署，任何service的动态变更，只需要proxy server处理，该service的相关服务完全不用重启，service的扩展方便 </li>
+</ul>
+<p>其实说了这么多，都是很简单的机制，在实际中，我们使用nginx作为reverse proxy server。</p>
+<h2 id="单点故障？">单点故障？</h2>
+<p>因为所有的service都通过nginx进行交互，大家很容易就想到nginx能不能顶住的问题，也就是单点问题。幸运的是，nginx可以很好的扩展，直接演化出如下架构：</p>
+<p><img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/re-think-server-architecture-2/nginx-extension.png" alt="Alt text" title="nginx-extension"> </p>
+<p>而多台nginx的访问则可以通过很多方法，最简单的就是配置dns，或者自己实现一个高效的router服务。</p>
+<h2 id="内外网访问？">内外网访问？</h2>
+<p>因为我们所有的service都是通过nginx对外提供访问，所以很容易的我们在具有内外网ip的机器上面部署nginx，就能很好的解决内外网访问的问题：<img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/re-think-server-architecture-2/in-and-out-access.png" alt="Alt text" title="in-and-out-access"> </p>
+<h2 id="comet推送？">comet推送？</h2>
+<p>我们的service有时候会通过comet通知client进行相应的更新操作，而这些消息无论内网还是外网用户都应该收到，现阶段采用的最简单的做法就是将comet server部署到对外提供访问的nginx那台机器上面，这样内外网用户都能连上comet server，收到通知消息：<img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/re-think-server-architecture-2/comet.png" alt="Alt text" title="comet"> </p>
+<h2 id="文件传输？">文件传输？</h2>
+<p>因为我们的service会提供存储服务，就面临的一个文件传输的问题，后面以下载为例。当用户上传了一个文件之后，很有可能在短时间内对这个文件感兴趣的人都会去请求将其下载下来。如果整个数据传输通过nginx来中转，那么很有可能造成nginx的性能瓶颈以至于无法处理其他的服务请求。我们通常将服务的请求分为两类，数据请求和逻辑请求，在内网环境下面，服务器如果是百兆网卡，即使每个用户限速一兆，100个用户同时下载也会将服务器网络带宽耗尽，以至于无法处理逻辑请求。虽然这个问题可以通过扩展更多的nginx来解决，但是最好的办法还是客户端直接连接提供下载的service，这样就能做到数据与逻辑的分开处理。</p>
+<p>因为我们的file service都是部署在内网，所以内网用户能直接连接，但是外网用户怎么办呢？同时，直接将file service暴漏给client，不是又违背了我们先前设计的原则了吗？</p>
+<p>对于这个问题，我的考虑如下：</p>
+<ul>
+<li>外网的流量压力远远小于内网，因为我们是企业内部使用，外网的访问只会出现在一般人员出差的情况下面，外网使用频率低。</li>
+<li>无论内网还是外网，整个的下载流程应该是一样的，client不能根据是内网还是外网写两套下载逻辑的代码。</li>
+<li>service不能主动暴露自己的地址信息。</li>
+</ul>
+<p>有了以上几个考量，我们决定使用一种很简单的方式，就是nginx rewrite。流程如下：</p>
+<ul>
+<li>当client请求nginx下载的时候，nginx能知道是内网用户还是外网用户。</li>
+<li>对于内网用户，nginx直接rewrite到file service的地址那边，因为file service的地址只有nginx知道，所以它能将该地址提供给client让其直接连接。这就解决了file service主动暴露地址的问题。</li>
+<li>对于外网用户，nginx也走rewrite流程，只是仍然rewrite到自己负责提供代理下载服务的地址上面，client请求该地址之后，nginx负责将数据取出在传输给client。</li>
+</ul>
+<p>这里我们可以看到，外网的数据流仍然走的是nginx，这对于nginx性能压力来说虽然有影响，但是因为外网的流量压力很小，所以还是能顶住的。</p>
+<h2 id="内外网切换？">内外网切换？</h2>
+<p>现在我们程序可以内网，外网都能访问了，那么就面临一个问题，当一个用户从内网环境切换到外网环境的时候，如何能够正常的访问？</p>
+<p>对于client来说，首先需要配置一个服务器的ip或者dns地址才能有效的访问我们的service，如果内网和外网都是通过一样的dns来提供服务，那即是网络切换了，client也能够通过该地址连接到服务器。但如果内网和外网对外提供的是ip地址访问，或者不一样的dns，那么client就无法连接了。</p>
+<p>首先，我们需要明确的是，client需不需要自动的处理网络切换的情况，我觉得不需要自动处理。如果发生了网络切换，client就会出现连接不上服务器的问题，但是client无法简单的判断到底是因为网络切换造成的连接问题，还是服务器本来就出现了故障造成的连接问题。同时，我觉得网络切换对于用户自身来说，是一个能自己感知的行为。所以我们采用的了一种最简单的处理方式，登陆时候判断内外网环境。如果用户切换了内外网，那么他只需要重登陆一下就可以了。</p>
+<p>当用户成功登陆的时候，服务器会给client下发一个配置好的内网ip和外网ip地址，这样当用户下次登陆的时候，首先尝试使用内网ip登陆，如果不通，则使用外网ip登陆。这样就能解决内外网自动登陆的问题。</p>
+<h1 id="写在后面的东西">写在后面的东西</h1>
+<p>一个很简单的企业需求，部署到内外网IP的服务器上面，就引发了我们对现有架构的重新思考与演化，可以看到需求都是不容小觑的。这套新的架构体系，虽然简单，但是能很好的解决现有的一些问题，同时又具有足够的可扩展性，当然还会碰到很多其他的问题，有些问题我已经预料到，并想了很多解决方法，但大部分还是未知的，这里就不展开了。所以需要我不断的去自省思索。没准后面还会写很多re-think系列出来。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2013-01-13T10:00:00.000Z"><a href="/2013/01/13/re-think-server-architecture/">01-13-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/01/13/re-think-server-architecture/">最近关于服务器架构的一点思考</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>几个月前，思索了一套安全的服务器交互模型，随着几个月的不停的思索，又有很多新的心得体会。抽象来说，我认为，对于一个好的服务器架构，简单，可扩展性强，是必不可少的。</p>
+<ul>
+<li><p>简单，其实很好理解，一个服务就干一件事情，不同的功能逻辑别糅在一个服务里面实现。短期来看，一个服务器实现一堆功能逻辑，编码容易简单，但是弊端也能立马显现，可维护性差，单点故障等。我们的项目就出现了这样的问题，一个童鞋当初为了方便，将本来几个服务，组织架构服务，登陆验证服务，账号管理服务等几个服务的代码糅合在一个服务里面，编码是简单了，但是后续一堆问题出来了。举个最简单的例子，我们想使用外部的一个登陆验证模块，使用外部的组织架构数据，现在我们完全无法实现。就因为这个，我们又准备将这几个服务进行拆分。所以，无论怎样，保证服务的简单，是为了更好的为了后续的扩展</p>
+</li>
+<li><p>扩展性强，一是服务功能可扩展强，因为一个服务一个功能，当我们需要实现另一个功能的时候就增加一个服务，每个服务通过标准的通信协议（一般就是http）进行通信就行。另一个就是服务本身的可扩展性强，单个服务里面实现的功能都应该是状态无关的，也就是说服务的api提供不能有时序关系。就因为无时序状态，所以每个服务的个数可以动态扩展</p>
+</li>
+</ul>
+<h1 id="安全交互">安全交互</h1>
+<p>在一套安全的服务器交互模型中，我提出使用key + stub的方式进行高效安全的交互，这套机制虽然没有问题，但是我现在觉得是对第三方开发不友好的方式。如果不光我们提供服务，客户端也由我们编写，那无所谓，但是如果另一个客户端想对接我们的服务，就会面临一个很郁闷的问题，必须保存每一个服务的stub，这个随着服务的增多会越来越来管理。所以思索了很久，还是采用业界比较通用的签名方法，这个足够高效，也足够安全。</p>
+<ul>
+<li>部署一个访问验证服务器，用于管理access id和security key</li>
+<li>当用户安全的登陆之后，我们会给访问客户端一个用于访问我们所有服务的access id和security key。因为登陆一般采用的是https，所以id和key不会被网络窃听获取到，所以是安全的</li>
+<li>客户端收到该id和key之后，对于后续任何的http请求，使用key对url签名，然后将id与签名放置在http header里面一同发送给server</li>
+<li>server收到http请求之后，首先通过header里面的id在访问验证server里面找到对应的key，在使用同样的方式对url进行签名，如果两次签名一样，表明这是一个合法的url，如果不一样，可能其他人篡改了该url，我们拒绝这次http请求</li>
+<li>当用户注销登出，id和key就无效了。如果为了安全性，客户端也可以强制的每隔一段时间进行id和key的更换</li>
+</ul>
+<p>签名机制足够的简单高效，但也必须得注意几个问题：</p>
+<ul>
+<li>每次对url进行签名最好带上一个随机数，譬如当前时间，这样不容易被窃听之后暴力破解得到key</li>
+<li>为了更好的保证安全性，这套机制还是应该在https上面使用</li>
+</ul>
+<h1 id="访问验证服务器">访问验证服务器</h1>
+<p>这里我引入访问验证服务器，也是我认为架构简单性的考量，每个服务干自己的事情，所以需要验证了就提供一个验证服务器。</p>
+<p>但这里又有一个问题，当服务器收到http请求之后，在什么时候进行url的验证？为了保证简单性，各个服务提供api是不会出现任何验证逻辑，那这套验证逻辑放置在什么地方呢？我觉得可以在两个地方处理：</p>
+<ul>
+<li>服务框架的统一http入口处理里面，铁定我们会写一套框架代码，各个服务在这套框架之上运行。譬如我们采用tornado wsgi的方式搭建服务器，他对于任何http请求都是有一个统一的入口的，我们只要在这个入口里面首先进行访问权限的判断，然后在继续进行后续操作就行</li>
+<li>在引入一个总控服务器，该服务器收到http请求之后首先进行访问验证，然后在进行后续操作</li>
+</ul>
+<p>这两种方式，第一种是我们项目现在使用stub采用的，而第二种则是我现在推荐的方式。第一种方式有一个不好的地方在于，验证逻辑跟框架代码耦合了，虽然我们可以通过很多方式让框架跟验证逻辑进行解耦，但是我仍然觉得有点别扭。现今我们stub为什么可以这么是因为验证控制这套逻辑本来就是由底层框架提供，而不是外部服务提供。</p>
+<p>而采用第二种方式，则需要引入一个总控服务器，可以使用openresty解决，因为我们所有的http都要经过nginx，所以直接在nginx里面做就可以了。因为nginx性能很高，同时在openresty里面使用lua做到非常容易开发，而且我们实现的只是简单的流程控制，所以通过nginx绰绰有余。</p>
+<h1 id="原子级别的api服务">原子级别的api服务</h1>
+<p>因为我们的功能都是由不同的服务器提供，这里就有一个比较郁闷的问题，一个功能如果需要不同服务器协同，怎么处理。譬如我现在想实现一个功能，我需要a，b，c三个服务以此进行处理，只有都处理成功了这个功能才算完成。如果只有我们自己写客户端，那没问题，但是如果有一个第三方需要对接实现这个功能，那么他们就会很困惑，为啥我要这么麻烦来实现这个功能？并且还不能保证他们能理解正确，写出正确的功能代码。</p>
+<p>这个问题现在已经比较严重了，导致了我们有时候不得不花上很多时间来给其他开发人员解释api如何使用。所以每一个功能有一个原子级别的api来提供，是一个不错的办法。怎么说呢，因为引入了openresty，所以我们完全可以在nginx这层就写好该功能需要访问的服务。这个其实跟上面的访问验证类似，就是由openresty做总控，来进行流程的控制。</p>
+<h1 id="总控nginx">总控nginx</h1>
+<p>既然我们使用openresty来进行服务的总控控制，就需要注意一个最重要的问题：openresty负责的功能只能是简单的流程控制，它不负责其他任何的功能逻辑，这样才能保证足够的简单。我们不希望在nginx里面有太多重型的逻辑。</p>
+<h1 id="总结">总结</h1>
+<p>这些算是近端时间以来对服务架构的一些理解，还有一些，后续慢慢补充。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2012-09-19T10:00:00.000Z"><a href="/2012/09/19/network-prefork/">09-19-2012</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2012/09/19/network-prefork/">深入浅出网络模型(2)</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在深入浅出网络模型里面，我大概介绍了几种个人理解的网络编程模型，从涛哥和葱头的反馈来看，讲的东西还不怎么详细，所以后续会不断的补充完善。</p>
+<h1 id="prefork模型">prefork模型</h1>
+<p>今天主要探讨的是prefork模型，我在前文说过，因为unix的fork很迅速，所以可以采用multi process模式，即每次accept到一个socket之后，就fork一个子进程，然后盖子进程进行处理。这样就有一个问题，如果连接数过多，会导致fork过多的子进程，造成系统压力。</p>
+<p>所以就有了prefork模型，也就是预先分配一些子进程进行后续网络处理。显而易见的好处就在于不用每次都fork，减少了很多系统开销。</p>
+<h2 id="main_accept_+_prefork_handle">main accept + prefork handle</h2>
+<p>prefork我认为有两种模型，第一种就是主进程bind，listen之后，就一直accept，当接收到新的连接的时候，将这个socket发给其中一个子进程处理。</p>
+<p>这里就涉及到一个问题，父进程如何将收到的socket发送给子进程。因为此时子进程在accept之前已经创建，所以不可能共享后续父进程新创建的socket。所以我们需要一套机制来进行进程之间的socket传递，而这个是早已经有的实现。</p>
+<ul>
+<li>*nix平台下面，使用socketpair + sendmsg + recvmsg</li>
+<li>windows平台下面，使用WSADuplicateSocket</li>
+</ul>
+<p>因为网上这方面的资料很多的，这里就不在详细说明，只是觉得对于这种方法，还需要写跨平台的代码，并且进程传递socket也需要系统开销，所以这种模型我没有实现过。flup的prefork模型采用的是这种做法，后续可以看看。</p>
+<h2 id="prefork_accept">prefork accept</h2>
+<p>当主进程bind，listen之后，各个子进程自己去accept，这样当有一个连接请求到来的时候，只要有一个子进程能够accept，就能进行后续处理了。这个模型相对来说，比较简单，较易实现，tornado的多进程模型就采用的是这样方案。</p>
+<p>不过这种方案有可能出现惊群效应，也就是说，当所有子进程都在accept的时候，如果来了一个请求，会将所有子进程唤醒，但是只有一个进程能够处理这个请求，而其他 进程继续休眠等待。</p>
+<p>解决这个问题，通常的做法就是在accept的时候进行锁保护，保证只能有一个进行进行accept，但是我觉得，惊群效应出现的情况在于休眠的进程很多，但请求很少的情况，如果有大量的连接请求，所有子进程都在忙碌，这个问题自然就没有了。所以也不需要怎么特别关注。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2012-09-02T10:00:00.000Z"><a href="/2012/09/02/step-by-step-network/">09-02-2012</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2012/09/02/step-by-step-network/">深入浅出网络模型</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="前言">前言</h1>
+<p>对于高性能web服务器来说，一个好的网络模型是必不可少的，这样能让程序员专注于上层业务逻辑的开发，而不需要过多的关注底层网络的交互。虽然网上现在有很多介绍高性能网络架构的文章，但是这里我还是想自己结合多年的开发经验总结一下，也当算是自己知识的沉淀。</p>
+<p>测试环境</p>
+<ul>
+<li>os: mac os 10.7.4</li>
+<li>cpu: intel core i5 1.7 GHz</li>
+<li>mem: 4G 1600 MHz DDR3</li>
+</ul>
+<p>开发工具</p>
+<ul>
+<li>python: 2.7</li>
+</ul>
+<p>测试工具</p>
+<ul>
+<li>tool: http-load</li>
+</ul>
+<p>这里，需要说明几个问题</p>
+<ul>
+<li>只考虑单机，不提整体分布式。</li>
+<li>os的选择，unix/linux都可以，而windows则没有考虑，虽然它有很强的iocp机制用来高效的处理网络。</li>
+<li>语言的选择，对于io密集型的程序，语言的差别是很小的，c/c++在碰到io操作的时候性能不见得比python高多少，而python的开发非常的快速，所以我选择了python。但如果是cpu密集型程序，c/c++那真还是王道了。</li>
+<li>测试工具的选择，虽然有很多测试web服务器性能的工具，之所以选择http-load，主要还是在于它足够简单，而且我只需要进行大概比较，来说明网络模型的性能，所以当然是越简单越好。</li>
+</ul>
+<h1 id="一个简单的web_server">一个简单的web server</h1>
+<p>首先我们来看一个简单的web server例子</p>
+<pre><code>import socket
+
+HOST = &#39;127.0.0.1&#39;                 
+PORT = 8888              
+
+msg = &#39;200 OK HTTP/1.1\r\n\r\nHello World&#39;
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind((HOST, PORT))
+s.listen(1)
+
+def hello(conn):
+    conn.recv(1024)
+
+    conn.sendall(msg)
+    conn.shutdown(socket.SHUT_RDWR)
+    conn.close()
+
+while 1:
+    conn, addr = s.accept()
+    hello(conn)
+</code></pre><p>上面是一个简单的web server，它接受client的连接，读取client的数据，并且发回一个hello world，就这么简单。不过它的缺点也很明显，只能处理单个连接，不能同时处理多个连接。也就是说，这个server处理不了并发。</p>
+<h1 id="blocking_io_+_multi_process">blocking io + multi process</h1>
+<p>为了解决上面的问题，我们引入process或者thread，也就是说，当server accept一个client请求之后，会将其扔到一个新的进程或者线程中去，而主循环继续处理下一个连接请求，这样就能保证并发。</p>
+<p>在早期的unix系统中，推荐使用fork模型，也就是将socket扔入一个新创建的进程中。因为在unix下面，fork很迅速，并且开销很小。</p>
+<pre><code>while 1:
+    conn, addr = s.accept()
+
+    if os.fork() &gt; 0:
+        conn.close()
+
+        continue
+
+    hello(conn)
+
+    os._exit(0)
+</code></pre><p>当accept成功之后，server使用fork创建一个子进程，然后父进程继续监听网络连接。而后续所有与client的交互都是在子进程里面进行，这样就有了并发。</p>
+<p>这里需要注意一点，mac下面系统默认max user processes是一个很小的数，我的为709，如果不能调高，很容易就会因为fork太多导致Resource temporarily unavailable，但是mac下面坑爹的是ulimit -u竟然无效，google了一下找到一些<a href="http://blog.ghostinthemachines.com/2010/01/19/mac-os-x-fork-resource-temporarily-unavailable/" target="_blank" rel="external">解决方案</a>。</p>
+<p>补充一点，上面这个程序即使把process的数量设置的在高，也会造成process资源的耗尽，原因在于僵尸进程，具体可以参考<a href="http://blog.csdn.net/yygydjkthh/article/details/7342160" target="_blank" rel="external">两次fork</a>，以及<a href="http://mildopinions.wordpress.com/2008/05/31/python-and-parallel-programming/" target="_blank" rel="external">python-and-parallel-programming</a></p>
+<p>对于fork，为了防止僵尸进程问题，开始我使用注册singal的方式处理，如下</p>
+<pre><code>def handleSIGCHLD(num, stackframe):
+    if num == signal.SIGCHLD:
+    try:
+        (pid, status) = os.waitpid(-1, os.WNOHANG)
+    except:
+        pass
+
+
+signal.signal(signal.SIGCHLD, handleSIGCHLD)
+</code></pre><p>但是却发现在socket accept的时候，老是出现</p>
+<pre><code>socket.error: [Errno 4] Interrupted system call
+</code></pre><p>这样的错误，原因在于socket的系统调用可能会被signal打断，不过对于信号这个东西，本来我也不怎么感冒，就不想深究了。所以有了后一种简单的做法，就是在accept之前waitpid一下，这样就能回收一些僵尸进程，只不过可能还是有一些进程无法回收，不过觉得也能接受了。对于二次fork解决方案，感觉fork的开销还是有的，这里就不怎么想用了。</p>
+<h1 id="blocking_io_+_multi_thread">blocking io + multi thread</h1>
+<p>对于thread，代码差别不大，只需要将首发数据的功能移到thread里面</p>
+<pre><code>def callback(conn):
+    hello(conn)
+
+while 1:
+    conn, addr = s.accept()
+
+    th = threading.Thread(target=callback, kwargs = {&#39;conn&#39;:conn})
+    th.start()
+</code></pre><h1 id="multi_process_vs_multi_thread">multi process vs multi thread</h1>
+<p>网上有太多分析多进程和多线程的文章，譬如这篇<a href="http://www.geekride.com/fork-forking-vs-threading-thread-linux-kernel/" target="_blank" rel="external">Forking vs Threading</a>，而我本机的测试结果如下：</p>
+<pre><code>siddontang:~/repository/perfsvr $ http_load -p 10 -fetches 5000 url.list 
+5000 fetches, 10 max parallel, 55000 bytes, in 1.55861 seconds
+11 mean bytes/connection
+3207.98 fetches/sec, 35287.8 bytes/sec
+msecs/connect: 0.265093 mean, 20.846 max, 0.197 min
+msecs/first-response: 2.78085 mean, 23.332 max, 0.584 min
+HTTP response codes:
+
+siddontang:~/repository/perfsvr $ http_load -p 10 -fetches 5000 url.list 
+5000 fetches, 10 max parallel, 55000 bytes, in 2.73079 seconds
+11 mean bytes/connection
+1830.97 fetches/sec, 20140.7 bytes/sec
+msecs/connect: 0.244044 mean, 10.649 max, 0.063 min
+msecs/first-response: 5.12083 mean, 12.943 max, 0.436 min
+HTTP response codes:
+</code></pre><p>第一个测试结果是thread的，第二个为process，可以看到，thread的性能要好于process，不过也不能因此下结论multi thread模型就更好，因为我这个只是简单的测试。</p>
+<p>之所以要写multi process/thread主要是因为，在上面这两种模型下面，如果并发量大的时候，都会遇到一个比较严重的问题，就是系统切换开销以及内存压力。这里有一个<a href="http://bulk.fefe.de/scalability/" target="_blank" rel="external">benchmark</a>。</p>
+<h1 id="non_blocking_socket">non blocking socket</h1>
+<p>上面说的网络模型都是基于blocking socket，所谓blocking socket就是当socket在send或者recv的时候，进程/线程会一直block直到io完成。我们之所以会对于每一个连接启用一个进程/线程，就是不能因为io的block导致整个系统的block。而non blocking socket则没有这种问题，当一个socket是non blocking的时候，它在调用send，recv等时候可能会立即返回而不作任何事情，而后续的事情我们通过其他机制获得并处理。这样就不会因为io的block造成整个程序的block。</p>
+<h1 id="select/epoll/kqueue">select/epoll/kqueue</h1>
+<p>对于non blocking socket，我们可以使用select等进行监听，当这个socket可读，可写等状态的时候，select会触发相应的回调进行处理。同时，select可以监听多个non blocking socket，这样就达到了多路复用io的效果。而对于epoll，kqueue，大概原理一样，只是在实现上面不一样罢了。</p>
+<p>这里，我决定开始直接使用tornado的源码，这里不得不佩服tornado的强悍，一个ioloop就封装好了所有的东西，并且可以随时切换。因为在mac，所以只能使用select和kqueue。</p>
+<h2 id="select">select</h2>
+<p>在tornado里面使用select很简单，需要注意两点：</p>
+<ul>
+<li>通过IOLoop传入特定的poll机制。</li>
+<li>application的listen里面会使用IOLoop的单件，所以生成的ioloop需要install一下  </li>
+</ul>
+<p>代码如下：</p>
+<pre><code>class MainHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write(&quot;Hello, world&quot;)
+
+application = tornado.web.Application([
+    (r&quot;/&quot;, MainHandler),
+])
+
+loop = tornado.ioloop.IOLoop(tornado.ioloop._Select())
+loop.install()
+application.listen(8888)
+loop.start()
+</code></pre><p>使用http_load的测试结果，可以看到，在同时100并发的情况下面，性能很不错。而先前multi process/thread模型在我的机器上面当并发量为100的时候已经有很多请求处理不过来直接报错了。</p>
+<pre><code>siddontang:~/repository/perfsvr $ http_load -p 100 -fetches 5000 url.list 
+5000 fetches, 100 max parallel, 60000 bytes, in 2.05569 seconds
+12 mean bytes/connection
+2432.28 fetches/sec, 29187.3 bytes/sec
+msecs/connect: 0.192841 mean, 3.623 max, 0.082 min
+msecs/first-response: 40.5787 mean, 105.812 max, 15.746 min
+HTTP response codes:
+code 200 -- 5000
+</code></pre><p>再来说说select的使用方式。select会关心3个队列，read，write和error，对于一个socket而言，它如果对某一种事件感兴趣，就加入到相应的队列里面去。譬如一个socket这时候只关心是否能read，那它就加入read队列。而select则在每次运行的时候，依次去遍历这些队列，看里面哪些socket准备就绪可以操作了，如果有将他加入一个可处理的列表里面去。tornado下面select使用代码如下：</p>
+<pre><code>def poll(self, timeout):
+    readable, writeable, errors = select.select(
+        self.read_fds, self.write_fds, self.error_fds, timeout)
+    events = {}
+    for fd in readable:
+        events[fd] = events.get(fd, 0) | IOLoop.READ
+    for fd in writeable:
+        events[fd] = events.get(fd, 0) | IOLoop.WRITE
+    for fd in errors:
+        events[fd] = events.get(fd, 0) | IOLoop.ERROR
+    return events.items()
+</code></pre><h2 id="kqueue">kqueue</h2>
+<p>让tornado支持kqueue模式很简单，mac下面就自动就是的，不过为了与select对比，我们使用如下方式</p>
+<pre><code>loop = tornado.ioloop.IOLoop(tornado.ioloop._Kqueue())
+</code></pre><p>测试结果如下</p>
+<pre><code>siddontang:~/repository/perfsvr $ http_load -p 100 -fetches 5000 url.list 
+5000 fetches, 100 max parallel, 60000 bytes, in 2.44096 seconds
+12 mean bytes/connection
+2048.38 fetches/sec, 24580.5 bytes/sec
+msecs/connect: 7.95017 mean, 32.623 max, 0.49 min
+msecs/first-response: 40.0568 mean, 73.247 max, 14.235 min
+HTTP response codes:
+code 200 -- 5000
+</code></pre><p>可以看到，kqueue的结果也是挺不错的，能够支持高并发量的处理，但是与select对比发现，select的性能竟然比kqueue要高，这个在某些时候是的，我后续在说明。</p>
+<p>这里先说明一下kqueue的工作方式，相比于select，我感觉kqueue强大了很多，对于kqueue的设计，具体可以参考这篇<a href="https://docs.google.com/viewer?url=http%3A%2F%2Fpeople.freebsd.org%2F~jlemon%2Fpapers%2Fkqueue.pdf" target="_blank" rel="external">paper</a>。kqueue不光可以处理socket的事件，同时还能处理异步io，信号，文件变化等，感觉就是事件监听一锅端，不过接口还是挺好理解的。</p>
+<p>kqueue有两个部分，kqueue和kevent。kqueue主要是用来描述event的队列，它通过control这个函数来获取当前有变化的event。而kevent则是对应的相应事件。</p>
+<p>kevent的<a href="http://www.freebsd.org/cgi/man.cgi?query=kqueue&amp;sektion=2" target="_blank" rel="external">详细说明</a>，如果只是监听socket的，我们需要关注如下几个东西:</p>
+<ul>
+<li>ident kevent的一个唯一标识符，一般我们就用需要监控的文件句柄表示</li>
+<li>filter 过滤器，一般关注KQ_FILTER_READ和KQ_FILTER_WRITE，即可读可写。</li>
+<li>flag filter之后需要关注的action，一般为KQ_EV_ADD（添加），KQ_EV_DELETE（删除），KQ_EV_EOF（EOF）和KQ_EV_ERROR（出错）</li>
+</ul>
+<p>kqueue的poll代码如下：</p>
+<pre><code>def poll(self, timeout):
+    kevents = self._kqueue.control(None, 1000, timeout)
+    events = {}
+    for kevent in kevents:
+        fd = kevent.ident
+        if kevent.filter == select.KQ_FILTER_READ:
+            events[fd] = events.get(fd, 0) | IOLoop.READ
+        if kevent.filter == select.KQ_FILTER_WRITE:
+            if kevent.flags &amp; select.KQ_EV_EOF:
+                events[fd] = IOLoop.ERROR
+            else:
+                events[fd] = events.get(fd, 0) | IOLoop.WRITE
+        if kevent.flags &amp; select.KQ_EV_ERROR:
+            events[fd] = events.get(fd, 0) | IOLoop.ERROR
+    return events.items()
+</code></pre><h2 id="epoll">epoll</h2>
+<p>对于epoll，因为我本机没有环境无法测试，加之网上介绍epoll的资料太多了，就不多做介绍了。这里需要关注它的两种模式，edge trigger和level trigger，通俗点说，就是如下：</p>
+<ul>
+<li>edge trigger：有了消息，通知你一次，你不处理完成，拉倒，再也不通知你了，直到下次来消息。</li>
+<li>level trigger：有了消息，通知你，你不处理，一直通知你，直到你处理完。</li>
+</ul>
+<p>kqueue也有这两种模式，通过KQ_EV_CLEAR来设置，这里就不深入讨论了。</p>
+<h2 id="why_kqueue_and_epoll_are_better">why kqueue and epoll are better</h2>
+<p>说完了这三种实现，现在来探讨一个问题，为什么kqueue和epoll比select好。从机制上面说，kqueue和epoll只关注有事件发生的socket，而select则需要将所有的注册socket遍历一遍，光从每次遍历的socket对象来说，select就要比kqueue和epoll多查看几个。</p>
+<p>所以，在连接数较多并且很多socket不是特别活跃的时候，select的性能是有问题的，但是如果在连接数较少并且socket活跃的时候，select的性能很不错，并且不必kqueue和epoll差。</p>
+<p>这是从对socket遍历机制上面说，为什么kqueue和epoll性能高。但如果在深入一点呢？</p>
+<h3 id="epoll/kqueue实现浅析">epoll/kqueue实现浅析</h3>
+<p>我们来想想，如果要实现一个类似epoll的功能怎么做呢？</p>
+<ul>
+<li>需要一个数据结果来保存整个注册的socket，而且要非常快速的进行socket的插入，删除操作，这个使用红黑树是一个很不错的想法，性能为O(lgn)。</li>
+<li>当一个socket有事件发生的时候，系统中断会通过描述符找到对应的socket，然后我们将其加入一个队列里面去</li>
+<li>外部拿到这个可处理队列就可以进行操作，如果设置为level。 trigger，那么处理一轮过后，检查对应的socket是否还有东西需要处理，有的话则继续加入队列，如果为edge trigger则不管了。</li>
+</ul>
+<p>照理说，kqueue应该也实现同样的功能，但从这篇<a href="https://docs.google.com/viewer?url=http%3A%2F%2Fpeople.freebsd.org%2F~jlemon%2Fpapers%2Fkqueue.pdf" target="_blank" rel="external">paper</a>可以看出，对于socket的保存，kqueue直接使用了一个array，就跟系统的open file table一样，为什么这么做呢？因为对于进程来说，它都有一个max file的最大值，譬如1024，所以分配文件的描述符最大是不会超过1024的，而且类unix系统上面分配的文件描述符都默认取得是最小的一个可用的，基于这些，我们就可以使用一个array来进行索引。对于这点<a href="http://developer.cybozu.co.jp/kazuho/2009/08/picoev-a-tiny-e.html" target="_blank" rel="external">picoev</a>这个网络框架库可算是用到了极致。后续有机会在介绍。</p>
+<h1 id="多路复用socket_+_thread_pool_for_logic">多路复用socket + thread pool for logic</h1>
+<p>上面介绍了多路复用IO，那么当然我们就要考虑使用这个技术来搭建服务器了。以kqueue为例，我们得面对一个问题，虽然系统处理网络的能力提升了，但是如果收到数据之后我们需要进行一个费时的逻辑操作，仍然会导致整体的性能下降。所以我们就需要一套机制来分解网络和逻辑。</p>
+<p>一个比较好的做法就是网络使用一个线程，而逻辑处理使用另一个线程，两个线程之间通过消息队列进行交互。这样当网络线程收到消息处理之后，它只需要将socket的fd以及对应的信息放进消息队列里面，就可以继续处理下一个网络请求了。而逻辑线程则从队列里面取出消息，处理，完成之后将fd以及对应的返回消息放到一个队列里面，让网络线程取出处理就可以了。因为逻辑处理算是一个比较消耗的操作，一般会启用多个逻辑线程，也就是用thread pool进行管理。</p>
+<p>这个模型是不错的，那么如果网络线程压力顶不住了，怎么办呢？一般的做法也是开启多个线程用于处理网络，每个线程listen同一个端口，这样就可以进行负载均衡，而每个网络线程仍然对应一批逻辑线程。</p>
+<p>网络线程与逻辑线程之间的交互通过消息队列是一个比较好的方式，但因为涉及到多线程，多消息队列的操作仍然会涉及到锁的操作，所以有时候还会其它的一些方式。</p>
+<h2 id="多队列缓冲机制">多队列缓冲机制</h2>
+<p>这个机制是我以前做游戏服务器的时候跟同事弄出来的一个东西，不知道业界有没有同样的做法的。流程如下:</p>
+<ul>
+<li>网络线程自己维护一个队列，新收到了消息就加入队列，这个是没有任何锁开销的</li>
+<li>到一定阶段，譬如网络线程循环转了几圈，或者消息队列达到一定数量，则将该消息队列splice到一个中间队列，这个是需要锁保护的，而且这个只会涉及到指针的交互，所以会很快速</li>
+<li>逻辑线程将中间队列splice到自己的消息队列种，同时将中间队列置空，这样逻辑线程就能拿到整个消息队列了，这个也是需要锁保护的，同理，只会涉及到指针的操作，会很快速</li>
+<li>逻辑线程依次取出消息处理，这个也就没有任何锁开销了</li>
+</ul>
+<p>可以看出，这套机制是以降低消息的及时性为代价的，不过鉴于消息本来就是异步的，线程级别之间稍微的延后跟网络比起来我觉得问题还不大。</p>
+<h2 id="无锁的ring_buffer">无锁的ring buffer</h2>
+<p>无锁的ring buffer这种结构是我在另一家公司接触到的技术，原理如下：</p>
+<ul>
+<li>估算分配一块内存用作ring buffer，这块区域是不会在变化的了</li>
+<li>线程A只会往ring buffer里面写数据，使用tail来表明下一个可写入位置，线程B只会从里面读数据，使用head来表明下一个可读取的位置</li>
+<li>当head = tail的时候，认为buffer为空，没有数据</li>
+<li>当tail + 1 = head的时候，认为队列满了，无法在写入数据，为什么要留出一个元素空间呢，因为如果不留出，那么buffer满也是tail = head，而这个就无法跟buffer为空区分了。</li>
+<li>线程A写入数据的时候，首先判断buffer是否有足够的空间写入，如果能写入，就写入数据，同时更新tail的位置</li>
+<li>线程B读取数据的时候，首先判断buffer是否有足够的数据可读，如果能读取，则读取数据，同时更新head的位置</li>
+</ul>
+<p>这里，可能会有人疑惑，为什么这个是线程安全的？</p>
+<ul>
+<li>首先，我们知道，对于head和tail数值的读取是线程安全的，为什么这么说，在c种，head和tail就是指针，而对于指针的读取，是一个原子操作，这个是线程安全的。</li>
+<li>以写入为例，线程A首先会读取head和tail的当前值，后续即使线程B修改了head的值，也不会影响这次的写入操作。因为B修改了head，表明A可以写入更多数据，但A获取到的head仍然是先前的值，所以能写入的数据就会按照先前的head计算。当A写入数据之后，更新tail的值。读取跟写入的原理一样。</li>
+</ul>
+<p>而这个在linux内核里面是有实现的，可以看<a href="http://www.ibm.com/developerworks/cn/linux/l-cn-lockfree/index.html" target="_blank" rel="external">这里</a>.</p>
+<h1 id="总结">总结</h1>
+<p>写了这么多字，感觉可以手工了。这只是我个人经验，可能还会有更好的做法。对于高性能服务器而言，网络只是需要考虑的一个方面，还会有很多问题需要考虑。其实更需要关注的是整体架构以及整体的性能调优。</p>
+<p>另外，感觉还缺少了很多图片，总觉得纯靠文字很多问题还是说的不够深入，后续还是把图片给补上。另外在搭配一个ppt，当然准备使用express.js做，感觉就完美了。</p>
+<p>不过，总觉得还是有很多东西可以说的，对于网络这块，我还会继续深入研究，譬如底层的tcp/ip协议，p2p等。希望到时候能有更好的总结。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2012-08-20T10:00:00.000Z"><a href="/2012/08/20/safe-server-interaction/">08-20-2012</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2012/08/20/safe-server-interaction/">思考的一套安全的服务交互模型</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在服务器端，一般采用多服的方案来进行架构，也就是一个服务器只提供特定的服务。客户端要完成一个功能，可能需要访问不同服务器，而这时候就会有很多问题，包括服务器之间如何交互，客户端与服务器如何交互，安全问题等。</p>
+<h1 id="安全的登陆">安全的登陆</h1>
+<p>对于用户来说，他要使用服务，首先需要做的事情就是登陆，对于登陆来说，我们可以通过oauth，openid等方案，将整个登陆验证交给其他服务提供商（譬如google）来进行。但是，在某些时候，我们仍然需要通过username + password的方式来登陆。这里就有一个问题，如何保证账号密码的安全性？</p>
+<p>我觉得，通常一般有如下几种做法：</p>
+<ul>
+<li><p>使用username + md5(password)的方式，这样的方式虽然不会导致用户的密码明文泄漏，但是如果中途通信被窃听，窃听者直接使用username和密文密码就可以直接登陆了。</p>
+</li>
+<li><p>在登陆之前，服务器首先下发一个随机的aes key，用户使用key将username + md5(password)进行加密。<br>  对于key服务器应该有一个时间限制，即在一段时间之后，该key就失效。这样即使通信被窃听了，破解获取username + md5（password）的时间较长，同时即使使用相同的信息登陆，因为key的时效性，也可能会因为key的失效失败。</p>
+<p>  这种方式比较容易实现，但是如果在服务器下发aes key下发的时候就被窃取到了，那么用户的username和md5(password)信息就很容易被窃取到了。</p>
+</li>
+<li><p>使用https，貌似这是最安全的一种方式，但是https的证书是要钱的，虽然有免费的，但是限制颇多。<br>  另外https也可能出现证书欺骗，所以在某种程度上面来说也是不安全。不过鉴于很多网站都使用https处理登陆，所以现阶段来说还是很安全的。</p>
+</li>
+</ul>
+<p>除了上面的几种方法之外，还有很多其他的处理方式，这里不在详细表述，但是对于我来说，现阶段因为关注点在web上面，所以使用https算是一个很好的方案，所以后续所有客户端与服务器的交互，都准备采用https协议。</p>
+<h1 id="高效的交互">高效的交互</h1>
+<p>当用户登陆之后，我们会给用户生成一个对应的stub（存根），后续用户只要拿着这个存根就能继续访问login server了。这里引入了stub概念，因为对于client来说，它不可能每次与server交互都使用username + password等方式，所以通过引入stub，来维持client与server的会话状态。</p>
+<p>当然，stub不可能一直有效，如果一直有效，那么如果其他用户拿到了这个stub，就可以欺骗server访问服务器了。所以stub一般都有一个时效性的。</p>
+<p>通常的做法，是server会在一个地方保存stub的信息，譬如在memcache里面，然后该stub会对应一些信息（譬如stub创建时间，过期时间），当每次交互的时候，server在cache里面查询到这个stub对应的信息，如果查询不到该stub，那我们就认为这是一次非法的会话，需要用户重新登陆。而如果查询到了相关信息，则判断stub是否过期，如果过期，仍然需要用户重新登录再次去申请新的stub。</p>
+<p>但是这种方式，有几个问题：</p>
+<ul>
+<li>stub存放到一个cache里面，所有与server的交互都会访问该cache，即使memcache很快，但是可能部署在不同的物理机器上面，网络还是有开销的。</li>
+<li>单点问题，如果cache挂掉了，那么在一定时间里面，所有的访问都是非法的。即使cache能很快恢复，但是会导致所有的stub都必须重新申请了。</li>
+</ul>
+<p>鉴于上述情况，我考虑使用另一种方式。</p>
+<ul>
+<li>提供一个key gen服务，该服务每隔一段时间生成一个aes key，推送到server上面。每一个server保存当前aes key以及上一次推送过来的key</li>
+<li>生成stub的时候，使用当前的key加密一段数据（包括创建时间，过期时间等），将加密过的这段数据作为stub</li>
+<li>client通过stub访问的时候，server使用当前的key或者上一次key进行解密，如果解密成功，那么就认为是合法的stub</li>
+<li>stub通过key解密出来的数据，判断是否过期，如果过期或者解密失败，则需要client重新在申请新的stub</li>
+</ul>
+<p>这套机制有点在于对于stub的校验与存储不需要一个中心cache来处理，即使key gen服务当掉了，重启生成一个新的key的时候，也能够保证上一次的key有效，尽量减少重新申请stub的client数量。</p>
+<h1 id="信任链机制">信任链机制</h1>
+<p>前面说了，对于登陆流程来说，采用的是https的方式进行，但是还存在一个问题，即对于分布式服务器来说，每一个服务器怎么认为客户端是可信任的。</p>
+<p>对于login server来说，可以认为访问它的client是可信任的，因为client能提供正确的登陆信息（譬如username + password或者oauth的token），但是对于其他server，是不知道这些信息的。所以我们需要一套机制来来让server知道client是可信任的。</p>
+<p>这里，我准备采用一种信任链的方式，即如果client可以通过login server向其他server申请一个stub，然后client就可以通过这个stub来访问该服务。</p>
+<p>对于信任链我们可以这么理解，如果a信任b，b信任c，那么a也就信任c。那么对于我们整个信任体系，可以这样，假设server1信任client，client需要访问server2，流程可以这样：</p>
+<ul>
+<li>server1向server2申请一个stub</li>
+<li>server2给server1返回一个stub</li>
+<li>server1向client返回stub</li>
+<li>client通过stub访问server2</li>
+</ul>
+<p>这里同时需要处理一个问题，client可以通过一些机制让server可信，那么server之间如何互信，即server2为什么允许server1去申请stub。</p>
+<p>其实，对于server来说，它既是一个server（为client提供服务），也同时算是一个client（需要访问其他服务）。所以在某些方面，server与server的交互可以当成client与server的交互一样处理。只是我们不是通过username + password形式。</p>
+<p>一般server之间互相信任，是比较容易处理的。通常有几种做法：</p>
+<ul>
+<li>iptable 因为server都是我们内部自己部署配置，所以iptable可以很好的解决server信任问题</li>
+<li>公私钥 server1有一个priv key，server2有一个对应的public key，server1与server2第一次交互的时候通过公私钥验证。验证通过之后，server2会生成一个stub，后续server1会通过这个stub访问server2，直到stub失效。<br>  这里我们需要注意，这里的公私钥跟前面提到的https是不一样的，前面的https是保证整个通信信道的安全，而这里是为了验证是否可信。</li>
+</ul>
+<h1 id="权限机制">权限机制</h1>
+<p>对于server来说，它对外提供相应的服务，而这些服务是通过api来暴露的。对于client来说，即使它是可信的，但是对于某些api接口，只能由特定的用户去访问，所以我们还需要实现一套api的权限认证机制。</p>
+<p>一般的做法，对于一个用户，有相应的角色，譬如普通用户，管理员等。然后会有一个权限表，存储的是相应角色对应的可访问api。当用户访问server调用相应api的时候，会首先看该角色是否有权限，如果有权限，则允许调用。</p>
+<p>当用户首先登陆的时候，会在login server里面获取到其对应的角色。那么我们还需要面对一个问题，权限表怎么存储？对于一个server来说，某一个权限对应相应的api这个是预先可以定义的，所以我们可以在server启动的时候就放置在内存里面，这样当用户访问服务的时候就可以直接通过内存里面的权限表知道是否可访问。那么现在又有一个问题，用户每次访问都需要带上role这一个参数？从前面可知，client通过stub与server进行通信，所以我们可以在生成stub的时候直接将用户的role放置在stub里，这样server解开这个stub之后就可以得到相应的role了。</p>
+<h1 id="总结">总结</h1>
+<p>上面介绍的就是设想的一套安全高效的分布式服务器架构。当然对于分布式服务来说，还有很多问题没有考虑，譬如负载均衡，数据库等问题，后续我会不断探索思考，归纳总结。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+
+  <nav id="pagination">
+  
+  
+  <div class="clearfix"></div>
+</nav>
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

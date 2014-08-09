@@ -1,0 +1,501 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>mixer | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+<h2 class="archive-title tag">mixer</h2>
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-23T08:39:08.000Z"><a href="/2014/03/23/mixer-tokenizer/">03-23-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/23/mixer-tokenizer/">Mixer MySQL词法分析</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>mixer希望在proxy这层就提供自定义路由，sql黑名单，防止sql注入攻击等功能，而这些的基石就在于将用户发上来的sql语句进行解析。也就是我最头大的词法分析和语法分析。</p>
+<p>到现在为止，我只是实现了一个比较简单的词法分析器，用以将sql语句分解成多个token。而对于从token在进行语法分析，构建sql的AST，我现在还真没啥经验（编译原理太差了），急需牛人帮忙。</p>
+<p>所以，这里只是简单介绍一下mixer的词法分析。</p>
+<h1 id="tokenize">tokenize</h1>
+<p>在很多地方，我们都需要进行词法分析，通常会有几种方式：</p>
+<ul>
+<li>使用一个强大的工具，譬如lex，mysql-proxy就用的这种方式</li>
+<li>使用正则表达式</li>
+<li>state machine</li>
+</ul>
+<p>对于使用工具，我觉得有一个不怎么好的地方在于学习成本，譬如我用lex的时候就需要学习它的语法，同时通过工具生成的代码可读性都不怎么好，代码量大，更严重的是可能会比较慢。所以mysql自身也是自己实现一个词法分析模块。</p>
+<p>而对于正则表达式，性能问题可能是一个很需要考虑的，而且复杂度并不比使用类似lex这样的工具低。</p>
+<p>状态机可能是我觉得自己动手实现词法解析一个很好的方式，对于sql的词法解析，我觉得使用state machine的方式来自己写一个难度并不大，所以mixer自己实现了一个。</p>
+<h1 id="state_machine">state machine</h1>
+<p>通常，一个状态机的实现采用的是state + action + switch的做法，可能如下：</p>
+<pre><code>switch state {
+    case state1:
+        state = action1()
+    case state2:
+        state = action2()
+    case state3:
+        state = action3()
+}
+</code></pre><p>对于一个state，我们通过switch知道它将会由哪一个action进行处理，而对于每一个action，我们则知道执行完成之后下一个state是什么。</p>
+<p>对于上面的实现，如果state过多，可能会导致太多的case语句，我们可以通过state function进行简化。</p>
+<p>一个state function就是执行当前的state action，并且直接返回下一个state function。</p>
+<p>我们可以这样做：</p>
+<pre><code>type stateFn func(*Lexer) stateFn
+
+for state := startState; state != nil {
+    state = state(lexer)
+}
+</code></pre><p>所以我们需要实现的就是每一个state function以及对应的它的下一个需要执行的state function。</p>
+<h1 id="mixer_lexer">mixer lexer</h1>
+<p>mixer的词法分析实现主要参考<a href="http://cuddle.googlecode.com/hg/talk/lex.html" target="_blank" rel="external">这个</a>。主要实现在<a href="https://github.com/siddontang/mixer/tree/master/src/parser" target="_blank" rel="external">parser模块</a>。</p>
+<p>对于一个lexer，需要提供的是NextToken的功能，供外部获取下一个token，从而进行后续的操作（譬如语法分析）。</p>
+<p>lexer的next token如下：</p>
+<pre><code>func (l *Lexer) NextToken() (Token, error) {
+    for {
+        select {
+            case t := &lt;-l.tokens:
+                return t, nil
+            default:
+                if l.state == nil {
+                    return Token{TK_EOF, &quot;&quot;}, l.err
+                }
+                l.state = l.state(l)
+                if l.err != nil {
+                    return Token{TK_UNKNOWN, &quot;&quot;}, l.err
+                }
+        }
+    }
+}
+</code></pre><p>tokens是一个channel，每次state解析的token都会emit到这个channel上面，供NextToken获取，如果channel为空了，则再次调用state function。</p>
+<p>可以看到，用go实现一个词法解析是很容易的事情，剩下的就是写相应的state function用来解析sql。</p>
+<h1 id="todo">todo</h1>
+<p>mixer的词法分析还有很多不完善的地方，譬如对于科学计数法数值的解析就不完善，后续准备参考mysql官方的词法分析模块在好好完善一下。</p>
+<p>mixer的代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>，希望感兴趣的童鞋共同完善。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-13T03:16:31.000Z"><a href="/2014/03/13/mixer-protocol/">03-13-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/13/mixer-protocol/">Mixer MySQL通讯协议解析</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="综述">综述</h1>
+<p>要实现一个mysql proxy，首先需要做的就是理解并实现mysql通讯协议。这样才能通过proxy架起client到server之间的桥梁。</p>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>的mysql协议实现主要参考mysql官方的<a href="http://dev.mysql.com/doc/internals/en/client-server-protocol.html" target="_blank" rel="external">internal manual</a>，并用Wireshark同时进行验证。在实现的过程中，当然踩了很多坑，这里记录一下，算是对协议分析的一个总结。</p>
+<p>需要注意的是，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>并没有支持所有的mysql协议，譬如备份，存储过程等，主要在于精力有限，同时也为了实现简单。</p>
+<h1 id="数据类型">数据类型</h1>
+<p>mysql协议只有两种基本的数据类型，integer和string。</p>
+<h2 id="integer">integer</h2>
+<p>integer包括fixed length integer和length encoded integer两种，对于length encoded integer，用的地方比较多，这里详细说明一下。</p>
+<p>对于一个integer，我们按照如下的方式将其转成length encoded integer：</p>
+<ul>
+<li>如果value &lt; 251，使用1 byte</li>
+<li>如果value &gt;= 251 同时 value &lt; 2 ** 16，使用fc + 2 byte</li>
+<li>如果value &gt;= 2 ** 16 同时 value &lt; 2 ** 24，使用fd + 3 byte </li>
+<li>如果value &gt;= 2 ** 24 同时 value &lt; 2 ** 64，使用fe + 8 byte</li>
+</ul>
+<p>相应的，对于一个length encoded integer，我们可以通过判断第一个byte的值来转成相应的integer。</p>
+<h2 id="string">string</h2>
+<p>string包括：</p>
+<ul>
+<li>fixed length string，固定长度string</li>
+<li>null terminated string，以null结尾的string</li>
+<li>variable length string，通过另一个值决定长度的string</li>
+<li>length encoded string，通过起始length encoded integer决定长度的string</li>
+<li>rest of packet string，从当前位置到包结尾的string</li>
+</ul>
+<h1 id="Packet">Packet</h1>
+<p>在mysql中，如果client或server要发送数据，它需要将数据按照(2 ** 24 - 1)拆分成packet，给每一个packet添加header，然后再以此发送。</p>
+<p>对于一个packet，格式如下：</p>
+<pre><code>3              payload length
+1              sequence id
+string[len]    payload
+</code></pre><p>前面3个字节表明的是该packet的长度，每个packet最大不超过16MB。第4个字节表明的是该packet的序列号，从0开始，对于多个packet依次递增，等到下一个新的命令发送数据的时候才重置为0。前面4个字节组成了一个packet的header，后面就是该packet实际的数据。</p>
+<p>因为一个packet最大能发送的数据位16MB，所以如果需要发送大于16MB的数据，就需要拆分成多个packet进行发送。</p>
+<p>通常，server会回给client三种类型的packet</p>
+<ul>
+<li>OK Packet，操作成功</li>
+<li>Err Packet，操作失败</li>
+<li>EOF Packet，end of file</li>
+</ul>
+<h1 id="登陆交互">登陆交互</h1>
+<p>要实现proxy，首先需要解决的就是登陆问题，包括proxy模拟server处理client的登陆，proxy模拟client登陆server。</p>
+<p>为了简单，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只支持username + password的方式进行登陆，这应该也是最通用的登陆方式。同时不支持ssl以及compression。</p>
+<p>一个完整的登陆流程如下：</p>
+<ul>
+<li>client首先connect到server</li>
+<li>server发送initial handshake packet，包括支持的capability，一个用于加密的随机salt等</li>
+<li>client返回handshake结果，包括自己支持的capability，以及用salt加密的密码</li>
+<li>server验证，如果成功，返回ok packet，否则返回err packet并关闭连接</li>
+</ul>
+<p>这里，不得不说实现登陆协议的时候踩过的一个很大的坑，因为我使用的是HandshakeV10协议，在文档里面，协议有这样的规定：</p>
+<pre><code>if capabilities &amp; CLIENT_SECURE_CONNECTION {
+    string[$len]   auth-plugin-data-part-2 ($len=MAX(13, length of auth-plugin-data - 8))
+}
+</code></pre><p>如果根据文档的说明，算出来auth-plugin-data-part-2的长度是13，因为auth-plugin-data的长度是20。但是，实际情况是，auth-plugin-data-part-2的长度应该为12，第13位一直为0。只有这样，我们才能根据salt算出正确的加密密码。这一点，在mysql-proxy官方的文档，以及多个msyql client driver上面，Wireshark的分析中都是如此，在go-sql-driver中，作者都直接写了如下的注释：</p>
+<pre><code>// second part of the password cipher [12? bytes]
+// The documentation is ambiguous about the length.
+// The official Python library uses the fixed length 12
+// which is not documented but seems to work.
+</code></pre><p>可想而知，这个坑有多坑爹。至少我开始是栽在上面了。加密老是不对。</p>
+<h1 id="Command">Command</h1>
+<p>搞定了登陆，剩下的就是mysql的命令支持，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只实现了基本的命令。主要集中在text protocol以及prepared statment里面。</p>
+<h2 id="COM_PING">COM_PING</h2>
+<p>最基本的ping实现，用来检查mysql是否存活。</p>
+<h2 id="COM_INIT_DB">COM_INIT_DB</h2>
+<p>虽然叫init db，其实压根干的事情就跟use db一样，用来切换使用db的。</p>
+<h2 id="COM_QUERY">COM_QUERY</h2>
+<p>可以算是最重要的一个命令，我们在命令行使用的多数mysql语句，都是通过该命令发送的。</p>
+<p>在COM_QUERY中，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>主要支持了select，update，insert，delete，replace等基本的操作语句，同时支持begin，commit，rollback事物操作，还支持set names和set autocommit。</p>
+<p>COM_QUERY有4中返回packet</p>
+<ul>
+<li>OK Packet</li>
+<li>Err Packet</li>
+<li>Local In File（不支持）</li>
+<li>Text Resultset</li>
+</ul>
+<p>这里重点说明一下text resultset，因为它包含的就是我们最常用的select的结果集。</p>
+<p>一个text resultset，包括如下几个包：</p>
+<ul>
+<li>一个以length encoded integer编码的column-count packet</li>
+<li>column-count个column定义packet</li>
+<li>eof packet</li>
+<li>一个或者多个row packet，每个row packet有column-count个数据</li>
+<li>eof packet或者err packet</li>
+</ul>
+<p>对于一个row packet的里面的数据，我们通过如下方式获取：</p>
+<ul>
+<li>如果值为NULL，那么就是0xfb</li>
+<li>否则，任何值都是用length encoded string表示</li>
+</ul>
+<h2 id="COMSTMT*">COM<em>STMT</em>*</h2>
+<p>COM<em>STMT</em>族协议就是通常的prepared statement，当我在atlas群里面说支持prepared statement的时候，很多人以为我支持的是在COM_QUERY中使用的prepare，execute和deallocate prepare这组语句。其实这两个还是很有区别的。</p>
+<p>为什么我不现在不想支持COM_QUERY的prepare，主要在于这种prepare需要进行变量设置，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>在后端跟server是维护的一个连接池，所以对于client设置的变量，proxy维护起来特别麻烦，并且每次跟server使用新的连接的时候，还需要将所有的变量重设，这增大了复杂度。所以我不支持变量的设置，这点看cobar也是如此。既然不支持变量，所以COM_QUERY的prepare我也不会支持了。</p>
+<p>COM<em>STMT</em>*这组命令，主要用在各个语言的client driver中，所以我觉得只支持这种的prepare就够了。</p>
+<p>对于COM_STMT_EXECUTE的返回结果，因为prepare的语句可能是select，所以会返回binary resultset，binary resultset组成跟前面text resultset差不多，唯一需要注意的就是row packet采用的是binary row packet。</p>
+<p>对于每一个binary row packet，第一个byte为0，后面紧跟着一个null bitmap，然后才是实际的数据。</p>
+<p>在binary row packet中，使用null bitmap来表明该行某一列的数据为NULL。null bitmap长度通过 (column-count + 7 + 2) / 8计算得到，而对于每列数据，如果为NULL，那么它在null bitmap中的位置通过如下方式计算：</p>
+<pre><code>NULL-bitmap-byte = ((field-pos + offset) / 8)
+NULL-bitmap-bit  = ((field-pos + offset) % 8)
+</code></pre><p>offset在binary resultset中为2，field-pos为该列的位置。</p>
+<p>对于实际非NULL数据，则是根据每列定义的数据类型来获取，譬如如果type为MYSQL_TYPE_LONGLONG，那么该数据值的长度就是8字节，如果type为MYSQL_TYPE_STRING，那么该数据值就是一个length encoded string。</p>
+<h1 id="后记">后记</h1>
+<p>我通过Wireshark分析了一些mysql protocol，主要在<a href="https://github.com/siddontang/mixer/blob/master/doc/protocol.txt" target="_blank" rel="external">这里</a>，这里不得不强烈推荐wireshark，它让我在学习mysql protocol过程中事半功倍。</p>
+<p>mixer的代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>，欢迎反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-10T01:35:51.000Z"><a href="/2014/03/10/mixer-introduction/">03-10-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/10/mixer-introduction/">Mixer 一个用Go实现的MySQL Proxy</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>是一个用go实现的mysql proxy，支持基本的mysql代理功能。</p>
+<p>mysql的中间件很多，对于市面上面现有的功能强大的proxy，我主要考察了如下几个：</p>
+<ul>
+<li>mysql-proxy，mysql官方的代理，使用起来并不友好，需要进行lua定制，而且本人对其稳定性和性能存疑。</li>
+<li>Cobar，阿里的东西，品质没的说，但对于我们项目，有点杀鸡用牛刀的感觉，另外我们都不会java。</li>
+<li>Atlas，360出品的基于mysql-proxy的增强版，几乎用c重写了核心框架，性能和稳定性都没话说。</li>
+</ul>
+<p>当然，还有很多强大的proxy，我不可能一一涉及，而现阶段我们项目中使用的是Atlas（这算不算给Atlas打了一个广告？）。</p>
+<p>既然有这么多的proxy，为什么我还想自己实现一个呢？可能最主要的原因在于兴趣使然吧。</p>
+<h1 id="mysql功能支持">mysql功能支持</h1>
+<p>当开始着手进行<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>开发的时候，我就知道，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>不是mysql，它不可能proxy所有mysql的功能。所以，我决定<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只支持如下mysql命令：</p>
+<ul>
+<li>COM_QUERY<ul>
+<li>select, insert, update, delete, replace</li>
+<li>set autocommit</li>
+<li>set names</li>
+<li>begin, commit, rollback</li>
+</ul>
+</li>
+<li>COM_PING</li>
+<li>COM_INIT_DB</li>
+<li>COM<em>STMT_PREPARE, COM_STMT_EXEC等COM_STMT</em>*命令，仅支持上述COM_QUERY命令的prepare</li>
+</ul>
+<p>[mixer](<a href="https://github.com/siddontang/mixer不支持命令挺多的，列举一些：" target="_blank" rel="external">https://github.com/siddontang/mixer不支持命令挺多的，列举一些：</a></p>
+<ul>
+<li>set variable。如果支持，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>需要维护每一个变量的状态，增加了复杂度。但<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>支持autocommit和names的设置。</li>
+<li>sql text模式的prepare statement。</li>
+<li>show命令。</li>
+<li>存储过程。</li>
+</ul>
+<p>虽然很多功能现阶段没有，但不排除后续支持。</p>
+<h1 id="高可用方案">高可用方案</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>提供了一套mysql高可用使用方案，现阶段主要功能如下：</p>
+<ul>
+<li>读写分离，将select发送到slave，其余发送到master执行，事物所有在master执行。现阶段只支持一主一备。</li>
+<li>主备自动切换，当主mysql不可用，根据相关规则切换到backup mysql执行。</li>
+</ul>
+<h1 id="Todo">Todo</h1>
+<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>还不完善，很多功能需要实现，后续优先需要实现的功能：</p>
+<ul>
+<li>parser，将sql进行语法解析，构建AST，在proxy层面就防止一些mysql隐患，譬如注入攻击，delete没有where等。</li>
+<li>自定义路由，根据路由规则将sql路由到不同mysql执行。譬如根据主键将select语句hash到不同的slave上面执行。</li>
+<li>统计功能。</li>
+</ul>
+<p>代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>。非常希望对proxy感兴趣的童鞋参与进来，共同完善<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，使其成为另一个mysql中间件解决方案。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+
+  <nav id="pagination">
+  
+  
+  <div class="clearfix"></div>
+</nav>
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

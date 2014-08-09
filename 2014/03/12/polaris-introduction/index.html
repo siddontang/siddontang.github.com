@@ -1,0 +1,324 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>Polaris 一个用Go实现的Restful Web框架 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="Polaris 一个用Go实现的Restful Web框架"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-03-12T06:16:43.000Z"><a href="/2014/03/12/polaris-introduction/">03-12-2014</a></time>
+      
+      
+  
+    <h1 class="title">Polaris 一个用Go实现的Restful Web框架</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>是一个用go实现的支持restful的web框架，主要参考tornado进行设计。</p>
+<p>虽然在go里面搭建一个http server非常的简单，这里强烈推荐<a href="http://www.gorillatoolkit.org/" target="_blank" rel="external">gorilla</a>，但并没有很好的对restful模型进行支持。考察了很多开源实现，我决定还是重新造一个轮子，毕竟难度也不怎么大，而且能够根据项目的使用慢慢调整完善。</p>
+<h1 id="使用">使用</h1>
+<p>设计<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>还是参考了tornado，虽然一段时间不用python了，但是我还是对tornado念念不忘。</p>
+<p>在<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>，我现在只支持get，post，put，head和delete这几种method，剩下的貌似我也没用到过。只要一个对象，它提供了以上一个或多个接口，就能注册进<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的router中。</p>
+<p>先上一个例子：</p>
+<pre><code>type Handler1 struct {
+
+}
+
+func (h *Handler1) Prepare(env *Env) {
+    fmt.Println(&quot;hello prepare&quot;)
+}
+
+func (h *Handler1) Get(env *Env) {
+    env.WriteString(&quot;hello get&quot;)
+}
+
+func (h *Handler1) Post(env *Env) {
+    env.WriteString(&quot;hello post&quot;)
+}
+
+type Handler2 struct {
+
+}
+
+//id is a captured submatch for regexp url below
+func (h *Handler2) Get(env *Env, id string) {
+    env.WriteString(&quot;hello &quot; + id)
+}
+
+r = NewRouter()
+
+r.Handle(&quot;/handler1&quot;, new(Handler1))
+r.Handle(&quot;/handler2/([0-9]+)&quot;, new(Handler2))
+
+http.Handle(&quot;/&quot;, r)
+http.ListenAndServe(&quot;127.0.0.1:11181&quot;, nil)
+</code></pre><p>上面，我们实现了两个handler，对于每一个handler，需要实现以下一个或多个接口:</p>
+<pre><code>Get(env *Env)
+Post(env *Env)
+Head(env *Env)
+Put(env *Env)
+Delete(env *Env)
+</code></pre><p>Env用以表明该次请求的上下文环境，主要是为了纪念一个内部库stars，以此命名。</p>
+<p>鉴于tornado也提供了prepare支持，所以，如果handler提供了Prepare(env *Env)接口，每次调用相应的函数的时候，会优先调用Prepare。</p>
+<p>在handler2中，我们可以看到，Get函数多了一个参数id，这主要是为了处理对应的正则url里面含有group的情况。上面handler2对应的url里面有一个([0-9]+) group，所以当url匹配成功之后，我们会将该group实际的数据传递给handler2。</p>
+<p>因为正则匹配的结果都是string，所以Get后面的参数都必须是string类型的。实际的类型转换需要handler自行处理。</p>
+<h1 id="路由规则">路由规则</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的路由规则比较简单，参考nginx分为literal pattern和regexp pattern两种。当有请求需要处理的时候，首先查看是否在literal pattern中，如果不是，则根据注册的regexp pattern依次匹配。</p>
+<p>上面的例子中，<strong>/handler1</strong>就是literal pattern，而<strong>/handler2/([0-9]+)</strong>则是regexp pattern。在go中，判断一个字符串是否是正则表达式，只要通过regexp.QuoteMeta就可以了，如果得到的值跟原字符串一样，该字符串就是literal pattern。</p>
+<h1 id="实现">实现</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>核心实现是基于reflect，这里列举一些：</p>
+<h2 id="判断一个handler是否具有相关接口">判断一个handler是否具有相关接口</h2>
+<ul>
+<li>reflect.ValueOf(handler)得到handler的value v</li>
+<li>v.MethodByName(“Get”)得到get function的value m</li>
+<li>m.Kind() == reflect.Func判断是否存在Get函数</li>
+</ul>
+<h2 id="判断接口是否满足规范">判断接口是否满足规范</h2>
+<ul>
+<li>m.NumIn()获取该函数输入参数的个数</li>
+<li>m.In(0).Kind() == reflect.Ptr和m.In(0).String() == “<em>polaris.Env”判断第一个参数必须为\</em>Env</li>
+<li>m.In(i).Kind() == reflect.String判断第i(i&gt;=1)个参数必须为string</li>
+</ul>
+<h2 id="根据传入的参数调用相应的函数">根据传入的参数调用相应的函数</h2>
+<ul>
+<li>根据传入的http request method找到对应的函数 m</li>
+<li>values = make([]relfect.Value, nArgs)</li>
+<li>通过reflect.ValueOf填充参数，第一个参数为*Env</li>
+<li>m.Call(values)，使用Call进行函数调用</li>
+</ul>
+<h1 id="后续">后续</h1>
+<p>现在的<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>只支持基本的restful模型，后续我考虑将自己开发的其他库，譬如log，mysql等进行整合，使其真正成为一个可用的restful web framework。</p>
+<p>代码在这里<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">https://github.com/siddontang/polaris</a>，欢迎大家反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/go/">go</a>
+  </div>
+
+        
+  
+  <div class="tags">
+    <a href="/tags/go/">go</a>, <a href="/tags/polaris/">polaris</a>, <a href="/tags/restful/">restful</a>
+  </div>
+
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

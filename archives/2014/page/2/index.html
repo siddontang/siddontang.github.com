@@ -1,0 +1,1085 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>第 2 页 | 归档：2014 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+<h2 class="archive-title">2014</h2>
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-05-10T08:52:53.000Z"><a href="/2014/05/10/ledisdb-introduction/">05-10-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/05/10/ledisdb-introduction/">高性能NoSQL LedisDB介绍</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h2 id="起因">起因</h2>
+<p><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>是一个参考ssdb，采用go实现，底层基于leveldb，类似redis的高性能nosql数据库，提供了kv，list，hash以及zset数据结构的支持。</p>
+<p>我们现在的应用极大的依赖redis，但随着我们用户量越来越大，redis的内存越来越不够用，并且replication可能还会导致超时问题。虽然后续我们可以通过添加多台机器来解决，但是在现有机器配置下面，我们仍希望单台机器承载更多的用户。另外，因为业务的特性，我们其实并不需要将所有的数据放到内存，只需要存放当前活跃用户。</p>
+<p>经过我们的调研，发现ssdb已经很好的帮我们解决了这个问题，它提供了跟redis一致的接口（当然有些地方还是稍微不同），但是底层采用leveldb进行存储。根据其官网的描述，性能已经接近甚至超越了redis。</p>
+<p>本着<a href="http://blog.csdn.net/siddontang/article/details/24765201" target="_blank" rel="external">造轮子</a>的精神，我决定用go实现一个类似的db，取名为ledisdb，也就是<strong>level-redis-db</strong>，为啥不用现成的ssdb，我觉得有如下几个原因：</p>
+<ul>
+<li>go语言开发的快速，这点毋庸置疑，虽然性能上面铁定离c++的代码有差距，但是我能够快速的进行原型搭建并实验。实际上，我在很短的时间里面就开发出了ledisdb，让我后续继续开发有了信心。</li>
+<li>leveldb的研究，我一直很想将leveldb应用到我们的项目中，作为本机热点数据的首选数据存储方式，通过ledisdb，让我对leveldb的使用有了很多经验。</li>
+<li>redis的熟悉，虽然我用了很久的redis，但是很多redis的命令仍然需要去查手册，通过实现ledisdb，我更加熟悉了redis的命令，同时，因为要了解这个命令redis如何实现，对redis内部又重新来了一次剖析。</li>
+</ul>
+<p>在准备开发ledisdb的时候，我就在思索一个问题，我需不需要开发另一个redis？其实这是一个很明确的问题，我不需要另一个redis。ledisdb虽然参考了redis，但为了实现简单，有时候我做了很多减法或者变更，譬如对于zset这种数据结构，我就只支持int64类型的score，而redis的score是double类型的，具体原因后续讲解zset的时候详细说明。</p>
+<p>所以，我们可以认为，ledisdb是一个基于redis通信协议，提供了多种高级数据结构的nosql数据库，它并不是另一个redis。</p>
+<h2 id="编译安装">编译安装</h2>
+<p>因为ledisdb是用go写的，所以首先需要安装go以及配置GOROOT，GOPATH。</p>
+<pre><code>mkdir $WORKSPACE
+cd $WORKSPACE
+git clone git@github.com:siddontang/ledisdb.git src/github.com/siddontang/ledisdb
+
+cd src/github.com/siddontang/ledisdb
+
+#构建leveldb，如果已经安装了，可忽略
+./build_leveldb.sh  
+
+#安装ledisdb go依赖
+. ./bootstap.sh     
+
+#配置GOPATH等环境变量
+. ./dev.sh          
+
+go install ./... 
+</code></pre><p>具体的安装说明，可以查看代码目录下面的readme。</p>
+<h2 id="Example">Example</h2>
+<p>使用ledisdb很简单，只需要运行：</p>
+<pre><code>./ledis-server -config=/etc/ledis.json
+</code></pre><p>ledisdb的配置文件采用json格式，为啥选用json，我在<a href="http://blog.csdn.net/siddontang/article/details/23595817" target="_blank" rel="external">使用json作为主要的配置格式</a>里面有过说明。</p>
+<p>我们可以使用任何redis客户端连接ledisdb，譬如redis-cli，如下：</p>
+<pre><code>127.0.0.1:6380&gt; set a 1
+OK
+127.0.0.1:6380&gt; get a
+&quot;1&quot;
+127.0.0.1:6380&gt; incr a
+(integer) 2
+127.0.0.1:6380&gt; mset b 2 c 3
+OK
+127.0.0.1:6380&gt; mget a b c
+1) &quot;2&quot;
+2) &quot;2&quot;
+3) &quot;3&quot;
+</code></pre><h2 id="leveldb">leveldb</h2>
+<p>因为leveldb是c++写的，所以在go里面需要使用，cgo是一种很好的方式。这里，我直接使用了<a href="https://github.com/jmhodges/levigo" target="_blank" rel="external">levigo</a>这个库，并在上面进行了封装，详见<a href="http://blog.csdn.net/siddontang/article/details/24359873" target="_blank" rel="external">这里</a>。虽然有一个go-leveldb，无奈仍不能用。</p>
+<p>cgo的性能开销还是有的，这点在我做benchmark的时候就明显感觉出来，不过后续优化的空间很大，譬如将多个leveldb的调用逻辑该用c重写，这样只需要一次cgo就可以了。不过这个后续在考虑。</p>
+<p>leveldb的一些参数在构建编译的时候是需要调整的，这点我没啥经验，只能google和参考ssdb。譬如下面这几个：</p>
+<pre><code>+ db/dbformat.h
+
+// static const int kL0_SlowdownWritesTrigger = 8;
+static const int kL0_SlowdownWritesTrigger = 16;
+
+// static const int kL0_StopWritesTrigger = 12;
+static const int kL0_StopWritesTrigger = 64;
+
++ db/version_set.cc
+
+//static const int kTargetFileSize = 2 * 1048576;
+static const int kTargetFileSize = 32 * 1048576;
+
+//static const int64_t kMaxGrandParentOverlapBytes = 10 * kTargetFileSize;
+static const int64_t kMaxGrandParentOverlapBytes = 20 * kTargetFileSize;
+</code></pre><p>相关参数的调优，只能等我后续深入研究leveldb了在好好考虑。</p>
+<h2 id="性能测试">性能测试</h2>
+<p>任何一个服务端服务没有性能测试报告那就是耍流氓，我现在只是简单的用了redis_benchmark进行测试，测试环境为一台快两年的老爷mac air机器。</p>
+<p>测试语句：</p>
+<pre><code>redis-benchmark -n 10000 -t set,incr,get,lpush,lpop,lrange,mset -q
+</code></pre><p>redis-benchmark默认没有hash以及zset的测试，后续我在自己加入。</p>
+<p>leveldb配置：</p>
+<pre><code>compression       = false
+block_size        = 32KB
+write_buffer_size = 64MB
+cache_size        = 500MB
+</code></pre><h3 id="redis">redis</h3>
+<pre><code>SET: 42735.04 requests per second
+GET: 45871.56 requests per second
+INCR: 45248.87 requests per second
+LPUSH: 45045.04 requests per second
+LPOP: 43103.45 requests per second
+LPUSH (needed to benchmark LRANGE): 44843.05 requests per second
+LRANGE_100 (first 100 elements): 14727.54 requests per second
+LRANGE_300 (first 300 elements): 6915.63 requests per second
+LRANGE_500 (first 450 elements): 5042.86 requests per second
+LRANGE_600 (first 600 elements): 3960.40 requests per second
+MSET (10 keys): 33003.30 requests per second
+</code></pre><h3 id="ssdb">ssdb</h3>
+<pre><code>SET: 35971.22 requests per second
+GET: 47393.37 requests per second
+INCR: 36630.04 requests per second
+LPUSH: 37174.72 requests per second
+LPOP: 38167.94 requests per second
+LPUSH (needed to benchmark LRANGE): 37593.98 requests per second
+LRANGE_100 (first 100 elements): 905.55 requests per second
+LRANGE_300 (first 300 elements): 327.78 requests per second
+LRANGE_500 (first 450 elements): 222.36 requests per second
+LRANGE_600 (first 600 elements): 165.30 requests per second
+MSET (10 keys): 33112.59 requests per second
+</code></pre><h3 id="ledisdb">ledisdb</h3>
+<pre><code>SET: 38759.69 requests per second
+GET: 40160.64 requests per second
+INCR: 36101.08 requests per second
+LPUSH: 33003.30 requests per second
+LPOP: 27624.31 requests per second
+LPUSH (needed to benchmark LRANGE): 32894.74 requests per second
+LRANGE_100 (first 100 elements): 7352.94 requests per second
+LRANGE_300 (first 300 elements): 2867.79 requests per second
+LRANGE_500 (first 450 elements): 1778.41 requests per second
+LRANGE_600 (first 600 elements): 1590.33 requests per second
+MSET (10 keys): 21881.84 requests per second
+</code></pre><p>可以看到，ledisdb的性能赶redis以及ssdb还是有差距的，但也不至于不可用，有些差别并不大。至于为啥lrange比ssdb高，我比较困惑。</p>
+<p>后续的测试报告，我会不断在benchmark文件里面更新。</p>
+<h2 id="Todo。。。。。。">Todo。。。。。。</h2>
+<p><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>还是一个非常新的项目，比起ssdb已经在生产环境中用了很久，还有很多路要走，还有一些重要的功能需要实现，譬如replication等。</p>
+<p>欢迎有兴趣的童鞋一起参与进来，在漫漫程序开发路上有一些好基友可是很幸运的。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-30T00:29:09.000Z"><a href="/2014/04/30/make-wheel/">04-30-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/30/make-wheel/">谈谈自己造轮子</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>写下这篇文章，主要是对我近段时间工作的反思。</p>
+<h1 id="为啥要造轮子">为啥要造轮子</h1>
+<p>对于一些程序员来说，喜欢自己造轮子可算是一个很平常的事情，我想可能有如下原因：</p>
+<ul>
+<li>对于一些小的功能，不需要借助外部库，直接能够自己写完搞定。</li>
+<li>对于一些大的功能，很多外部库不能很好的与自己项目整合，有时候还不如自己写一个。</li>
+<li>有时候即使能用的外部库，因为程序员相轻的思想，就觉得自己写的nb，不用。</li>
+<li>还有可能就是想深入学习某一个知识点，自己动手造一个。</li>
+</ul>
+<p>我不觉得造轮子不好，曾今很长一段时间我都认为造轮子是体现自己能力很好的一种方式，但是现在越来越觉得，不要过分的去造轮子。</p>
+<h1 id="造轮子的教训">造轮子的教训</h1>
+<p>昨天，我需要对接amazon s3的存储，官方没有go语言的sdk，所以我就动了自己写一个的想法，即使我知道铁定有第三方的实现。</p>
+<p>amazon s3的接口因为都是restful形式，同时签名机制已经非常熟悉（国内的存储服务接口几乎都按照这套设计的，除了几个奇葩的公司），所以我就开始写了，写完了之后，我在看一个第三方的<a href="https://launchpad.net/goamz" target="_blank" rel="external">goamz</a>实现，发现跟我相差不了多少，一下子碉堡了。</p>
+<p>我真的叫做没屁事了，这么浪费时间。</p>
+<h1 id="造还是不造？">造还是不造？</h1>
+<p>很多时候，我们要克服自己造轮子的冲动。</p>
+<p>对于一个需要实现的功能，我觉得首先可以考虑该需求是否有成熟的解决方案，如果有，使用的成本有多大？</p>
+<p>譬如对于python来说，如果我们现在需要一套web框架，如果自己去写，而不用成熟的tornado，django这些的，我真觉得蛋疼了。而对于go来说，我到现在还没发现我们用起来趁手的web框架，所以就有了自己造的<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>。</p>
+<p>如果项目进度有压力，多数时候我都倾向于通过集成外部解决方案来实现，而不是费时的自己去造轮子，因为这时候体现你能力的不是你写了多少nb的东西，而是将程序运行起来，提供服务。当然，你也不能找太挫的，或者完全无法驾驭的程序，那样后面就够你疼了。</p>
+<p>即使真的需要自己去写一个轮子，还需要不停的问自己：我这个轮子稳定性如何，能否高效的运行，后续随着需求的变更我能不能很容易的掌控？如果发现自己搞不定，还是求助一下别人比较好。</p>
+<p>如果我对某一个知识点特别有兴趣，想去深入研究并且有时间，那我觉得自己造几个轮子也算是很不错的事情。譬如我前段时间想重新深入了解网络编程，虽然有libev这些好用的开源库，我也基于他们封装了很多东西，譬如<a href="https://github.com/siddontang/tnet" target="_blank" rel="external">tnet</a>，<a href="https://github.com/siddontang/tpush" target="_blank" rel="external">tpush</a>，但是我仍然自己写了一个<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>，写完了，我才有“啊哈，原来是这样“这种豁然开朗的感觉。</p>
+<h1 id="写在后面">写在后面</h1>
+<p>随着现在github这类网站的流行，找到高质量的第三方实现已经变成一件很容易的事情，作为一个程序员，不能固步自封，总认为我自己写的才是好的，有时候“自己动手，丰衣足食”这种想法反而会累死自己。</p>
+<p>今天刚好看到了一篇文章<a href="http://it.deepinmind.com/%E5%85%B6%E5%AE%83/2014/04/29/knowing-the-bits.html" target="_blank" rel="external">一位码农的几点思考</a>，里面的观点我很赞同，与大家共勉。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-27T06:08:47.000Z"><a href="/2014/04/27/golang-why-go/">04-27-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/27/golang-why-go/">为什么使用Go</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>这里，我并不打算引起语言争论的口水仗，我并不是什么大牛，对语言的造诣也不深，只是想通过自己实际的经历，来说说为什么我在项目中选择go。</p>
+<h1 id="其他语言的经历">其他语言的经历</h1>
+<h2 id="C++">C++</h2>
+<p>在接触go之前，我已经有多年的c++开发经验。主要用在游戏服务端引擎开发以及P2P上面，那可是一段痛并快乐的时期，以至于我看到任何的程序钉子问题都觉得可以用c++这把锤子给敲定。但是对于互联网项目开发来说，除非你的团队整体的c++技术水平nb，并且有很强的代码规范，不然真可能是一场灾难，更别说我们现有团队几乎没其他人会这玩意了。</p>
+<p>本来，我打算在现有项目中的推送系统中使用c++，并用业余时间写好了一个网络底层库<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>，但后来还是决定打住，因为没有人能够协助我开发。令我比较欣慰的是，libtnet有一个游戏公司在使用，现处于内部测试阶段，即将放出去，我倒是很期待他们的好消息。</p>
+<h2 id="Lua">Lua</h2>
+<p>在做游戏的过程中，我也学会了lua这门语言，并且还有幸接触并完善了云风在<a href="http://blog.codingnow.com/2008/08/lua_is_not_c_plus_plus.html" target="_blank" rel="external">Lua 不是 C++</a>中提到的那个恐怖的lua，c++粘合层。</p>
+<p>lua真的是一门非常好的语言，性能高，开发快速。不光游戏公司大量使用，在互联网领域，因为openresty的流行，一些公司（包括我们）也开始在web端使用lua进行开发。（颇为自豪的是还给openresty反馈过几个bug）</p>
+<p>但是，lua因为太短小精悍，功能库并不多，很多需要自己去实现，而且，写出高性能，高质量lua代码也并不是很容易的事情。另外，因为其动态语言的特性，我们也栽了不少坑，这个后续在详说。</p>
+<h2 id="Python">Python</h2>
+<p>在我来现有的团队之前，他们就已经使用python进行整个系统的开发，甚至包括客户端GUI（这对客户端童鞋当时就是一个灾难，后来换成Qt就舒爽了）。</p>
+<p>python的好处不必说，从数不清的公司用它进行开发就知道，库非常丰富，代码简洁，开发迅速。</p>
+<p>但是，在项目中经过两年多python开发之后，我们渐渐出现了很多问题：</p>
+<ul>
+<li>性能，python的性能是比较偏低的，对于很多性能热点代码，通常都会采用其他的方式实现。在我们的项目中，需要对任何API调用进行签名认证，认证服务我们开始使用的是tornado实现，但很不幸运的是，放到外网并没有顶住压力。所以我们引入openresty，专门用以解决性能问题。</li>
+<li>部署，python的库因为太丰富了，所以我们的童鞋引入了很多的库，个人感觉在pythoner的世界里面，可没有造轮子的兴趣。有时候发版本的时候，我们会因为忘记安装一个库导致程序无法运行。这可能跟我们团队没有成熟运维经验有关，后续通过salt，puppet这种发布工具应该能解决。</li>
+<li>质量，通常我们都认为，因为python代码的简洁，我们很容易的能写出高质量的代码，但是如果没有好的代码控制手段，用python也仍然能写出渣的代码，我甚至觉得因为其灵活性，可能会更容易写出烂的代码。这可以说是我们团队的教训。</li>
+</ul>
+<p>这里，我并没有喷python的意思，它真的是一门好语言，我能够通过它快速的构建原型，验证我的想法，而且还一直在使用。只是在项目中，我们的一些疏忽，导致代码不可控了，到了不得不重构的地步了。</p>
+<h1 id="Why_GO？">Why GO？</h1>
+<p>前面说了我的语言经历，以及项目到了重构地步的原因，但是为什么会是go呢？我们可以有很多其他的选择，譬如java，erlang，或者仍然采用python。我觉得有很多因素考量：</p>
+<ul>
+<li><p>静态，go是一门静态语言，有着强类型约束，所以我们不太可能出现在python中变量在运行时类型不匹配（譬如int + string）这样的runtime error。 在编译阶段就能够帮我们发现很多问题，不用等到运行时。（当然，这个静态语言都能做到）</p>
+</li>
+<li><p>代码规范，很多人都比较反感go强制的编码规范，譬如花括号的位置。但我觉得，就因为强制约定，所以大家写出来的go代码样子都差不多，不用费心再去深究代码样式问题。而且我发现，因为规范统一，我很容易就能理解别人写的代码。</p>
+</li>
+<li><p>库支持，go的库非常丰富，而且能通过go get非常方便的获取github，google code上面的第三方库（质量你自己得担着了），再不行，用go自己造轮子也是很方便的，而且造的轮子通常都比较稳定。</p>
+</li>
+<li><p>开发迅速，不得不说，当你习惯用go开发之后，用go开发功能非常的快，相对于静态语言c++，开发的效率快的没话说，我觉得比python都不差，而且质量有保证。我们花了不到一个星期进行推送服务核心功能开发，到现在都没怎么变动，稳定运行。</p>
+</li>
+<li><p>部署方便，因为是静态的，只需要build成一个可运行程序就可以了，部署的时候直接扔一个文件过去，不需要像python那样安装太多的依赖库。</p>
+</li>
+</ul>
+<h1 id="GO特性">GO特性</h1>
+<p>go现在的这个样子，有些人喜欢，有些人不喜欢，我无法知道为啥google那帮人把go设计成这样，但是我觉得，既然存在，就有道理，我只需要知道什么该用，什么不该用就可以了。</p>
+<h2 id="gc">gc</h2>
+<p>GO提供了gc，这对于c++的童鞋来说，极大的减少了在内存上面犯错的机会，只是go的gc这个效率还真的不好恭维，比起java来说，还有很大的提升空间。</p>
+<p>所以有时候写代码，我们还得根据tuning来提升gc的效率，譬如采用内存池的方式来管理大块的slice分配，采用<a href="http://blog.csdn.net/siddontang/article/details/23541587" target="_blank" rel="external">no copy</a>的方式来进行string，slice的互转。</p>
+<p>不过go1.3貌似gc性能有了很大的改善，这点让我比较期待。</p>
+<h2 id="defer">defer</h2>
+<p>go的defer其实是一个让人又爱又恨的东西，对于防止资源泄露，defer可是一个很不错的东西，但是滥用defer可是会让你面临很严重的内存问题，尤其是像下面的代码：</p>
+<pre><code>for {
+    defer func(){
+        //do somthing
+    }
+}
+</code></pre><p>别以为go会在调用完成defer之后就好好的进行gc回收defer里面的东西，在我们进行内存profile的时候，发现大量的内存占用都是defer引起的。所以使用起来需要特别谨慎。</p>
+<p>但我觉得，这个go应该会稍微改善，在go1.3里面，也有了对defer的优化。</p>
+<h2 id="error">error</h2>
+<p>也许error是一个让人争议很大的东西，现代方式的exception那里去呢？但是我觉得error能够非常明确的告诉使用者该函数会有错误返回，如果使用exception，除非文档足够详细，我还真不知道哪里就会蹦出一个异常了。</p>
+<p>只是，go又提供了类似exception的<a href="http://blog.golang.org/defer-panic-and-recover" target="_blank" rel="external">defer,panic,recover</a>，这是要闹哪出。</p>
+<p>其实<a href="http://blog.iwinux.info/blog/2012/12/error-handling-in-go.html" target="_blank" rel="external">这篇文章</a>我觉得已经解释的很好了，go程序的惯例是对外的API使用error，而内部错误处理可以用defer，recover和panic来简化流程。</p>
+<p>其实这倒跟我一贯的编程准则对应，在团队在用python进行开发的时候，我们都明确要求库对外提供的API需要使用返回值来表示错误，而在内部可以使用try，catch异常机制。</p>
+<h2 id="interface">interface</h2>
+<p>go提供了interface来进行抽象编程。何谓接口，最通常的例子就是鸭子的故事，“当看到一只鸟走起来像鸭子、游泳起来像鸭子、叫起来也像鸭子，那么这只鸟就可以被称为鸭子“。</p>
+<p>在go里面，interface就是一堆方法的集合，如果某个对象实现了这些方法，那么该对象可以就算是该interface。使用interface，我们可以很方便的实现非侵入式编程，进行模块功能的替换。</p>
+<p>对于长时间沉浸c++和python的童鞋来说，一下子要用interface来解决抽象问题，可能会很不适应。但当习惯之后，你会发现，其实interface非常的灵活方便。</p>
+<h1 id="写到后面">写到后面</h1>
+<p>在使用的时候，我们需要知道go到底适用在什么地方，譬如我们现在也就将API服务使用go重构，我们可没傻到用go去替换openresty。</p>
+<p>总之，go是一门很新的语言，国内也已经有很多公司开始吃这个螃蟹，也有成功的例子了，而我们也正开始了这段旅程。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-24T05:46:41.000Z"><a href="/2014/04/24/golang-moonmq-example/">04-24-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/24/golang-moonmq-example/">Go MoonMQ使用说明</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在上一篇moonmq的介绍中（<a href="http://blog.csdn.net/siddontang/article/details/22889495" target="_blank" rel="external">这里</a>），我仅仅简短的罗列了一些moonmq的设计想法，但是对于如何使用并没有详细说明，公司同事无法很好的使用。</p>
+<p>对于moonmq的使用，其实很简单，样例代码在<a href="https://github.com/siddontang/moonmq/tree/master/example" target="_blank" rel="external">这里</a>，我们只需要处理好broker，consumer以及publisher的关系就可以了。</p>
+<p>首先，我们需要启动一个broker，因为moonmq现在只支持tcp的自定义协议，所以broker启动的时候需要指定一个listen address。</p>
+<pre><code>#启动broker
+./simple_broker -addr=127.0.0.1:11182
+</code></pre><p>启动了broker之后，我们就可以向该broker发送消息</p>
+<pre><code>#向test这个queue发送 hello msg
+./simple_publisher -addr=127.0.0.1:11182 -queue=test -msg=hello
+</code></pre><p>然后在另一个shell里面接收消息</p>
+<pre><code>#接收test这个queue的消息
+./simple_consumer -addr=127.0.0.1:11182 -queue=test
+
+#output get msg: hello
+</code></pre><p>如果没有消息，那么consumer就会一直等待，直到接收到消息。</p>
+<p>这里详细说一下consumer的实现，</p>
+<ul>
+<li><p>创建一个与broker的连接</p>
+<pre><code>  //create a client for use
+  client := NewClient(config)
+
+  //get a usable connection
+  conn, _ := client.Get()
+</code></pre></li>
+<li><p>绑定queue</p>
+<pre><code>  //bind a queue
+  //queue name : test
+  //routingKey : &quot;&quot;
+  //noAck : true
+  ch, _ := conn.Bind(&quot;test&quot;, &quot;&quot;, true)
+</code></pre></li>
+<li><p>接收消息</p>
+<pre><code>  //receive msg, block to wait until a msg received
+  msg := ch.GetMsg()
+  println(msg)
+</code></pre></li>
+<li><p>回执消息</p>
+<pre><code>  //if channel noAck is false, we must ack
+  ch.Ack()
+</code></pre></li>
+</ul>
+<p>从上面的例子可以看出，使用moonmq很方便，后续我准备加入http的支持，使其更容易使用。</p>
+<p>moonmq的代码在这里<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">https://github.com/siddontang/moonmq</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-23T05:29:51.000Z"><a href="/2014/04/23/golang-leveldb/">04-23-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/23/golang-leveldb/">Go的LevelDB接口</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>leveldb是一个很强悍的kv数据库，自然，我也希望能在go中使用。</p>
+<p>如果有官方的go leveldb实现，那我会优先考虑，譬如<a href="https://code.google.com/p/leveldb-go/" target="_blank" rel="external">这个</a>，但是该库文档完全没有，并且在网上没发现有人用于实战环境，对其能否在生产环境中使用打上问号，保险起见，我还是决定不使用。</p>
+<p>因为leveldb有c的接口，所以通过cgo能很方便的进行集成，所以我决定采用该种方式，幸运的是，已经有人做了cgo的版本，也就是<a href="https://github.com/jmhodges/levigo" target="_blank" rel="external">levigo</a>。</p>
+<p>使用levigo，需要编译安装leveldb，如果需要压缩支持还需要编译snappy，为了简单，我写了一个构件脚本，如下：</p>
+<pre><code>#!/bin/bash
+#refer https://github.com/norton/lets/blob/master/c_src/build_deps.sh
+
+#你必须在这里设置实际的snappy以及leveldb源码地址
+SNAPPY_SRC=./snappy
+LEVELDB_SRC=./leveldb
+
+SNAPPY_DIR=/usr/local/snappy
+LEVELDB_DIR=/usr/local/leveldb
+
+if [ ! -f $SNAPPY_DIR/lib/libsnappy.a ]; then
+    (cd $SNAPPY_SRC &amp;&amp; \
+        ./configure --prefix=$SNAPPY_DIR &amp;&amp; \
+        make &amp;&amp; \
+        make install)
+else
+    echo &quot;skip install snappy&quot;
+fi
+
+if [ ! -f $LEVELDB_DIR/lib/libleveldb.a ]; then
+    (cd $LEVELDB_SRC &amp;&amp; \
+        echo &quot;echo \&quot;PLATFORM_CFLAGS+=-I$SNAPPY_DIR/include\&quot; &gt;&gt; build_config.mk&quot; &gt;&gt; build_detect_platform &amp;&amp;
+        echo &quot;echo \&quot;PLATFORM_CXXFLAGS+=-I$SNAPPY_DIR/include\&quot; &gt;&gt; build_config.mk&quot; &gt;&gt; build_detect_platform &amp;&amp;
+        echo &quot;echo \&quot;PLATFORM_LDFLAGS+=-L $SNAPPY_DIR/lib -lsnappy\&quot; &gt;&gt; build_config.mk&quot; &gt;&gt; build_detect_platform &amp;&amp;
+        make SNAPPY=1 &amp;&amp; \
+        make &amp;&amp; \
+        mkdir -p $LEVELDB_DIR/include/leveldb &amp;&amp; \
+        install include/leveldb/*.h $LEVELDB_DIR/include/leveldb &amp;&amp; \
+        mkdir -p $LEVELDB_DIR/lib &amp;&amp; \
+        cp -af libleveldb.* $LEVELDB_DIR/lib)
+else
+    echo &quot;skip install leveldb&quot;
+fi
+
+function add_path()
+{
+  # $1 path variable
+  # $2 path to add
+  if [ -d &quot;$2&quot; ] &amp;&amp; [[ &quot;:$1:&quot; != *&quot;:$2:&quot;* ]]; then
+    echo &quot;$1:$2&quot;
+  else
+    echo &quot;$1&quot;
+  fi
+}
+
+export CGO_CFLAGS=&quot;-I$LEVELDB_DIR/include -I$SNAPPY_DIR/include&quot;
+export CGO_LDFLAGS=&quot;-L$LEVELDB_DIR/lib -L$SNAPPY_DIR/lib -lsnappy&quot;
+export LD_LIBRARY_PATH=$(add_path $LD_LIBRARY_PATH $SNAPPY_DIR/lib)
+export LD_LIBRARY_PATH=$(add_path $LD_LIBRARY_PATH $LEVELDB_DIR/lib)
+
+go get github.com/jmhodges/levigo 
+</code></pre><p>对于leveldb在go里面的使用，levigo做了很好的封装，但是有一点我不怎么习惯，在leveldb中，对于read和write的操作，都需要传入一个Option的东西，这玩意大多数时候都是一个默认Option对象，没必要每次在go里面进行创建删除。所以我对其进行了封装，提供了如下的接口，这样使用的都是默认的option。</p>
+<pre><code>func (db *DB) Put(key, value []byte) error 
+func (db *DB) Get(key []byte) ([]byte, error)
+func (db *DB) Delete(key []byte) error 
+</code></pre><p>同时对于iterator，我参考c++的模型，提供了iterator以及reverse_iterator两种模式，如下：</p>
+<pre><code>func (db *DB) Iterator(begin []byte, end []byte, limit int) *Iterator 
+func (db *DB) ReverseIterator(rbegin []byte, rend []byte, limit int) *Iterator 
+</code></pre><p>具体的代码在<a href="https://github.com/siddontang/golib/tree/master/leveldb" target="_blank" rel="external">这里</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-22T02:56:26.000Z"><a href="/2014/04/22/golang-pprof-goroutine/">04-22-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/22/golang-pprof-goroutine/">Go使用pprof调试Goroutine</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>有一段时间，我们的推送服务socket占用很不正常，我们自己统计的同时在线就10w的用户，但是占用的socket竟然达到30w，然后查看goroutine的数量，发现已经60w+。</p>
+<p>每个用户占用一个socket，而一个socket，有read和write两个goroutine，简化的代码如下：</p>
+<pre><code>c, _ := listerner.Accept()
+
+go c.run()
+
+func (c *conn) run() {
+    go c.onWrite()
+    c.onRead()
+}
+
+func (c *conn) onRead() {
+    stat.AddConnCount(1)
+
+    //on something
+
+    stat.AddConnCount(-1)
+
+    //clear
+    //notify onWrite to quit
+}
+</code></pre><p>当时我就怀疑，用户同时在线的统计是正确的，也就是之后的clear阶段出现了问题，导致两个goroutine都无法正常结束。在检查代码之后，我们发现了一个可疑的地方，因为我们不光有自己的统计，还会将一些统计信息发送到我们公司的统计平台，代码如下：</p>
+<pre><code>ch = make([]byte, 100000)
+func send(msg []byte) {
+    ch &lt;- msg
+}
+
+//在另一个goroutine的地方，
+msg &lt;- msg
+httpsend(msg)
+</code></pre><p>我们channel的缓存分配了10w，如果公司统计平台出现了问题，可能会导致channel阻塞。但到底是不是这个原因呢？</p>
+<p>幸运的是，我们先前已经在代码里面内置了pprof的功能，通过pprof goroutine的信息，发现大量的goroutine的当前运行函数在httpsend里面，也就是说，公司的统计平台在大并发下面服务不可用，虽然我们有http超时的处理，但是因为发送的数据量太频繁，导致整体阻塞。</p>
+<p>临时的解决办法就是关闭了统计信息的发送，后续我们会考虑将其发送到自己的mq上面，虽然也可能会出现mq服务不可用的问题，但是说句实话，比起自己实现的mq，公司的统计平台更让我不可信。</p>
+<p>这同时也给了我一个教训，访问外部服务一定要好好处理外部服务不可用的问题，即使可用，也要考虑压力问题。</p>
+<p>对于pprof如何查看了goroutine的问题，可以通过一个简单的例子说明:</p>
+<pre><code>package main
+
+import (
+    &quot;net/http&quot;
+    &quot;runtime/pprof&quot;
+)
+
+var quit chan struct{} = make(chan struct{})
+
+func f() {
+    &lt;-quit
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set(&quot;Content-Type&quot;, &quot;text/plain&quot;)
+
+    p := pprof.Lookup(&quot;goroutine&quot;)
+    p.WriteTo(w, 1)
+}
+
+func main() {
+    for i := 0; i &lt; 10000; i++ {
+        go f()
+    }
+
+    http.HandleFunc(&quot;/&quot;, handler)
+    http.ListenAndServe(&quot;:11181&quot;, nil)
+}
+</code></pre><p>这上面的例子中，我们启动了10000个goroutine，并阻塞，然后通过访问<a href="http://localhost：11181/，我们就可以得到整个goroutine的信息，仅列出关键信息：" target="_blank" rel="external">http://localhost：11181/，我们就可以得到整个goroutine的信息，仅列出关键信息：</a></p>
+<pre><code>goroutine profile: total 10004
+
+10000 @ 0x186f6 0x616b 0x6298 0x2033 0x188c0
+#    0x2033    main.f+0x33    /Users/siddontang/test/pprof.go:11
+</code></pre><p>可以看到，在main.f这个函数中，有10000个goroutine正在执行，符合我们的预期。</p>
+<p>在go里面，还有很多运行时查看机制，可以很方便的帮我们定位程序问题，不得不赞一下。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-16T01:57:46.000Z"><a href="/2014/04/16/golang-timer/">04-16-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/16/golang-timer/">Go Timer实现</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在go自带的timer实现中，采用的是通常的最小堆的方式，具体可以参见<a href="http://golang.org/src/pkg/runtime/time.goc" target="_blank" rel="external">这里</a>。</p>
+<p>最小堆能够提供很好的定时精度，但是，在实际情况中，我们并不需要这样高精度的定时器，譬如对于一个连接，如果它在2分钟以内没有数据交互，我们就将其删除，2分钟并不需要那么精确，多几秒少几秒都无所谓的。</p>
+<p>以前我们单独实现了一个<a href="https://github.com/siddontang/golib/tree/master/timingwheel" target="_blank" rel="external">timingwheel</a>，采用的是channel close的方式来处理低精度，超大量timer定时的问题，详见<a href="http://blog.csdn.net/siddontang/article/details/18370541" target="_blank" rel="external">这里</a>。</p>
+<p>但是timingwheel只有After接口，远远不能满足实际的需求，于是我按照linux timer的实现方式，依葫芦画瓢，弄了一个go版本的实现。linux timer的实现，参考<a href="http://blog.csdn.net/tianmohust/article/details/8707162" target="_blank" rel="external">这篇</a>。</p>
+<p>后续用go timer来表示我自己实现的timer。</p>
+<p>在linux中，我们使用tick来表示一次中断的时间，用jiffies来表示系统自启动以来流逝的tick次数。在go timer中，我们在创建一个wheel的时候，需要指定一次tick的时间，如下：</p>
+<pre><code>func NewWheel(tick time.Duration) *Wheel
+</code></pre><p>Wheel是go timer统一对timer进行管理的地方。对于每一次tick，我们采用go自带的ticker进行模拟。</p>
+<p>为了便于外部使用，我仍然提供的是跟go自己timer一样的接口，譬如：</p>
+<pre><code>func NewTimer(d time.Duration) *Timer
+</code></pre><p>在NewTimer中，参数d是一个time duration，我们还需要根据tick来进行换算，得到go timer中实际的expires，也就是在多少次jiffies后该timer触发。</p>
+<p>譬如，NewTimer参数为10s，tick为1s，那么经过10个jiffies之后，该timer就会超时触发。如果tick为500ms，那么需要经过20个jiffies之后，该timer才会被触发。</p>
+<p>所以timer超时jiffies的计算如下：</p>
+<pre><code>expires = wheel.jiffies + d / wheel.tick
+</code></pre><p>详细的代码在<a href="https://github.com/siddontang/golib/tree/master/timer" target="_blank" rel="external">https://github.com/siddontang/golib/tree/master/timer</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-13T03:53:14.000Z"><a href="/2014/04/13/golang-json-config/">04-13-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/13/golang-json-config/">在Go中使用JSON作为主要配置</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>最近在用go重构，在先前的代码中，我们使用的ini文件进行配置，但是因为很多历史遗留问题，导致配置混乱，维护困难，自然也需要考虑重构了。</p>
+<h1 id="通用配置格式">通用配置格式</h1>
+<p>通用的配置格式有很多，常用的就有ini，json，yaml，xml等，当然为了通用我们不考虑自定义的配置格式。那如何选择呢？</p>
+<p>首先，xml我们就不用考虑了，到现在为止我都没觉得用这玩意配置起来有多方便，反而很臃肿，可能java系的童鞋会比较青睐。</p>
+<p>再来考虑ini，ini文件对于简单应用的配置可以说是非常方便的，如果配置没有太多的层次结构，使用ini就能完全满足我们的需要，即使有，我们也能够通过加入特定前缀来解决。譬如，我们可能有如下redis配置：</p>
+<pre><code>[ModuleA]
+
+persistent_redis_addr = 127.0.0.1:6379
+persistent_redis_password = admin
+
+cache_redis_addr = 127.0.0.1:6380
+cache_redis_password = admin
+</code></pre><p>然后，需求变化了，我们需要另一个持久化redis服务来做相关事情，于是配置就可能变成了下面这样：</p>
+<pre><code>[ModuleA]
+
+persistent_redis_addr = 127.0.0.1:6379
+persistent_redis_password = admin
+
+persistent2_redis_addr = 127.0.0.1:6379
+persistent2_redis_password = admin
+
+cache_redis_addr = 127.0.0.1:6380
+cache_redis_password = admin
+</code></pre><p>虽然通过前缀命名能解决层级问题，但总觉得是对程序员不怎么友好的。</p>
+<h1 id="why_json">why json</h1>
+<p>剩下的就是json和yaml，可以这么说，这两个都算是比较好的轻量级配置格式，而且对程序员非常友好，而且go里面都可以通过定义struct，将层级结构的配置映射到相应的struct里面。</p>
+<p>但是我还是决定选择json作为我们go代码的默认配置格式，最主要的原因在于go的json包有一个杀手级别的RawMessage实现。而这个在我能找到的yaml包中没有。</p>
+<p>RawMessage主要是用来告诉go延迟解析用的。当我们定义了某一个字段为RawMessage之后，go就不会解析这段json，这样我们就可以将其推后到各自的子模块单独解析。</p>
+<p>假设有一个功能，后台存储可能是redis或者mysql，但是只会使用一个，可能我们会按照如下方式写配置：</p>
+<pre><code>redis_store : {
+    addr : 127.0.0.1
+    db : 0
+},
+
+mysql_store : {
+    addr : 127.0.0.1
+    db : test
+    password : admin
+    user : root
+}
+
+store : redis
+</code></pre><p>对应的class为</p>
+<pre><code>type Config struct {
+    RedisStore struct {
+        Addr string
+        DB int
+    }
+
+    MysqlStore Struct {
+        Addr string
+        DB string
+        Password string
+        User string
+    }
+
+    Store string
+}
+</code></pre><p>如果这时候我们在增加了一种新的store，我们需要在Config文件里面在增加一个新的field，但是实际我们只会使用一种store，并不需要写这么多的配置。</p>
+<p>我们可以使用RawMessage来处理：</p>
+<pre><code>type Config struct {
+    Store string
+    StoreConfig json.RawMessage
+}
+</code></pre><p>如果使用redis，对应的配置文件为</p>
+<pre><code>store: redis
+store_config: {
+    addr : 127.0.0.1
+    db : 0
+}
+</code></pre><p>如果使用mysql，对应的配置文件为</p>
+<pre><code>store: mysql
+store_config: {
+    addr : 127.0.0.1
+    db : test
+    password : admin
+    user : root
+}
+</code></pre><p>go读取配置文件之后，并不会处理RawMessage对应的东西，而是由我们代码自己对应的store模块去处理。这样无论配置文件怎么变动，store模块做了什么变动，都不会影响Config类。</p>
+<p>而在各个模块中，我们只需要自己定义相关config，然后可以将RawMessage直接解析映射到该config上面，譬如，对于redis，我们在模块中有如下定义</p>
+<pre><code>type RedisConfig config {
+    Addr string `json:&quot;addr&quot;`
+    DB int `json:&quot;db&quot;`
+}
+
+func NewConfig(m json.RawMessage) *RedisConfig {
+    c := new(RedisConfig)
+
+    json.Unmarshal(m, c)
+
+    return c
+}
+</code></pre><h1 id="json的不足">json的不足</h1>
+<p>使用json也还有很多蛋疼的地方，最大的问题就在于注释，在json中，可不能这样写：</p>
+<pre><code>{
+    //this is a comment
+    /*this is a comment*/ 
+}
+</code></pre><p>但是，我们又不可能不写一点注释来说明配置项是干啥的，所以，通常采用的是引入一个comment字段的方式，譬如：</p>
+<pre><code>{
+    &quot;_comment&quot; : &quot;this is a comment&quot;,
+    &quot;key&quot; : &quot;value&quot;
+}
+</code></pre><p>另外，json还需要注意的就是写的时候最后一项不能加上逗号，这样的json会因为格式错误无法解析的。</p>
+<pre><code>{
+    &quot;key&quot; : &quot;value&quot;,
+}
+</code></pre><p>最后那个逗号可是不能要的，但是实际写配置的时候我们可是经常性的随手加上了。</p>
+<p>但是，总的来说，json对于go的项目还是很友好的，我不光在项目中推行了，在自己的开源项目中，也大量的采用了json作为主要的配置文件。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-12T09:10:16.000Z"><a href="/2014/04/12/golang-no-copy/">04-12-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/12/golang-no-copy/">Go中Slice与String的无内存copy</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在go里面，string和slice的互换是需要进行内存拷贝的，虽然在底层，它们都只是用 pointer + len来表示的一段内存。</p>
+<p>通常，我们不会在意string和slice的转换带来的内存拷贝性能问题，但是总有些地方需要关注的，刚好在看vitess代码的时候，发现了一种很hack的做法，string和slice的转换只需要拷贝底层的指针，而不是内存拷贝。当然这样做的风险各位就要好好担当了：</p>
+<pre><code>func String(b []byte) (s string) {
+    pbytes := (*reflect.SliceHeader)(unsafe.Pointer(&amp;b))
+    pstring := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))
+    pstring.Data = pbytes.Data
+    pstring.Len = pbytes.Len
+    return
+}
+
+func Slice(s string) (b []byte) {
+    pbytes := (*reflect.SliceHeader)(unsafe.Pointer(&amp;b))
+    pstring := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))
+    pbytes.Data = pstring.Data
+    pbytes.Len = pstring.Len
+    pbytes.Cap = pstring.Len
+    return
+}
+</code></pre><p>在我的测试例子中，slice转string之后，如果slice的值有变化，string也会跟着改变，如下：</p>
+<pre><code>b := []byte(&quot;hello world&quot;)
+
+a := String(b)
+
+b[0] = &#39;a&#39;
+
+println(a)  //output  aello world
+</code></pre><p>但是string转slice之后，就不能更改slice了，如下：</p>
+<pre><code>a := &quot;hello world&quot;
+
+b := Slice(a)
+
+b[0] = &#39;a&#39;  //这里就等着崩溃吧
+
+//但是可以这样，因为go又重新给b分配了内存
+b = append(b, &quot;hello world&quot;…)
+</code></pre><p>上面为什么会崩溃我猜想可能是string是immutable的，可能对应的内存地址也是不允许改动的。</p>
+<p>另外，上面这个崩溃在defer里面是recover不回来的，真的就崩溃了，原因可能就跟c的非法内存访问一样，os不跟你玩了。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-07T13:34:36.000Z"><a href="/2014/04/07/golang-log/">04-07-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/07/golang-log/">Go Log模块开发</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在go里面，虽然有log模块，但是该模块提供的功能并不强，譬如就没有我们常用的level log功能，但是自己实现一个log模块也并不困难。</p>
+<p>对于log的level，我们定义如下:</p>
+<pre><code>const (
+    LevelTrace = iota
+    LevelDebug
+    LevelInfo
+    LevelWarn
+    LevelError
+    LevelFatal
+)    
+</code></pre><p>相应的，提供如下几个函数:</p>
+<pre><code>func Trace(format string, v ...interface{}) 
+func Debug(format string, v ...interface{}) 
+func Info(format string, v ...interface{}) 
+func Warn(format string, v ...interface{}) 
+func Error(format string, v ...interface{}) 
+func Fatal(format string, v ...interface{}) 
+</code></pre><p>另外，对于一个log，我们可能将其写入不同的地方，譬如可能直接输出到stdout，或者写文件，或者写socket，在创建特定logger的时候，我们需要指定对应的handler，用来实现不同的写入方式。</p>
+<p>handler的定义如下：</p>
+<pre><code>type Handler interface {
+    Write(p []byte) (n int, err error)
+    Close() error
+}
+</code></pre><p>我们可以参考python的log模块，实现几个通用的handler，譬如StreamHandler，FileHandler，TimeRotatingFileHandler。</p>
+<p>log模块的实现<a href="https://github.com/siddontang/golib/tree/master/log" target="_blank" rel="external">https://github.com/siddontang/golib/tree/master/log</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+
+  <nav id="pagination">
+  
+    <a href="/archives/2014/" class="alignleft prev">上一页</a>
+  
+  
+    <a href="/archives/2014/page/3/" class="alignright next">下一页</a>
+  
+  <div class="clearfix"></div>
+</nav>
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.github.com">
+  </form>
+</div>
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">标签</h3>
+  <ul class="entry">
+  
+    <li><a href="/tags/algorithm/">algorithm</a><small>1</small></li>
+  
+    <li><a href="/tags/c++/">c++</a><small>9</small></li>
+  
+    <li><a href="/tags/celery/">celery</a><small>1</small></li>
+  
+    <li><a href="/tags/go/">go</a><small>26</small></li>
+  
+    <li><a href="/tags/gopkg/">gopkg</a><small>1</small></li>
+  
+    <li><a href="/tags/goroutine/">goroutine</a><small>1</small></li>
+  
+    <li><a href="/tags/json/">json</a><small>1</small></li>
+  
+    <li><a href="/tags/ledisdb/">ledisdb</a><small>4</small></li>
+  
+    <li><a href="/tags/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/tags/leveldb/">leveldb</a><small>1</small></li>
+  
+    <li><a href="/tags/libtnet/">libtnet</a><small>5</small></li>
+  
+    <li><a href="/tags/log/">log</a><small>1</small></li>
+  
+    <li><a href="/tags/lua/">lua</a><small>4</small></li>
+  
+    <li><a href="/tags/message-queue/">message queue</a><small>1</small></li>
+  
+    <li><a href="/tags/mixer/">mixer</a><small>3</small></li>
+  
+    <li><a href="/tags/moonmq/">moonmq</a><small>2</small></li>
+  
+    <li><a href="/tags/mysql/">mysql</a><small>6</small></li>
+  
+    <li><a href="/tags/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/tags/nosql/">nosql</a><small>4</small></li>
+  
+    <li><a href="/tags/polaris/">polaris</a><small>2</small></li>
+  
+    <li><a href="/tags/pprof/">pprof</a><small>1</small></li>
+  
+    <li><a href="/tags/proxy/">proxy</a><small>1</small></li>
+  
+    <li><a href="/tags/python/">python</a><small>7</small></li>
+  
+    <li><a href="/tags/reflect/">reflect</a><small>1</small></li>
+  
+    <li><a href="/tags/restful/">restful</a><small>1</small></li>
+  
+    <li><a href="/tags/rpc/">rpc</a><small>1</small></li>
+  
+    <li><a href="/tags/timer/">timer</a><small>2</small></li>
+  
+    <li><a href="/tags/timingwheel/">timingwheel</a><small>1</small></li>
+  
+    <li><a href="/tags/tornado/">tornado</a><small>3</small></li>
+  
+  </ul>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>
