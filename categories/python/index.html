@@ -80,49 +80,34 @@
 <p>对于这点，我是深表赞同的。我们系统大量使用Celery处理异步任务，大概平均一天几百万的异步任务，以前我们使用的mysql，然后总会出现任务处理延时太严重的问题，即使增加了worker也不管用。于是我们使用了redis，性能提升了很多。至于为啥使用mysql很慢，我们没去深究，没准也还真出现了DDOS的问题。</p>
 <h2 id="2，使用更多的queue（不要只用默认的）">2，使用更多的queue（不要只用默认的）</h2>
 <p>Celery非常容易设置，通常它会使用默认的queue用来存放任务（除非你显示指定其他queue）。通常写法如下：</p>
-<pre><code>@app.task()
-def my_taskA(a, b, c):
-    print(&quot;doing something here...&quot;)
+<figure class="highlight"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div><div class="line">6</div><div class="line">7</div></pre></td><td class="code"><pre><div class="line"><span class="decorator">@app.task()</span></div><div class="line"><span class="function"><span class="keyword">def</span> <span class="title">my_taskA</span><span class="params">(a, b, c)</span>:</span></div><div class="line">    print(<span class="string">"doing something here..."</span>)</div><div class="line"></div><div class="line"><span class="decorator">@app.task()</span></div><div class="line"><span class="function"><span class="keyword">def</span> <span class="title">my_taskB</span><span class="params">(x, y)</span>:</span></div><div class="line">    print(<span class="string">"doing something here..."</span>)</div></pre></td></tr></table></figure>
 
-@app.task()
-def my_taskB(x, y):
-    print(&quot;doing something here...&quot;)
-</code></pre><p>这两个任务都会在同一个queue里面执行，这样写其实很有吸引力的，因为你只需要使用一个decorator就能实现一个异步任务。作者关心的是taskA和taskB没准是完全两个不同的东西，或者一个可能比另一个更加重要，那么为什么要把它们放到一个篮子里面呢？（鸡蛋都不能放到一个篮子里面，是吧！）没准taskB其实不怎么重要，但是量太多，以至于重要的taskA反而不能快速地被worker进行处理。增加workers也解决不了这个问题，因为taskA和taskB仍然在一个queue里面执行。</p>
+<p>这两个任务都会在同一个queue里面执行，这样写其实很有吸引力的，因为你只需要使用一个decorator就能实现一个异步任务。作者关心的是taskA和taskB没准是完全两个不同的东西，或者一个可能比另一个更加重要，那么为什么要把它们放到一个篮子里面呢？（鸡蛋都不能放到一个篮子里面，是吧！）没准taskB其实不怎么重要，但是量太多，以至于重要的taskA反而不能快速地被worker进行处理。增加workers也解决不了这个问题，因为taskA和taskB仍然在一个queue里面执行。</p>
 <h2 id="3，使用具有优先级的workers">3，使用具有优先级的workers</h2>
 <p>为了解决2里面出现的问题，我们需要让taskA在一个队列Q1，而taskB在另一个队列Q2执行。同时指定<strong>x</strong> workers去处理队列Q1的任务，然后使用其它的workers去处理队列Q2的任务。使用这种方式，taskB能够获得足够的workers去处理，同时一些优先级workers也能很好地处理taskA而不需要进行长时间的等待。</p>
 <p>首先手动定义queue</p>
-<pre><code>CELERY_QUEUES = (
-    Queue(&#39;default&#39;, Exchange(&#39;default&#39;), routing_key=&#39;default&#39;),
-    Queue(&#39;for_task_A&#39;, Exchange(&#39;for_task_A&#39;), routing_key=&#39;for_task_A&#39;),
-    Queue(&#39;for_task_B&#39;, Exchange(&#39;for_task_B&#39;), routing_key=&#39;for_task_B&#39;),
-)
-</code></pre><p>然后定义routes用来决定不同的任务去哪一个queue</p>
-<pre><code>CELERY_ROUTES = {
-    &#39;my_taskA&#39;: {&#39;queue&#39;: &#39;for_task_A&#39;, &#39;routing_key&#39;: &#39;for_task_A&#39;},
-    &#39;my_taskB&#39;: {&#39;queue&#39;: &#39;for_task_B&#39;, &#39;routing_key&#39;: &#39;for_task_B&#39;},
-}
-</code></pre><p>最后再为每个task启动不同的workers</p>
-<pre><code>celery worker -E -l INFO -n workerA -Q for_task_A
-celery worker -E -l INFO -n workerB -Q for_task_B
-</code></pre><p>在我们项目中，会涉及到大量文件转换问题，有大量小于1mb的文件转换，同时也有少量将近20mb的文件转换，小文件转换的优先级是最高的，同时不用占用很多时间，但大文件的转换很耗时。如果将转换任务放到一个队列里面，那么很有可能因为出现转换大文件，导致耗时太严重造成小文件转换延时的问题。</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div></pre></td><td class="code"><pre><div class="line">CELERY_QUEUES <span class="subst">=</span> (</div><div class="line">    <span class="built_in">Queue</span>(<span class="string">'default'</span>, Exchange(<span class="string">'default'</span>), routing_key<span class="subst">=</span><span class="string">'default'</span>),</div><div class="line">    <span class="built_in">Queue</span>(<span class="string">'for_task_A'</span>, Exchange(<span class="string">'for_task_A'</span>), routing_key<span class="subst">=</span><span class="string">'for_task_A'</span>),</div><div class="line">    <span class="built_in">Queue</span>(<span class="string">'for_task_B'</span>, Exchange(<span class="string">'for_task_B'</span>), routing_key<span class="subst">=</span><span class="string">'for_task_B'</span>),</div><div class="line">)</div></pre></td></tr></table></figure>
+
+<p>然后定义routes用来决定不同的任务去哪一个queue</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div></pre></td><td class="code"><pre><div class="line">CELERY_ROUTES = {</div><div class="line">    <span class="string">'my_taskA'</span>: {<span class="string">'queue'</span>: <span class="string">'for_task_A'</span>, <span class="string">'routing_key'</span>: <span class="string">'for_task_A'</span>},</div><div class="line">    <span class="string">'my_taskB'</span>: {<span class="string">'queue'</span>: <span class="string">'for_task_B'</span>, <span class="string">'routing_key'</span>: <span class="string">'for_task_B'</span>},</div><div class="line">}</div></pre></td></tr></table></figure>
+
+<p>最后再为每个task启动不同的workers</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div></pre></td><td class="code"><pre><div class="line">celery worker -E <span class="operator">-l</span> INFO -n workerA -Q <span class="keyword">for</span>_task_A</div><div class="line">celery worker -E <span class="operator">-l</span> INFO -n workerB -Q <span class="keyword">for</span>_task_B</div></pre></td></tr></table></figure>
+
+<p>在我们项目中，会涉及到大量文件转换问题，有大量小于1mb的文件转换，同时也有少量将近20mb的文件转换，小文件转换的优先级是最高的，同时不用占用很多时间，但大文件的转换很耗时。如果将转换任务放到一个队列里面，那么很有可能因为出现转换大文件，导致耗时太严重造成小文件转换延时的问题。</p>
 <p>所以我们按照文件大小设置了3个优先队列，并且每个队列设置了不同的workers，很好地解决了我们文件转换的问题。</p>
 <h2 id="4，使用Celery的错误处理机制">4，使用Celery的错误处理机制</h2>
 <p>大多数任务并没有使用错误处理，如果任务失败，那就失败了。在一些情况下这很不错，但是作者见到的多数失败任务都是去调用第三方API然后出现了网络错误，或者资源不可用这些错误，而对于这些错误，最简单的方式就是重试一下，也许就是第三方API临时服务或者网络出现问题，没准马上就好了，那么为什么不试着重试一下呢？</p>
-<pre><code>@app.task(bind=True, default_retry_delay=300, max_retries=5)
-def my_task_A():
-    try:
-        print(&quot;doing stuff here...&quot;)
-    except SomeNetworkException as e:
-        print(&quot;maybe do some clenup here....&quot;)
-        self.retry(e)
-</code></pre><p>作者喜欢给每一个任务定义一个等待多久重试的时间，以及最大的重试次数。当然还有更详细的参数设置，自己看文档去。</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><div class="line">1</div><div class="line">2</div><div class="line">3</div><div class="line">4</div><div class="line">5</div><div class="line">6</div><div class="line">7</div></pre></td><td class="code"><pre><div class="line"><span class="decorator">@app.task(bind=True, default_retry_delay=300, max_retries=5)</span></div><div class="line"><span class="function"><span class="keyword">def</span> <span class="title">my_task_A</span><span class="params">()</span>:</span></div><div class="line">    <span class="keyword">try</span>:</div><div class="line">        print(<span class="string">"doing stuff here..."</span>)</div><div class="line">    <span class="keyword">except</span> SomeNetworkException <span class="keyword">as</span> e:</div><div class="line">        print(<span class="string">"maybe do some clenup here...."</span>)</div><div class="line">        self.retry(e)</div></pre></td></tr></table></figure>
+
+<p>作者喜欢给每一个任务定义一个等待多久重试的时间，以及最大的重试次数。当然还有更详细的参数设置，自己看文档去。</p>
 <p>对于错误处理，我们因为使用场景特殊，例如一个文件转换失败，那么无论多少次重试都会失败，所以没有加入重试机制。</p>
 <h2 id="5，使用Flower">5，使用Flower</h2>
 <p><a href="http://celery.readthedocs.org/en/latest/userguide/monitoring.html#flower-real-time-celery-web-monitor" target="_blank" rel="external">Flower</a>是一个非常强大的工具，用来监控celery的tasks和works。</p>
 <p>这玩意我们也没怎么使用，因为多数时候我们都是直接连接redis去查看celery相关情况了。貌似挺傻逼的对不，尤其是celery在redis里面存放的数据并不能方便的取出来。</p>
 <h2 id="6，没事别太关注任务退出状态">6，没事别太关注任务退出状态</h2>
 <p>一个任务状态就是该任务结束的时候成功还是失败信息，没准在一些统计场合，这很有用。但我们需要知道，任务退出的状态并不是该任务执行的结果，该任务执行的一些结果因为会对程序有影响，通常会被写入数据库（例如更新一个用户的朋友列表）。</p>
-<p>作者见过的多数项目都将任务结束的状态存放到sqlite或者自己的数据库，但是存这些真有必要吗，没准可能影响到你的web服务的，所以作者通常设置<code>CELERY_IGNORE_RESULT = True</code>去丢弃。</p>
+<p>作者见过的多数项目都将任务结束的状态存放到sqlite或者自己的数据库，但是存这些真有必要吗，没准可能影响到你的web服务的，所以作者通常设置<strong>CELERY_IGNORE_RESULT = True</strong>去丢弃。</p>
 <p>对于我们来说，因为是异步任务，知道任务执行完成之后的状态真没啥用，所以果断丢弃。</p>
 <h2 id="7，不要给任务传递_Database/ORM_对象">7，不要给任务传递 Database/ORM 对象</h2>
 <p>这个其实就是不要传递Database对象（例如一个用户的实例）给任务，因为没准序列化之后的数据已经是过期的数据了。所以最好还是直接传递一个user id，然后在任务执行的时候实时的从数据库获取。</p>
