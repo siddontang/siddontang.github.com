@@ -53,6 +53,63 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-04-07T13:34:36.000Z"><a href="/2014/04/07/golang-log/">04-07-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/07/golang-log/">Go Log模块开发</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在go里面，虽然有log模块，但是该模块提供的功能并不强，譬如就没有我们常用的level log功能，但是自己实现一个log模块也并不困难。</p>
+<p>对于log的level，我们定义如下:</p>
+<pre><code>const (
+    LevelTrace = iota
+    LevelDebug
+    LevelInfo
+    LevelWarn
+    LevelError
+    LevelFatal
+)    
+</code></pre><p>相应的，提供如下几个函数:</p>
+<pre><code>func Trace(format string, v ...interface{}) 
+func Debug(format string, v ...interface{}) 
+func Info(format string, v ...interface{}) 
+func Warn(format string, v ...interface{}) 
+func Error(format string, v ...interface{}) 
+func Fatal(format string, v ...interface{}) 
+</code></pre><p>另外，对于一个log，我们可能将其写入不同的地方，譬如可能直接输出到stdout，或者写文件，或者写socket，在创建特定logger的时候，我们需要指定对应的handler，用来实现不同的写入方式。</p>
+<p>handler的定义如下：</p>
+<pre><code>type Handler interface {
+    Write(p []byte) (n int, err error)
+    Close() error
+}
+</code></pre><p>我们可以参考python的log模块，实现几个通用的handler，譬如StreamHandler，FileHandler，TimeRotatingFileHandler。</p>
+<p>log模块的实现<a href="https://github.com/siddontang/golib/tree/master/log" target="_blank" rel="external">https://github.com/siddontang/golib/tree/master/log</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-04-03T10:30:17.000Z"><a href="/2014/04/03/moonmq-introduction/">04-03-2014</a></time>
       
       
@@ -937,103 +994,6 @@ Delete(env *Env)
 <li>统计功能。</li>
 </ul>
 <p>代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>。非常希望对proxy感兴趣的童鞋参与进来，共同完善<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，使其成为另一个mysql中间件解决方案。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-03-05T06:26:04.000Z"><a href="/2014/03/05/libcoro/">03-05-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/03/05/libcoro/">简易的C++协程库</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="起因">起因</h1>
-<p>在第一个版本的<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>开发完成之后，我一直在思考如何让异步方式的网络编程更加简单。</p>
-<p>虽然<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>通过c++ shared_ptr以及function等技术很大程度上面解决了异步代码编写的一些问题，但是仍然会出现代码逻辑被强制拆分的情况。而这个则是项目中童鞋无法很好的使用其进行开发的原因。</p>
-<p>所以我考虑让<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine。</p>
-<h1 id="Coroutine">Coroutine</h1>
-<p>第一次接触coroutine的概念是在lua里面，记得当时想了很久才算弄明白了coroutine的使用以及原理。在lua中，coroutine的使用如下：</p>
-<pre><code>co = coroutine.create(function ()
-        print(&quot;begin yield&quot;)
-        coroutine.yield()
-        print(&quot;after yield&quot;)
-    end)
-
-coroutine.resume(co)
-print(&quot;after resume&quot;)
-
-coroutine.resume(co)
-</code></pre><p>我们可以通过resume执行一个新创建或者已经被挂起的coroutine，通过yield挂起当前的coroutine，这样就可以实现类似多线程方式下面的多任务调度。</p>
-<p>至于coroutine的原理，很多地方都有说明，主要就在于每个coroutine都有自己的堆栈，这样当coroutine挂起的时候，它的当前执行状态会被完整保留，下次resume的时候就可以接着执行了。</p>
-<p>而使用coroutine的好处，我觉得最大的一点在于它将拆分的异步逻辑同步化了，更利于代码编写。</p>
-<p>在使用python tornado的时候，我们开始阶段写了太多的callback回调，以至于代码的维护非常困难，而这个则在引入<a href="https://github.com/python-greenlet/greenlet" target="_blank" rel="external">greenlet</a>后有了明显好转。</p>
-<p>而后续在使用go语言中，因为它原生的支持coroutine（其实在go里面更准确的说法应该是goroutine），写代码非常的方便，所以现在go已经成为了我服务器的首选开发语言，我也用它开发了多个项目（如<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，一个mysql proxy），并且已经在公司项目中实施。</p>
-<p>当然，使用coroutine并不是毫无缺点的：</p>
-<ul>
-<li>每个coroutine都需要维护自己的堆栈，当我们需要创建数以百万计的coroutine的时候，内存的开销就需要考虑了。</li>
-<li>coroutine的切换，都需要保留当前的上下文环境，以便于下次resume的时候接着执行，如果coroutine切换频繁，开销也不小。</li>
-</ul>
-<h1 id="libcoro">libcoro</h1>
-<p>很早之前使用luajit的时候，我就知道可以在c++中实现coroutine的功能，在linux中，这通过makecontext，swapcontext等相关函数实现。虽然也可以通过setjmp/longjmp这两个古老的函数实现，但看了luajit的coco就知道，即使在linux下面，它也需要写很多define宏去适配。</p>
-<p>所以，我只考虑使用makecontext这套函数族来实现coroutine。虽然swapcontext会有性能问题，详见<a href="http://rethinkdb.com/blog/making-coroutines-fast/" target="_blank" rel="external">这里</a>，但早期我还不打算对其进行性能优化。</p>
-<p><a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>是一个简单的c++ coroutine库，只支持linux（因为我们的服务器只有linux的）。</p>
-<p>在接口上面，<a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>参考的是lua的coroutine的接口设计，使用非常简单:</p>
-<pre><code>void func1()
-{
-    coroutine.yield();
-}
-
-void func2(Coro_t co1)
-{
-    coroutine.resume(co1);    
-    coroutine.yield();
-}
-
-void func()
-{
-    Coro_t co1 = coroutine.create(std::bind(&amp;func1));    
-    coroutine.resume(co1);    
-    Coro_t co2 = coroutine.create(std::bind(&amp;func2, co1));
-    coroutine.resume(co2);
-    coroutine.resume(co2);
-}
-
-int main()
-{    
-    Coro_t co = coroutine.create(std::bind(&amp;func));
-    coroutine.resume(co);
-    return 0;
-}
-</code></pre><ul>
-<li>coroutine.create创建一个coroutine，参数为一个std::function，这样我们就可以通过std::bind非常方便的实现函数闭包了。</li>
-<li>coroutine.resume唤醒一个挂起或者新建的coroutine。</li>
-<li>coroutine.yield挂起当前coroutine。</li>
-<li>coroutine.running获取当前运行的coroutine，如果是主线程调用，则返回0。</li>
-<li>coroutine.status获取coroutine的状态。</li>
-</ul>
-<p>后续我考虑将<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine，不过这可能会成为一个新的网络库了。</p>
 
       
     </div>

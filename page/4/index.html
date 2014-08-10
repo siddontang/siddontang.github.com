@@ -53,6 +53,103 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-03-05T06:26:04.000Z"><a href="/2014/03/05/libcoro/">03-05-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/05/libcoro/">简易的C++协程库</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="起因">起因</h1>
+<p>在第一个版本的<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>开发完成之后，我一直在思考如何让异步方式的网络编程更加简单。</p>
+<p>虽然<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>通过c++ shared_ptr以及function等技术很大程度上面解决了异步代码编写的一些问题，但是仍然会出现代码逻辑被强制拆分的情况。而这个则是项目中童鞋无法很好的使用其进行开发的原因。</p>
+<p>所以我考虑让<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine。</p>
+<h1 id="Coroutine">Coroutine</h1>
+<p>第一次接触coroutine的概念是在lua里面，记得当时想了很久才算弄明白了coroutine的使用以及原理。在lua中，coroutine的使用如下：</p>
+<pre><code>co = coroutine.create(function ()
+        print(&quot;begin yield&quot;)
+        coroutine.yield()
+        print(&quot;after yield&quot;)
+    end)
+
+coroutine.resume(co)
+print(&quot;after resume&quot;)
+
+coroutine.resume(co)
+</code></pre><p>我们可以通过resume执行一个新创建或者已经被挂起的coroutine，通过yield挂起当前的coroutine，这样就可以实现类似多线程方式下面的多任务调度。</p>
+<p>至于coroutine的原理，很多地方都有说明，主要就在于每个coroutine都有自己的堆栈，这样当coroutine挂起的时候，它的当前执行状态会被完整保留，下次resume的时候就可以接着执行了。</p>
+<p>而使用coroutine的好处，我觉得最大的一点在于它将拆分的异步逻辑同步化了，更利于代码编写。</p>
+<p>在使用python tornado的时候，我们开始阶段写了太多的callback回调，以至于代码的维护非常困难，而这个则在引入<a href="https://github.com/python-greenlet/greenlet" target="_blank" rel="external">greenlet</a>后有了明显好转。</p>
+<p>而后续在使用go语言中，因为它原生的支持coroutine（其实在go里面更准确的说法应该是goroutine），写代码非常的方便，所以现在go已经成为了我服务器的首选开发语言，我也用它开发了多个项目（如<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，一个mysql proxy），并且已经在公司项目中实施。</p>
+<p>当然，使用coroutine并不是毫无缺点的：</p>
+<ul>
+<li>每个coroutine都需要维护自己的堆栈，当我们需要创建数以百万计的coroutine的时候，内存的开销就需要考虑了。</li>
+<li>coroutine的切换，都需要保留当前的上下文环境，以便于下次resume的时候接着执行，如果coroutine切换频繁，开销也不小。</li>
+</ul>
+<h1 id="libcoro">libcoro</h1>
+<p>很早之前使用luajit的时候，我就知道可以在c++中实现coroutine的功能，在linux中，这通过makecontext，swapcontext等相关函数实现。虽然也可以通过setjmp/longjmp这两个古老的函数实现，但看了luajit的coco就知道，即使在linux下面，它也需要写很多define宏去适配。</p>
+<p>所以，我只考虑使用makecontext这套函数族来实现coroutine。虽然swapcontext会有性能问题，详见<a href="http://rethinkdb.com/blog/making-coroutines-fast/" target="_blank" rel="external">这里</a>，但早期我还不打算对其进行性能优化。</p>
+<p><a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>是一个简单的c++ coroutine库，只支持linux（因为我们的服务器只有linux的）。</p>
+<p>在接口上面，<a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>参考的是lua的coroutine的接口设计，使用非常简单:</p>
+<pre><code>void func1()
+{
+    coroutine.yield();
+}
+
+void func2(Coro_t co1)
+{
+    coroutine.resume(co1);    
+    coroutine.yield();
+}
+
+void func()
+{
+    Coro_t co1 = coroutine.create(std::bind(&amp;func1));    
+    coroutine.resume(co1);    
+    Coro_t co2 = coroutine.create(std::bind(&amp;func2, co1));
+    coroutine.resume(co2);
+    coroutine.resume(co2);
+}
+
+int main()
+{    
+    Coro_t co = coroutine.create(std::bind(&amp;func));
+    coroutine.resume(co);
+    return 0;
+}
+</code></pre><ul>
+<li>coroutine.create创建一个coroutine，参数为一个std::function，这样我们就可以通过std::bind非常方便的实现函数闭包了。</li>
+<li>coroutine.resume唤醒一个挂起或者新建的coroutine。</li>
+<li>coroutine.yield挂起当前coroutine。</li>
+<li>coroutine.running获取当前运行的coroutine，如果是主线程调用，则返回0。</li>
+<li>coroutine.status获取coroutine的状态。</li>
+</ul>
+<p>后续我考虑将<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine，不过这可能会成为一个新的网络库了。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-02-24T05:41:38.000Z"><a href="/2014/02/24/go-mysql-introduction/">02-24-2014</a></time>
       
       
@@ -1104,86 +1201,6 @@ static IgnoreSigPipe initObj;
 </ul>
 <p>ConnChecker的检查间隔以及每次检查步数都可以通过外部设置。使用ConnChecker虽然简单，但是在连接数过大的情况下面，一些过期的connection不能立刻被清理掉。对于这个问题，我觉得可以接受，一个连接一秒之后被关闭还是两秒之后被关闭，差别真的不大。如果我们真的需要对一些connection做精确的时间控制，那直接可以对其使用timer。</p>
 
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2013-12-28T10:28:23.000Z"><a href="/2013/12/28/libtnet-ioloop/">12-28-2013</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2013/12/28/libtnet-ioloop/">Libtnet事件循环</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>libtnet采用的是prefork + event loop的架构方式，prefork就是server在启动的时候预先fork多个子进程同时工作，而event loop则是基于epoll的事件处理机制。</p>
-<p>在最新的linux系统中，提供了timerfd，eventfd，signalfd，加上原先的socket，大部分功能都可以抽象成io事件来处理了。而在libtnet中，这一切的基础就是IOLoop。</p>
-<p>类似于tornado，libtnet的IOLoop也提供了相似的接口。其中最核心的就是以下三个：</p>
-<pre><code>typedef std::function&lt;void (IOLoop*, int)&gt; IOHandler_t;
-
-int addHandler(int fd, int events, const IOHandler_t&amp; handler);
-int updateHandler(int fd, int events);
-int removeHandler(int fd);  
-</code></pre><p>对于任意的IO，我们可以注册感兴趣的事件（TNET_READ和TNET_WRITE），并绑定一个对应的callback回调。</p>
-<p>callback的回调采用的是std::function的方式，这也就意味着，你可以在外部通过std::bind绑定任意不同的实现，再加上shared_ptr技术模拟闭包。</p>
-<p>假设现在我们需要创建了一个socket对象，并将其添加到IOLoop中，我们可以这么做：</p>
-<pre><code>std::shared_ptr&lt;Connection&gt; conn = std::make_shared&lt;Connection&gt;(socketfd);
-
-ioloop-&gt;addHandler(socketfd, TNET_READ, std::bind(&amp;Connection::onHandler, conn, _1, _2));
-</code></pre><p>这样，当该socket有读事件发生的时候，对应的onHandler就会被调用。在这里，我是用了shared_ptr技术，主要是为了方便进行对象生命周期的管理。</p>
-<p>在上面的例子中，因为std::bind的时候引用了conn，只要不将socketfd进行removeHandler，conn对象就会一直存在。所以libtnet在IOLoop内部，自行维护了conn对象的生命周期。外面不需要在将其保存到另一个地方（如果真保存了该shared_ptr的conn，反而会引起内存泄露）。在libtnet的基础模块中，我都使用的是weak_ptr来保存相关对象，每次使用都通过lock来判定是否该对象存活。</p>
-<p>在IOLoop内部，我使用一个vector来存放注册的handler，vector的索引就是io的fd。这样，我们通过io的fd就可以非常快速的查找到对应的handler了。为什么可以这样设计，是因为在linux系统中，进程中新建文件的file descriptor都是系统当前最小的可用整数。譬如，我创建了一个socket，fd为10，然后我关闭了该socket，再次新建一个socket，这时候新的socket的fd仍然为最小可用的整数，也就是10。</p>
-<h1 id="EPoll">EPoll</h1>
-<p>提到linux下面的高性能网络编程，epoll是一个铁定绕不开的话题，关于epoll的使用，网上有太多的讲解，这里就不展开了。</p>
-<p>libtnet在Poller中集成了epoll，参考了libev的实现。epoll有两种工作模式，水平触发和边沿触发，各有利弊。libtnet使用的是水平触发方式，主要原因在于水平触发方式在有消息但是没处理的时候会一直通知你处理，实现起来不容易出错，也比较简单。</p>
-<h2 id="fork_and_epoll_create">fork and epoll_create</h2>
-<p>这里顺便记录一下我在实现prefork模型的时候遇到的一个坑。这个问题就是epoll fd应该在fork之前还是之后创建？</p>
-<p>大家都知道，linux fork的时候采用COW（copy on write）方式复制父进程的内容，然后我想当然的以为各个子进程会拥有独立的epoll内核空间，于是在fork之前创建了epoll fd。但是后面我却惊奇的发现一个子进程对epoll的操作竟然会影响另一个子进程。也就是说，各个子进程共享了父进程的epoll内核空间。</p>
-<p>所以，epoll fd的创建应该在fork之后，各个子进程独立创建。</p>
-<h1 id="Example">Example</h1>
-<h2 id="Timer">Timer</h2>
-<p>IOLoop提供了一个简单的runAfter函数，用以实现定时器功能，使用非常简单：</p>
-<pre><code>void func(IOLoop* loop)
-{
-    cout &lt;&lt; &quot;hello world&quot; &lt;&lt; endl;
-    loop-&gt;stop();
-}
-
-IOLoop loop;
-loop.runAfter(10 * 1000， std::bind(&amp;func, &amp;loop));
-loop.start();
-</code></pre><p>loop启动十秒之后，会打印hello world，然后整个loop退出。更多定制化的timer使用，可以使用libtnet提供的Timer class。</p>
-<h2 id="Callback">Callback</h2>
-<p>libtnet是一个单线程单ioloop的模型，但是不排除仍然会有其他线程希望与IOLoop进行通信，所以IOLoop提供了addCallback功能，这是libtnet唯一一个线程安全的函数。因为加入callback是一个很快速的操作，IOLoop使用了spinlock。在IOLoop每次循环的末尾，会将全部的callback取出，依次执行。</p>
-<pre><code>void callback(IOLoop* loop)
-{
-    cout &lt;&lt; &quot;tell to exit&quot; &lt;&lt; endl;
-    loop-&gt;stop();
-}
-
-IOLoop loop;
-loop.addCallback(std::bind(&amp;func, &amp;loop));
-loop.start();
-</code></pre>
       
     </div>
     <footer>

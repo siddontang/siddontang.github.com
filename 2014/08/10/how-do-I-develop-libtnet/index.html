@@ -1,0 +1,241 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-08-10T11:51:37.000Z"><a href="/2014/08/10/how-do-I-develop-libtnet/">08-10-2014</a></time>
+      
+      
+  
+    <h1 class="title"></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>title: How do I develop Libtnet: a fast network library<br>date: 2014-08-10 19:51:37<br>categories:</p>
+<h2 id="tags:">tags:</h2>
+<p>Orgin is in my <a href="https://medium.com/@siddontang/how-do-i-develop-libtnet-a-fast-network-library-630212843c87" target="_blank" rel="external">Medium</a>.</p>
+<p>Libtnet is a high performance library powered by C++ . It refers tornado in Python and supplies easy to use API, you can see more here: <a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">https://github.com/siddontang/libtnet</a>.</p>
+<h2 id="Why_to_develop?">Why to develop?</h2>
+<p>There are many high performance network libraries, like libev, libevent, libuv, etc… But I still want to develop a new one, why? Maybe below reasons:</p>
+<p>1, Learn lots of network programming knowledge.</p>
+<p>2, Study how to design the architecture for a high performance library.</p>
+<p>3, Improve my coding capability.</p>
+<p>4, Challenge myself.</p>
+<p>5, Maybe make me more famous. (Aha)</p>
+<p>6, Most important, interesting.</p>
+<p>As you see, many reasons let me to do it, so I begin my journey.</p>
+<p>Below, I will list some key points about how do I choose, design, develop and test Libtnet, I hope some may help users who want to develop their own network libraries.</p>
+<h2 id="Key_Point">Key Point</h2>
+<h3 id="Operating_System">Operating System</h3>
+<p>Sometimes, cross platform is evil, I can only develop Libtnet in my spare time and have no enough to support all popular OS, so I decide to support only Linux which is very suitable for developing high performance network library.</p>
+<h3 id="Program_Language">Program Language</h3>
+<p>I use some program languages: C, C++, Python, Lua and Go, considering performance, c and c++ are still the fastest. I decide to use C++ only because I have been using it for eight years and have lots experience to make me develop quickly.</p>
+<h3 id="Protocol">Protocol</h3>
+<p>Libtnet only supports TCP, not supports UDP. UDP is fast but not reliable, also you can use some mechanisms to implement a reliable UDP, but I still think only TCP can solve many problems.</p>
+<p>Libtnet also supports HTTP and Websocket which are widely used for web applications.</p>
+<h3 id="I/O_Strategy">I/O Strategy</h3>
+<p>In The C10K Problem, the author lists some i/o strategies to develop a high performance network library. Libtnet is Linux only, of course uses epoll to handle lots of connections.</p>
+<p>Epoll has two mode: LT(level-triggered) and ET(edge-triggered). Libtnet uses LT because it can reduce the chance for errors. ET will only notice you only once if something occurs, if you forget to handle it, it will not tell you anymore. But LT will tell you all the time until you handle it.</p>
+<p>Also some people think ET has a better performance, LT is not bad too.</p>
+<p>Libtnet also supports prefork mode which is very suitable for stateless application like HTTP.</p>
+<h3 id="Async">Async</h3>
+<p>Libtnet is event-driven based on epoll, when a event comes, epoll will call the specialized callback function set before, like “onread”, “onwrite”, “onerror”, etc.</p>
+<p>Writing asynchronous code in C++ is not an easy thing, because async may break code logic. Some people use coroutine(maybe using ucontext) to solve it, but I don’t use because it may cause heavily context switch(maybe I am wrong). Libtnet uses callback to handle async event.</p>
+<h3 id="Callback">Callback</h3>
+<p>Using callback must care lifetime of the connection and the context associated with the connection.</p>
+<p>Libtnet tries to solve it with smart pointer and std::function + std::bind.</p>
+<p>In C++, using shared_ptr and weak_ptr is an easy way to handle lifetime. Use can assign a shared_ptr object to weak_ptr for outer use, if object was dead, weak_ptr can not successfully lock.</p>
+<p>Some libraries like libev will let user set a context object for later callback use. I don’t like it, so Libtnet uses std::function instead, and you can use std::bind to set context with shared_ptr and the associated function.</p>
+<h3 id="HTTP_and_Websocket">HTTP and Websocket</h3>
+<p>Libtnet uses http_parser to parse http request, http_parser is an awesome thing, very fast, easy to embed, I highly recommend it.</p>
+<p>Libtnet only supports Websocket RFC6455, its format is easy so I write a parser by myself.</p>
+<h3 id="TimingWheel">TimingWheel</h3>
+<p>How to find a connection is dead, TCP is very reliable, but sometimes it may not detect remote was closed. TCP keepalive can slove it, but I still to use headbeat in Libtnet.</p>
+<p>Libtnet uses timingwheel to handle connection’s keepalive, if some times later, a connection has read no data, Libtnet will consider it dead and close it directly.</p>
+<h3 id="Test_and_Bench">Test and Bench</h3>
+<p>I write some test to check Libtnet’s validation. Writing test is boring but the only way to solve whether it can be used now.</p>
+<p>I build a comet-test to let Libtnet supports 1 million connections at same time and find that it can handle it easily.</p>
+<p>I use ab to bench Libtnet and find that it has an amazing performance.</p>
+<h2 id="At_Last">At Last</h2>
+<p>Libtnet is my first fully open-source project, above is the summary for my hard work.</p>
+<p>Libtnet does not make me more famous, but developing it make me learn lots of things, which is the most value for me.</p>
+<p>I hope anyone can taste it, if you feel delicious, please tell me, I will be very happy.</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.com">
+  </form>
+</div>
+
+  <div class="widget tag">
+  <h3 class="title">Github</h3>
+  <ul class="entry">
+  <li><a href="https://github.com/siddontang/ledisdb" target="_blank">LedisDB</a><small>Fast NoSQL</small></li>
+  <li><a href="https://github.com/siddontang/mixer" target="_blank">Mixer</a><small>MySQL Proxy with Go</small></li>
+  <li><a href="https://github.com/siddontang/libtnet" target="_blank">Libtnet</a><small>High Performance EventLoop</small></li>
+  <li><a href="https://github.com/siddontang/moonmq" target="_blank">MoonMQ</a><small>Fast Message Queue</small></li>
+  <li><a href="https://github.com/siddontang" target="_blank">More...</a></li>
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>6</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>26</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>10</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tagcloud">
+  <h3 class="title">标签云</h3>
+  <div class="entry">
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 13.75px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.00px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 13.75px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a>
+  </div>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>
