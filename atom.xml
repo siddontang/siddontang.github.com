@@ -4,7 +4,7 @@
   <subtitle><![CDATA[My thought for program]]></subtitle>
   <link href="/atom.xml" rel="self"/>
   <link href="http://siddontang.com/"/>
-  <updated>2014-08-10T11:54:35.765Z</updated>
+  <updated>2014-08-10T11:59:20.064Z</updated>
   <id>http://siddontang.com/</id>
   
   <author>
@@ -15,14 +15,12 @@
   <generator uri="http://zespia.tw/hexo/">Hexo</generator>
   
   <entry>
-    <title><![CDATA[]]></title>
+    <title><![CDATA[How do I develop Libtnet]]></title>
     <link href="http://siddontang.com/2014/08/10/how-do-I-develop-libtnet/"/>
     <id>http://siddontang.com/2014/08/10/how-do-I-develop-libtnet/</id>
     <published>2014-08-10T11:51:37.000Z</published>
-    <updated>2014-08-10T11:54:31.000Z</updated>
-    <content type="html"><![CDATA[<p>title: How do I develop Libtnet: a fast network library<br>date: 2014-08-10 19:51:37<br>categories:</p>
-<h2 id="tags:">tags:</h2>
-<p>Orgin is in my <a href="https://medium.com/@siddontang/how-do-i-develop-libtnet-a-fast-network-library-630212843c87" target="_blank" rel="external">Medium</a>.</p>
+    <updated>2014-08-10T11:59:00.000Z</updated>
+    <content type="html"><![CDATA[<p>Orgin is in my <a href="https://medium.com/@siddontang/how-do-i-develop-libtnet-a-fast-network-library-630212843c87" target="_blank" rel="external">Medium</a>.</p>
 <p>Libtnet is a high performance library powered by C++ . It refers tornado in Python and supplies easy to use API, you can see more here: <a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">https://github.com/siddontang/libtnet</a>.</p>
 <h2 id="Why_to_develop?">Why to develop?</h2>
 <p>There are many high performance network libraries, like libev, libevent, libuv, etc… But I still want to develop a new one, why? Maybe below reasons:</p>
