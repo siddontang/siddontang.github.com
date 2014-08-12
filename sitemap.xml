@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  
+  <url>
+    <loc>http://siddontang.com/About/index.html</loc>
+    <lastmod>2014-08-10T12:45:21.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/08/10/how-do-I-develop-libtnet/</loc>
+    <lastmod>2014-08-10T12:43:27.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/06/22/program-lang-experience/</loc>
+    <lastmod>2014-08-09T07:15:37.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/07/20/celery-best-practices/</loc>
+    <lastmod>2014-08-09T07:12:29.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/07/29/gopkg-introduction/</loc>
+    <lastmod>2014-08-09T07:11:47.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/Presentations/index.html</loc>
+    <lastmod>2014-08-09T06:13:46.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/03/02/re-think-server-architecture-2/</loc>
+    <lastmod>2014-08-09T06:01:21.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/01/13/re-think-server-architecture/</loc>
+    <lastmod>2014-08-09T05:25:06.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2012/09/19/network-prefork/</loc>
+    <lastmod>2014-08-09T05:23:19.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2012/09/02/step-by-step-network/</loc>
+    <lastmod>2014-08-09T05:21:02.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2012/08/20/safe-server-interaction/</loc>
+    <lastmod>2014-08-09T05:18:48.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/05/22/thumbnail-architecture/</loc>
+    <lastmod>2014-08-08T16:20:58.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/05/05/think-for-web-server-architecture/</loc>
+    <lastmod>2014-08-08T16:20:45.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/05/20/swig-and-pygmcrypto/</loc>
+    <lastmod>2014-08-08T16:20:29.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/06/04/record-bugs/</loc>
+    <lastmod>2014-08-08T16:20:13.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/03/19/polaris-session-middleware/</loc>
+    <lastmod>2014-08-08T16:19:32.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/03/12/polaris-introduction/</loc>
+    <lastmod>2014-08-08T16:19:10.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/05/29/nginx-vhost-deploy/</loc>
+    <lastmod>2014-08-08T16:18:36.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/05/29/nginx-performance-optimization/</loc>
+    <lastmod>2014-08-08T16:18:18.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/12/28/mysql-index-point/</loc>
+    <lastmod>2014-08-08T16:18:03.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/01/01/my-2013/</loc>
+    <lastmod>2014-08-08T16:17:27.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/04/03/moonmq-introduction/</loc>
+    <lastmod>2014-08-08T16:17:14.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/03/23/mixer-tokenizer/</loc>
+    <lastmod>2014-08-08T16:16:50.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/03/13/mixer-protocol/</loc>
+    <lastmod>2014-08-08T16:16:31.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/03/10/mixer-introduction/</loc>
+    <lastmod>2014-08-08T16:16:06.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/04/30/make-wheel/</loc>
+    <lastmod>2014-08-08T16:15:43.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/01/16/lua-function-register/</loc>
+    <lastmod>2014-08-08T16:15:15.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/12/28/lua-debuger/</loc>
+    <lastmod>2014-08-08T16:14:52.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/12/28/libtnet-ioloop/</loc>
+    <lastmod>2014-08-08T16:14:32.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/12/28/libtnet-introduction/</loc>
+    <lastmod>2014-08-08T16:14:14.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/12/29/libtnet-http/</loc>
+    <lastmod>2014-08-08T16:13:56.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/12/28/libtnet-connection/</loc>
+    <lastmod>2014-08-08T16:13:24.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/01/01/libtnet-comettest/</loc>
+    <lastmod>2014-08-08T16:13:05.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/03/05/libcoro/</loc>
+    <lastmod>2014-08-08T16:12:22.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/07/22/leetcode-interview-tips-for-programmers/</loc>
+    <lastmod>2014-08-08T16:11:39.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/05/10/ledisdb-introduction/</loc>
+    <lastmod>2014-08-08T16:10:49.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/05/20/ledisdb-embed-introduction/</loc>
+    <lastmod>2014-08-08T16:10:20.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/06/14/ledisdb-design-2/</loc>
+    <lastmod>2014-08-08T16:09:57.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/05/30/ledisdb-design-1/</loc>
+    <lastmod>2014-08-08T16:09:38.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/12/28/learn-tornado-security/</loc>
+    <lastmod>2014-08-08T16:09:12.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/01/01/learn-tornado-base/</loc>
+    <lastmod>2014-08-08T16:08:51.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/12/28/learn-tornado-asynchronous/</loc>
+    <lastmod>2014-08-08T16:08:19.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/06/16/introduction-mtunnel/</loc>
+    <lastmod>2014-08-08T16:07:50.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/03/17/i18n-url/</loc>
+    <lastmod>2014-08-08T16:07:25.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/04/27/golang-why-go/</loc>
+    <lastmod>2014-08-08T16:06:45.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/04/16/golang-timer/</loc>
+    <lastmod>2014-08-08T16:06:20.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/02/21/golang-rpc-frame/</loc>
+    <lastmod>2014-08-08T16:06:09.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/04/22/golang-pprof-goroutine/</loc>
+    <lastmod>2014-08-08T16:05:40.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/04/12/golang-no-copy/</loc>
+    <lastmod>2014-08-08T16:05:04.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/01/16/golang-mylib-timingwheel/</loc>
+    <lastmod>2014-08-08T16:04:11.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/04/24/golang-moonmq-example/</loc>
+    <lastmod>2014-08-08T16:02:32.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/04/07/golang-log/</loc>
+    <lastmod>2014-08-08T16:01:56.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/03/30/golang-linked-channel/</loc>
+    <lastmod>2014-08-08T16:01:30.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/04/23/golang-leveldb/</loc>
+    <lastmod>2014-08-08T15:59:53.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/04/13/golang-json-config/</loc>
+    <lastmod>2014-08-08T15:59:31.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/03/16/go-mysql-database-interface/</loc>
+    <lastmod>2014-08-08T15:59:05.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/05/13/golang-in-procution-review/</loc>
+    <lastmod>2014-08-08T15:58:31.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/07/20/golang-func-vargs/</loc>
+    <lastmod>2014-08-08T15:58:02.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2014/02/24/go-mysql-introduction/</loc>
+    <lastmod>2014-08-08T15:57:31.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/06/20/certificate-csp-openssl/</loc>
+    <lastmod>2014-08-08T15:53:12.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2013/12/28/bin-packer/</loc>
+    <lastmod>2014-08-08T15:51:31.000Z</lastmod>
+  </url>
+  
+</urlset>
