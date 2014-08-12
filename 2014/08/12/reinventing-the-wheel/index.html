@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   
-  <title>Go实现简易的TimingWheel | Siddon&#39;s Blog</title>
+  <title>Reinventing the wheel? | Siddon&#39;s Blog</title>
   <meta name="author" content="SiddonTang">
   
   <meta name="description" content="My thought for program">
@@ -11,7 +11,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 
-  <meta property="og:title" content="Go实现简易的TimingWheel"/>
+  <meta property="og:title" content="Reinventing the wheel?"/>
   <meta property="og:site_name" content="Siddon&#39;s Blog"/>
 
   
@@ -67,59 +67,17 @@
     <header>
       
         <div class="icon"></div>
-        <time datetime="2014-01-16T08:22:05.000Z"><a href="/2014/01/16/golang-mylib-timingwheel/">01-16-2014</a></time>
+        <time datetime="2014-08-12T15:03:49.000Z"><a href="/2014/08/12/reinventing-the-wheel/">08-12-2014</a></time>
       
       
   
-    <h1 class="title">Go实现简易的TimingWheel</h1>
+    <h1 class="title">Reinventing the wheel?</h1>
   
 
     </header>
     <div class="entry">
       
-        <h1 id="Ticker">Ticker</h1>
-<p>最近的项目用go实现的服务器需要挂载大量的socket连接。如何判断连接是否还存活就是我们需要考虑的一个问题了。</p>
-<p>通常情况下面，socket如果被客户端正常close，服务器是能检测到的，但是如果客户端突然拔掉网线，或者是断电，那么socket的状态在服务器看来可能仍然是established。而实际上该socket已经不可用了。</p>
-<p>为了判断连接是否可用，通常我们会用timer机制来定时检测，在go里面，这非常容易实现，如下：</p>
-<pre><code>ticker := time.NewTicker(60 * time.Second)
-
-for {
-    select {
-        case &lt;-ticker.C:
-            if err := ping(); err != nil {
-                close()
-            }
-    }
-}
-</code></pre><p>上面我们使用一个60s的ticker，定时去ping，如果ping失败了，证明连接已经断开了，这时候就需要close了。</p>
-<p>这套机制比较简单，也运行的很好，直到我们的服务器连上了10w+的连接。因为每一个连接都有一个ticker，所以同时会有大量的ticker运行，cpu一直在30%左右徘徊，性能不能让人接受。</p>
-<p>其实，我们只需要的是一套高效的超时通知机制。</p>
-<h1 id="Close_channel_to_broadcast">Close channel to broadcast</h1>
-<p>在go里面，channel是一个很不错的东西，我们可以通过close channel来进行broadcast。如下：</p>
-<pre><code>ch := make(bool)
-
-for i := 0; i &lt; 10; i++ {
-    go func() {
-        println(&quot;begin&quot;)
-        &lt;-ch
-        println(&quot;end&quot;)
-    }
-}
-
-time.Sleep(10 * time.Second)
-
-close(ch)
-</code></pre><p>上面，我们启动了10个goroutine，它们都会因为等待ch的数据而block，10s之后close这个channel，那么所有等待该channel的goroutine就会继续往下执行。</p>
-<h1 id="TimingWheel">TimingWheel</h1>
-<p>通过channel这种close broadcast机制，我们可以非常方便的实现一个timer，timer有一个channel ch，所有需要在某一个时间 “T” 收到通知的goroutine都可以尝试读该ch，当T到达时候，close该ch，那么所有的goroutine都能收到该事件了。</p>
-<p>timingwheel的使用很简单，首先我们创建一个wheel</p>
-<pre><code>//这里我们创建了一个timingwheel，精度是1s，最大的超时等待时间为3600s
-w := timingwheel.NewTimingWheel(1 * time.Second, 3600)
-
-//等待10s
-&lt;-w.After(10 * time.Second)
-</code></pre><p>因为timingwheel只有一个1s的ticker，并且只创建了3600个channel，系统开销很小。当我们程序换上timingwheel之后，10w+连接cpu开销在10%以下，达到了优化效果。</p>
-<p>timingwheel的代码在<a href="https://github.com/siddontang/golib/tree/master/timingwheel" target="_blank" rel="external">这里</a>。</p>
+        <p><script async src="https://static.medium.com/embed.js"></script><a class="m-story" data-collapsed="true" href="https://medium.com/@siddontang/8241f1ba9068" target="_blank" rel="external">Reinventing the wheel?</a></p>
 
       
     </div>
@@ -128,15 +86,10 @@ w := timingwheel.NewTimingWheel(1 * time.Second, 3600)
         
   
   <div class="categories">
-    <a href="/categories/go/">go</a>
+    <a href="/categories/program/">program</a>
   </div>
 
         
-  
-  <div class="tags">
-    <a href="/tags/go/">go</a>, <a href="/tags/timer/">timer</a>, <a href="/tags/timingwheel/">timingwheel</a>
-  </div>
-
         
       
       <div class="clearfix"></div>

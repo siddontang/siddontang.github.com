@@ -72,6 +72,102 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-05-20T00:44:58.000Z"><a href="/2014/05/20/ledisdb-embed-introduction/">05-20-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/05/20/ledisdb-embed-introduction/">LedisDB嵌入使用介绍</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>ledisdb现在可以支持嵌入式使用。你可以将其作为一个独立的lib（类似leveldb）直接嵌入到你自己的应用中去，而无需在启动单独的服务。</p>
+<p>ledisdb提供的API仍然类似redis接口。首先，你需要创建ledis对象：</p>
+<pre><code>import &quot;github.com/siddontang/ledisdb/ledis&quot;
+
+configJson = []byte(&#39;{
+    &quot;data_db&quot; : 
+    {
+        &quot;path&quot; : &quot;/tmp/testdb&quot;,
+        &quot;compression&quot;:true,
+        &quot;block_size&quot; : 32768,
+        &quot;write_buffer_size&quot; : 2097152,
+        &quot;cache_size&quot; : 20971520
+    }    
+}
+&#39;)
+
+l, _ := ledis.Open(configJson)
+</code></pre><p>data_db就是数据存储的leveldb位置，简单起见，所有的size配置全部使用byte作为单位。</p>
+<p>然后我们选择一个db使用，</p>
+<pre><code>db, _ := l.Select(0)
+</code></pre><p>类似redis，我们也只支持数字类型的db，最多16个db，索引范围为[0-15]。支持太多的db真没啥意义。</p>
+<p>下面是一些简单的例子：</p>
+<h2 id="kv">kv</h2>
+<pre><code>db.Set(key, value)
+db.Get(key)
+db.SetNX(key, value)
+db.Incr(key)
+db.IncrBy(key, 10)
+db.Decr(key)
+db.DecrBy(key, 10)
+
+db.MSet(KVPair{key1, value1}, KVPair{key2, value2})
+db.MGet(key1, key2)
+</code></pre><h2 id="list">list</h2>
+<pre><code>db.LPush(key, value1, value2, value3)
+db.RPush(key, value4, value5, value6)
+
+db.LRange(key, 1, 10)
+db.LIndex(key, 10)
+
+db.LLen(key)
+</code></pre><h2 id="hash">hash</h2>
+<pre><code>db.HSet(key, field1, value1)
+db.HMSet(key, FVPair{field1, value1}, FVPair{field2, value2})
+
+db.HGet(key, field1)
+
+db.HGetAll()
+db.HKeys()
+</code></pre><h2 id="zset">zset</h2>
+<pre><code>db.ZAdd(key, ScorePair{score1, member1}, ScorePair{score2, member2})
+
+db.ZCard(key)
+
+//range by score [0, 100], withscores = true and no limit
+db.ZRangeByScore(key, 0, 100, true, 0, -1)
+
+//range by score [0, 100], withscores = true and limit offset = 10, count = 10
+db.ZRangeByScore(key, 0, 100, true, 10, 10)
+
+db.ZRank(key, member1)
+
+db.ZCount(key, member1)
+</code></pre><p>ledisdb的源码在这里<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">https://github.com/siddontang/ledisdb</a>，欢迎反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-05-13T05:06:27.000Z"><a href="/2014/05/13/golang-in-procution-review/">05-13-2014</a></time>
       
       
@@ -1020,75 +1116,6 @@ func NewConfig(m json.RawMessage) *RedisConfig {
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-04-12T09:10:16.000Z"><a href="/2014/04/12/golang-no-copy/">04-12-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/04/12/golang-no-copy/">Go中Slice与String的无内存copy</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>在go里面，string和slice的互换是需要进行内存拷贝的，虽然在底层，它们都只是用 pointer + len来表示的一段内存。</p>
-<p>通常，我们不会在意string和slice的转换带来的内存拷贝性能问题，但是总有些地方需要关注的，刚好在看vitess代码的时候，发现了一种很hack的做法，string和slice的转换只需要拷贝底层的指针，而不是内存拷贝。当然这样做的风险各位就要好好担当了：</p>
-<pre><code>func String(b []byte) (s string) {
-    pbytes := (*reflect.SliceHeader)(unsafe.Pointer(&amp;b))
-    pstring := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))
-    pstring.Data = pbytes.Data
-    pstring.Len = pbytes.Len
-    return
-}
-
-func Slice(s string) (b []byte) {
-    pbytes := (*reflect.SliceHeader)(unsafe.Pointer(&amp;b))
-    pstring := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))
-    pbytes.Data = pstring.Data
-    pbytes.Len = pstring.Len
-    pbytes.Cap = pstring.Len
-    return
-}
-</code></pre><p>在我的测试例子中，slice转string之后，如果slice的值有变化，string也会跟着改变，如下：</p>
-<pre><code>b := []byte(&quot;hello world&quot;)
-
-a := String(b)
-
-b[0] = &#39;a&#39;
-
-println(a)  //output  aello world
-</code></pre><p>但是string转slice之后，就不能更改slice了，如下：</p>
-<pre><code>a := &quot;hello world&quot;
-
-b := Slice(a)
-
-b[0] = &#39;a&#39;  //这里就等着崩溃吧
-
-//但是可以这样，因为go又重新给b分配了内存
-b = append(b, &quot;hello world&quot;…)
-</code></pre><p>上面为什么会崩溃我猜想可能是string是immutable的，可能对应的内存地址也是不允许改动的。</p>
-<p>另外，上面这个崩溃在defer里面是recover不回来的，真的就崩溃了，原因可能就跟c的非法内存访问一样，os不跟你玩了。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1137,7 +1164,7 @@ b = append(b, &quot;hello world&quot;…)
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
-    <li><a href="/categories/program/">program</a><small>10</small></li>
+    <li><a href="/categories/program/">program</a><small>11</small></li>
   
     <li><a href="/categories/python/">python</a><small>6</small></li>
   
