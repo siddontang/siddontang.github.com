@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>http://siddontang.com/Presentations/index.html</loc>
+    <lastmod>2014-09-02T14:38:44.000Z</lastmod>
+  </url>
+  
+  <url>
     <loc>http://siddontang.com/2014/08/12/reinventing-the-wheel/</loc>
     <lastmod>2014-08-12T15:04:31.000Z</lastmod>
   </url>
@@ -29,11 +34,6 @@
   <url>
     <loc>http://siddontang.com/2014/07/29/gopkg-introduction/</loc>
     <lastmod>2014-08-09T07:11:47.000Z</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://siddontang.com/Presentations/index.html</loc>
-    <lastmod>2014-08-09T06:13:46.000Z</lastmod>
   </url>
   
   <url>
