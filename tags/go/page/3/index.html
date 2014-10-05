@@ -72,6 +72,66 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-03-16T11:25:40.000Z"><a href="/2014/03/16/go-mysql-database-interface/">03-16-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/16/go-mysql-database-interface/">Go MySQL支持database/sql接口</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>已经支持golang database/sql接口，并通过<a href="https://github.com/bradfitz/go-sql-test" target="_blank" rel="external">https://github.com/bradfitz/go-sql-test</a>测试用例。</p>
+<p>现在<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>可以直接通过golang sql接口使用，如下：</p>
+<pre><code>import _ &quot;github.com/siddontang/go-mysql/mysql&quot;
+import &quot;database/sql&quot;
+</code></pre><p>后续的使用，可以直接参考相关golang sql的教程，譬如<a href="http://go-database-sql.org/index.html" target="_blank" rel="external">这个</a>。</p>
+<p>golang sql接口的兼容主要在driver.go的文件中，</p>
+<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>支持的dsn格式为：</p>
+<pre><code>&lt;username&gt;:&lt;password&gt;@&lt;host&gt;:&lt;port&gt;/&lt;database&gt;
+</code></pre><p>因为在实现<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>的过程中，我就有意识的将一些接口设计成能跟database/sql进行适配。除了Rows接口的适配，因为我总觉得使用起来不方便，但是通过Resultset进行适配Rows也很方便。因为Resultset存储了Query之后所有的数据，所以我们可以通过一个int型iterator，就可以模拟Rows接口：</p>
+<pre><code>func (r *mysqlRows) Close() error {
+    r.iter = -1
+    return nil
+}
+
+func (r *mysqlRows) Next(dest []driver.Value) error {
+    if r.iter &gt;= r.r.RowNumber() {
+        return io.EOF
+    }
+
+    data := r.r.Data[r.iter]
+
+    for i := range data {
+        //set data[i] to dest[i]
+    }
+
+    r.iter++
+    return nil
+}
+</code></pre>
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-03-13T03:16:31.000Z"><a href="/2014/03/13/mixer-protocol/">03-13-2014</a></time>
       
       
@@ -740,7 +800,7 @@ w := timingwheel.NewTimingWheel(1 * time.Second, 3600)
   
     <li><a href="/categories/c++/">c++</a><small>7</small></li>
   
-    <li><a href="/categories/go/">go</a><small>26</small></li>
+    <li><a href="/categories/go/">go</a><small>27</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   
@@ -762,7 +822,7 @@ w := timingwheel.NewTimingWheel(1 * time.Second, 3600)
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.57px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 14.29px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.71px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 14.29px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.86px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.43px;">moonmq</a><a href="/tags/mysql/" style="font-size: 15.71px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.43px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.29px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.43px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.14px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.43px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.86px;">tornado</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a>
   </div>
 </div>
 

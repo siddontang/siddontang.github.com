@@ -72,6 +72,138 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2013-12-29T08:27:12.000Z"><a href="/2013/12/29/libtnet-http/">12-29-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/12/29/libtnet-http/">Libtnet HTTP实现</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="HTTP">HTTP</h1>
+<p>libtnet提供了简单的http支持，使用也很简单。</p>
+<p>一个简单的http server：</p>
+<pre><code>void onHandler(const HttpConnectionPtr_t&amp; conn, const HttpRequest&amp; request)
+{
+    HttpResponse resp;
+    resp.statusCode = 200;
+    resp.setContentType(&quot;text/html&quot;);
+    resp.body.append(&quot;Hello World&quot;);    
+    conn-&gt;send(resp);
+}
+
+TcpServer s;
+HttpServer httpd(&amp;s);
+httpd.setHttpCallback(&quot;/test&quot;, std::bind(&amp;onHandler, _1, _2));
+httpd.listen(Address(80));
+s.start(4);
+</code></pre><p>我们对http server的<strong>“/test”</strong>注册了一个handler，当用户访问该url的时候，就会显示”Hello World”。</p>
+<p>同样，http client的使用也很简单：</p>
+<pre><code>void onResponse(IOLoop* loop, const HttpResponse&amp; resp)
+{
+    cout &lt;&lt; resp.body &lt;&lt; endl;
+    loop-&gt;stop();
+}
+
+IOLoop loop;
+HttpClientPtr_t client = std::make_shared&lt;HttpClient&gt;(&amp;loop);
+client-&gt;request(&quot;http://127.0.0.1:80/test&quot;, std::bind(&amp;onResponse, &amp;loop, _1));
+loop.start(); 
+</code></pre><p>这里，我们使用了一个http client，向server请求”/test”的内容，当服务器有响应之后，会调用响应的回调函数。</p>
+<h1 id="HTTP_Parser">HTTP Parser</h1>
+<p>对于http的解析，我采用的是<a href="https://github.com/joyent/http-parser" target="_blank" rel="external">http parser</a>，因为它采用的是流式解析，同时非常容易集成进libtnet。</p>
+<p>使用http parser只需要设置相应的回调函数即可。http parser有如下几种回调：</p>
+<ul>
+<li>message begin，解析开始的时候调用</li>
+<li>url，解析url的时候调用</li>
+<li>status complete，http response解析status的时候调用</li>
+<li>header field，解析http header的field调用</li>
+<li>header value，解析http header的value调用</li>
+<li>headers complete，解析完成http header调用</li>
+<li>body，解析http body调用</li>
+<li>message complete，解析完成调用</li>
+</ul>
+<p>这里特别需要注意的是http header的解析，因为http parser将其拆分成了两种回调，所以我们在处理的时候需要记录上一次header callback是field的还是value的。在解析field的时候，如果上一次是value callback，那我们就需要将上一次解析的field和value保存下来，而该次的解析则是一个新的field了。</p>
+<p>另外，http parser还提供了upgrade的支持，所以我们很方便的就能区分该次请求是否为websocket。</p>
+<h1 id="Websocket">Websocket</h1>
+<p>libtnet也提供了websocket的支持，现阶段，只支持<a href="http://tools.ietf.org/html/rfc6455" target="_blank" rel="external">RFC6455</a>。</p>
+<p>当libtnet通过http parser发现该次请求为websocket的时候，就进入了websocket的流程。websocket的使用也很简单，当握手成功之后，后续的所有通讯就是纯粹的tcp通信了。</p>
+<p>一个简单的websocket server：</p>
+<pre><code>void onWsCallback(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
+{
+    switch(event)
+    {
+        case Ws_CloseEvent:
+            break;
+        case Ws_MessageEvent:
+            {
+                const string&amp; str = *(const string*)context;
+                conn-&gt;send(str);
+            }
+            break;
+        case Ws_PongEvent:
+            break;
+        default:
+            break;
+    }
+}
+
+TcpServer s;
+HttpServer httpd(&amp;s);
+httpd.setWsCallback(&quot;/push/ws&quot;, std::bind(&amp;onWsCallback, _1, _2, _3));    
+httpd.listen(Address(80));
+s.start();
+</code></pre><p>可以看到，websocket的callback机制也类似于libtnet connection的callback机制，用户需通过event + context的方式来处理该次回调的数据。</p>
+<p>libtnet对websocket的frame的处理参照的是tornado的websocket模块。也能够组合多frame的数据，外部只需要关注Ws_MessageEvent即可。</p>
+<p>websocket client的实现也很简单：</p>
+<pre><code>void onWsConnEvent(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
+{
+    switch(event)
+    {
+        case Ws_OpenEvent:
+            conn-&gt;send(&quot;Hello world&quot;);
+            break;    
+        case Ws_MessageEvent:
+            {
+                const string&amp; msg = *(const string*)context;
+
+                LOG_INFO(&quot;message %s&quot;, msg.c_str());
+                conn-&gt;close();                        
+            }
+            break;
+        default:
+            break;
+    }    
+}
+
+IOLoop loop;
+WsClientPtr_t client = std::make_shared&lt;WsClient&gt;(&amp;loop);    
+client-&gt;connect(&quot;ws://127.0.0.1:80/push/ws&quot;, std::bind(&amp;onWsConnEvent, _1, _2, _3));
+loop.start();
+</code></pre>
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2013-12-28T10:28:49.000Z"><a href="/2013/12/28/libtnet-connection/">12-28-2013</a></time>
       
       
@@ -968,84 +1100,6 @@ tornado.ioloop.IOLoop.instance().start()
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2013-06-16T14:16:14.000Z"><a href="/2013/06/16/introduction-mtunnel/">06-16-2013</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2013/06/16/introduction-mtunnel/">mtunnel - a simple http tunnel</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="介绍">介绍</h1>
-<p>mtunnel是一个简易的http隧道工具，使用python实现，基于tornado。</p>
-<p>为了解决远端用户服务器的一些问题，我们需要远程连接到用户的服务器上面，但因为企业安全性问题，外部根本不可能访问相关服务器，只能通过用户的本地机器去访问，但是用户本地机器也在内网环境下面，外部不能直接连接。</p>
-<p>因为用户的机器在内网环境下面，也不可能通过通常的代理去连接。所以比较好的方式就是通过一台双方都能访问的公网服务器，来交换双方的数据。</p>
-<p>mtunnel通过http tunnel的方式来进行数据的交互。它将双方交互的数据封装到http的body里面，通过http协议进行传输。这样有几个好处：</p>
-<ul>
-<li>不用关心交互的具体协议，mtunnel只是将双方交互的所有信息完全封装到http body里面进行传递。</li>
-<li>http一般不会被企业的网络安全规则给屏蔽，内网穿透性更好。</li>
-</ul>
-<p>假设，企业服务器启动了sshd，而我们这边使用putty。流程如下：</p>
-<p><img src="https://raw.github.com/siddontang/blog/master/asserts/mtunnel-flow.png" alt="image"></p>
-<ul>
-<li>putty直接将数据发送给forward proxy，由forward proxy将数据通过http body发送给server。</li>
-<li>server收到数据之后将其放置在一个buffer中。如果reverse proxy这时候已经连接到server，则直接将数据发送给reverse proxy。</li>
-<li>reverse proxy定时去server获取数据，如果有则将其发送给sshd。</li>
-<li>sshd返回的数据同样流程返回给putty。</li>
-</ul>
-<h2 id="使用">使用</h2>
-<p>mtunnel分为3个部分，与putty交互的forward proxy，与sshd交互的reverse proxy以及负责双方数据中转的server。</p>
-<h3 id="start_server">start server</h3>
-<pre><code>    python server.py -p 8888
-</code></pre><p>假设sever的ip地址为10.20.187.118，监听port为8888。</p>
-<h3 id="start_reverse_proxy">start reverse proxy</h3>
-<p>因为我们需要通过用户本地机器去访问服务器，所以首先必须用户同意让我们访问，也就是他需要在本地启动reverse proxy。</p>
-<pre><code>    python rproxy.py -host 10.20.189.241 -p 22 --server 10.20.187.118:8888
-</code></pre><p>host和port连接的是sshd的ip和port，而server则是服务器的地址。<br>reverse proxy如果成功连接上了server，则会获取一个channel id。后续所有的通信都必须通过该channel id进行。</p>
-<h3 id="start_forward_proxy">start forward proxy</h3>
-<pre><code>    python fproxy.py --server 10.20.187.118:8888 --channel 112122 -p 8889
-</code></pre><p>我们在本地启动forward proxy，监听本地8889端口，server为服务器的地址，而channel则是用户启动reverse proxy之后获取的channel id，由用户负责告诉我们。</p>
-<h3 id="use">use</h3>
-<p>当做了上述操作之后，我们只需要启动putty，连接forward proxy。然后putty就能与远端的sshd交互了。</p>
-<h2 id="远程协助？">远程协助？</h2>
-<p>为什么不使用QQ远程协助这种类似功能？主要有以下几点原因：</p>
-<ul>
-<li>QQ远程协助能看到用户本地机器的很多信息，企业用户对于安全性问题比较敏感。</li>
-<li>网络问题，现在很多企业的网络环境非常不好，我们就碰到过太多次远程的时候网络坑爹造成完全无法工作的情况。</li>
-</ul>
-<h2 id="后续方向">后续方向</h2>
-<p>现在的版本只是一个最基本的版本，很多问题没有考虑，后续主要考虑以下几个方面：</p>
-<ul>
-<li>安全性，尤其要保证channel id的安全性。后续考虑使用签名机制等。</li>
-<li>网络容错，还没怎么很好的处理网络出问题的情况，譬如网络断开等。</li>
-<li>P2P，数据都走server会有延时，稳定等问题，如果能够P2P互通，就很强大了。</li>
-</ul>
-<p>代码在<a href="http://https://github.com/siddontang/mtunnel" target="_blank" rel="external">这里</a>，该版本只是笔者使用python实现的一个非常基础的版本，很多地方存在不足，后续会慢慢完善。</p>
-<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1084,7 +1138,7 @@ tornado.ioloop.IOLoop.instance().start()
   
     <li><a href="/categories/c++/">c++</a><small>7</small></li>
   
-    <li><a href="/categories/go/">go</a><small>26</small></li>
+    <li><a href="/categories/go/">go</a><small>27</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   
@@ -1106,7 +1160,7 @@ tornado.ioloop.IOLoop.instance().start()
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.57px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 14.29px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.71px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 14.29px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.86px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.43px;">moonmq</a><a href="/tags/mysql/" style="font-size: 15.71px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.43px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.29px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.43px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.14px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.43px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.86px;">tornado</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a>
   </div>
 </div>
 

@@ -72,6 +72,109 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-10-05T13:58:59.000Z"><a href="/2014/10/05/ledisdb-replication/">10-05-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/10/05/ledisdb-replication/">LedisDB Replication设计</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>对于使用SQL或者NoSQL的童鞋来说，replication都是一个避不开的话题，通过replication，能极大地保证你的数据安全性。毕竟谁都知道，不要把鸡蛋放在一个篮子里，同理，也不要把数据放到一台机器上面，不然机器当机了你就happy了。</p>
+<p>在分布式环境下，对于任何数据存储系统，实现一套好的replication机制是很困难的，毕竟<a href="http://en.wikipedia.org/wiki/CAP_theorem" target="_blank" rel="external">CAP</a>的限制摆在那里，我们不可能实现出一套完美的replication机制，只能根据自己系统的实际情况来设计和对CAP的取舍。</p>
+<p>对于replication更详细的说明与解释，这里推荐<a href="http://book.mixu.net/distsys/index.html" target="_blank" rel="external">Distributed systems<br>for fun and profit</a>，后面，我会根据LedisDB的实际情况，详细的说明我在LedisDB里面使用的replication是如何实现的。</p>
+<h2 id="BinLog">BinLog</h2>
+<p>最开始的时候，Ledisdb采用的是类似MySQL通用binlog的replication机制，即通过binlog的filename + position来决定需要同步的数据。这套方式实现起来非常简单，但是仍然有一些不足，主要就在于hierarchical replication情况下如果master当掉，选择合适的slave提升为master是比较困难的。举个最简单的例子，假设A为master，B，C为slave，如果A当掉了，我们会在B，C里面选择同步数据最多的那个，但是是哪一个呢？这个问题，在MySQL的replication中也会碰到。</p>
+<h2 id="MySQL_GTID">MySQL GTID</h2>
+<p>在MySQL 5.6之后，引入了GTID（Global transaction ID）的概念来解决上述问题，它通过<code>Source:ID</code>的方式来在binlog里面表示一个唯一的transaction。Source为当前server的uuid，这个是全局唯一的，而ID则是该server内部的transaction ID（采用递增保证唯一）。具体到上面那个问题，采用GTID，如果A当掉了，我们只需要在B和C的binlog里面查找比较最后一个A这个uuid的transaction id的大小，譬如B的为uuid:10，而C的为uuid:30，那么铁定我们会选择C为新的master。</p>
+<p>当然使用GTID也有相关的限制，譬如slave也必须写binlog等，但它仍然足够强大，解决了早期MySQL replication的时候一大摊子的棘手问题。但LedisDB并不准备使用，主要就在于应用场景没那么复杂的情况，我需要的是一个更加简单的解决方案。</p>
+<h2 id="Google_Global_Transaction_ID">Google Global Transaction ID</h2>
+<p>早在MySQL的GTID之前，google的一个MySQL版本就已经使用了<a href="https://code.google.com/p/google-mysql-tools/wiki/GlobalTransactionIds" target="_blank" rel="external">global transaction id</a>，在binlog里面，它对于任何的transaction，使用了group id来唯一标示。group id是一个全局的递增ID，由master负责维护生成。当master当掉之后，我们只需要看slave的binlog里面谁的group id最大，那么那一个就是能被选为master了。</p>
+<p>可以看到，这套方案非常简单，但是限制更多，譬如slave端的binlog只能由replication thread写入，不支持Multi-Masters，不支持circular replication等。但我觉得它已经足够简单高效，所以LedisDB准备参考它来实现。</p>
+<h2 id="Raft">Raft</h2>
+<p>弄过分布式的童鞋应该都或多或少的接触过Paxos（至少我是没完全弄明白的），而<a href="http://raftconsensus.github.io/" target="_blank" rel="external">Raft</a>则号称是一个比Paxos简单得多的分布式一致性算法。</p>
+<p>Raft通过replicated log来实现一致性，假设有A，B，C三台机器，A为Leader，B和C为follower，（其实也就是master和slave的概念）。A的任何更新，都必须首先写入Log（每个Log有一个LogID，唯一标示，全局递增），然后将其Log同步到至少Follower，然后才能在A上面提交更新。如果A当掉了，B和C重新选举，如果哪一台机器当前的LogID最大，则成为Leader。看到这里，是不是有了一种很熟悉的感觉？</p>
+<p>LedisDB在支持consensus replication上面，参考了Raft的相关做法。</p>
+<h2 id="名词解释">名词解释</h2>
+<p>在详细说明LedisDB replication的实现前，有必要解释一些关键字段。</p>
+<ul>
+<li>LogID：log的唯一标示，由master负责生成维护，全局递增。</li>
+<li>LastLogID：当前程序最新的logid，也就是记录着最后一次更新的log。</li>
+<li>FirstLogID：当前程序最老的logid，之前的log已经被清除了。</li>
+<li>CommitID：当前程序已经处理执行的log。譬如当前LastLogID为10，而CommitID为5，则还有6，7，8，9，10这几个log需要执行处理。如果CommitID = LastLogID，则证明程序已经处于最新状态，不再需要处理任何log了。</li>
+</ul>
+<h2 id="LedisDB_Replication">LedisDB Replication</h2>
+<p>LedisDB的replication实现很简单，仍然是上面的例子，A，B，C三台机器，A为master，B和C为slave。</p>
+<p>当master有任何更新，master会做如下事情：</p>
+<ol>
+<li>记录该更新到log，logid = LastLogID + 1，LastLogID = logid</li>
+<li>同步该log到slaves，等待slaves的确认返回，或者超时</li>
+<li>提交更新</li>
+<li>更新CommitID = logid</li>
+</ol>
+<p>上面还需要考虑到错误处理的情况。</p>
+<ul>
+<li>如果1失败，记录错误日志，然后我们会认为该次更新操作失败，直接返回。</li>
+<li>如果3失败，不更新CommitID返回，因为这时候CommitID小于LastLogID，master进入read only模式，replication thread尝试执行log，如果能执行成功，则更新CommitID，变成可写模式。</li>
+<li>如果4失败，同上，因为LedisDB采用的是Row-Base Format的log格式，所以一次更新操作能够幂等多次执行。</li>
+</ul>
+<p>对于slave</p>
+<p>如果是首次同步，则进入全同步模式：</p>
+<ol>
+<li>master生成一个snapshot，连同当前的LastLogID一起发送给slave。</li>
+<li>slave收到该dump文件之后，load载入，同时更新CommitID为dump文件里面的LastLogID。</li>
+</ol>
+<p>然后进入增量同步模式，如果slave已经有相关log，则直接进入增量同步模式。</p>
+<p>在增量模式下面，slave向master发送sync命令，sync的参数为下一个需要同步的log，如果slave当前没有binlog（譬如上面提到的全同步情况），则logid = CommitID + 1， 否则logid = LastLogID + 1。</p>
+<p>master收到sync请求之后，有如下处理情况：</p>
+<ul>
+<li>sync的logid小于FirstLogID，master没有该log，slave收到该错误重新进入全同步模式。</li>
+<li>master有该sync的log，于是将log发送给slave，slave收到之后保存，并再次发送sync获取下一个log，同时该次请求也作为ack告知master同步该log成功。</li>
+<li>sync的log id已经大于LastLogID了，表明master和slave的状态已经到达一致，没有log可以同步了，slave将会等待新的log直到超时再次发送sync。</li>
+</ul>
+<p>在slave端，对于接受到的log，由replication thread负责执行，并更新CommitID。</p>
+<p>如果master当机，我们只需要选择具有最大LastLogID的那个slave为新的master就可以了。</p>
+<h2 id="Limitation">Limitation</h2>
+<p>总的来说，这套replication机制很简单，易于实现，但是仍然有许多限制。</p>
+<ul>
+<li>不支持Multi-Master，因为同时只能有一个地方进行全局LogID的生成。不过我真的很少见到Multi-Master这样的架构模式，即使在MySQL里面。</li>
+<li>不支持Circular-Replication，slave写入的log id不允许小于当前的LastLogID，这样才能保证只同步最新的log。</li>
+<li>没有自动master选举机制，不过我觉得放到外部去实现更好。</li>
+</ul>
+<h2 id="Async/Sync_Replication">Async/Sync Replication</h2>
+<p>LedisDB是支持强一致性的同步replication的，如果配置了该模式，那么master会等待slave同步完成log之后再提交更新，这样我们就能保证当master当机之后，一定有一台slave具有跟master一样的数据。但在实际中，可能因为网络环境等问题，master不可能一直等待slave同步完成log，所以通常都会有一个超时机制。所以从这点来看，我们仍然不能保证数据的强一致性。</p>
+<p>使用同步replication机制会极大地降低master的写入性能，如果对数据一致性不敏感的业务，其实采用异步replication就可以了。</p>
+<h2 id="Failover">Failover</h2>
+<p>LedisDB现在没有自动的failover机制，master当机之后，我们仍然需要外部的干预来选择合适的slave（具有最大LastLogID那个），提升为master，并将其他slave重新指向该master。后续考虑使用外部的keeper程序来处理。而对于keeper的单点问题，则考虑使用raft或者zookeeper来处理。</p>
+<h2 id="后记">后记</h2>
+<p>虽然LedisDB现在已经支持replication，但仍然需要在生产环境中检验完善。</p>
+<p>LedisDB是一个采用Go实现的高性能NoSQL，接口类似Redis，现在已经用于生产环境，欢迎大家使用。</p>
+<p><a href="http://ledisdb.com" target="_blank" rel="external">Official Website</a></p>
+<p><a href="http://github.com/siddontang/ledisdb" target="_blank" rel="external">Github</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-07-28T16:01:01.000Z"><a href="/2014/07/29/gopkg-introduction/">07-29-2014</a></time>
       
       
@@ -1007,101 +1110,6 @@ MSET (10 keys): 21881.84 requests per second
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-04-23T05:29:51.000Z"><a href="/2014/04/23/golang-leveldb/">04-23-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/04/23/golang-leveldb/">Go的LevelDB接口</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>leveldb是一个很强悍的kv数据库，自然，我也希望能在go中使用。</p>
-<p>如果有官方的go leveldb实现，那我会优先考虑，譬如<a href="https://code.google.com/p/leveldb-go/" target="_blank" rel="external">这个</a>，但是该库文档完全没有，并且在网上没发现有人用于实战环境，对其能否在生产环境中使用打上问号，保险起见，我还是决定不使用。</p>
-<p>因为leveldb有c的接口，所以通过cgo能很方便的进行集成，所以我决定采用该种方式，幸运的是，已经有人做了cgo的版本，也就是<a href="https://github.com/jmhodges/levigo" target="_blank" rel="external">levigo</a>。</p>
-<p>使用levigo，需要编译安装leveldb，如果需要压缩支持还需要编译snappy，为了简单，我写了一个构件脚本，如下：</p>
-<pre><code>#!/bin/bash
-#refer https://github.com/norton/lets/blob/master/c_src/build_deps.sh
-
-#你必须在这里设置实际的snappy以及leveldb源码地址
-SNAPPY_SRC=./snappy
-LEVELDB_SRC=./leveldb
-
-SNAPPY_DIR=/usr/local/snappy
-LEVELDB_DIR=/usr/local/leveldb
-
-if [ ! -f $SNAPPY_DIR/lib/libsnappy.a ]; then
-    (cd $SNAPPY_SRC &amp;&amp; \
-        ./configure --prefix=$SNAPPY_DIR &amp;&amp; \
-        make &amp;&amp; \
-        make install)
-else
-    echo &quot;skip install snappy&quot;
-fi
-
-if [ ! -f $LEVELDB_DIR/lib/libleveldb.a ]; then
-    (cd $LEVELDB_SRC &amp;&amp; \
-        echo &quot;echo \&quot;PLATFORM_CFLAGS+=-I$SNAPPY_DIR/include\&quot; &gt;&gt; build_config.mk&quot; &gt;&gt; build_detect_platform &amp;&amp;
-        echo &quot;echo \&quot;PLATFORM_CXXFLAGS+=-I$SNAPPY_DIR/include\&quot; &gt;&gt; build_config.mk&quot; &gt;&gt; build_detect_platform &amp;&amp;
-        echo &quot;echo \&quot;PLATFORM_LDFLAGS+=-L $SNAPPY_DIR/lib -lsnappy\&quot; &gt;&gt; build_config.mk&quot; &gt;&gt; build_detect_platform &amp;&amp;
-        make SNAPPY=1 &amp;&amp; \
-        make &amp;&amp; \
-        mkdir -p $LEVELDB_DIR/include/leveldb &amp;&amp; \
-        install include/leveldb/*.h $LEVELDB_DIR/include/leveldb &amp;&amp; \
-        mkdir -p $LEVELDB_DIR/lib &amp;&amp; \
-        cp -af libleveldb.* $LEVELDB_DIR/lib)
-else
-    echo &quot;skip install leveldb&quot;
-fi
-
-function add_path()
-{
-  # $1 path variable
-  # $2 path to add
-  if [ -d &quot;$2&quot; ] &amp;&amp; [[ &quot;:$1:&quot; != *&quot;:$2:&quot;* ]]; then
-    echo &quot;$1:$2&quot;
-  else
-    echo &quot;$1&quot;
-  fi
-}
-
-export CGO_CFLAGS=&quot;-I$LEVELDB_DIR/include -I$SNAPPY_DIR/include&quot;
-export CGO_LDFLAGS=&quot;-L$LEVELDB_DIR/lib -L$SNAPPY_DIR/lib -lsnappy&quot;
-export LD_LIBRARY_PATH=$(add_path $LD_LIBRARY_PATH $SNAPPY_DIR/lib)
-export LD_LIBRARY_PATH=$(add_path $LD_LIBRARY_PATH $LEVELDB_DIR/lib)
-
-go get github.com/jmhodges/levigo 
-</code></pre><p>对于leveldb在go里面的使用，levigo做了很好的封装，但是有一点我不怎么习惯，在leveldb中，对于read和write的操作，都需要传入一个Option的东西，这玩意大多数时候都是一个默认Option对象，没必要每次在go里面进行创建删除。所以我对其进行了封装，提供了如下的接口，这样使用的都是默认的option。</p>
-<pre><code>func (db *DB) Put(key, value []byte) error 
-func (db *DB) Get(key []byte) ([]byte, error)
-func (db *DB) Delete(key []byte) error 
-</code></pre><p>同时对于iterator，我参考c++的模型，提供了iterator以及reverse_iterator两种模式，如下：</p>
-<pre><code>func (db *DB) Iterator(begin []byte, end []byte, limit int) *Iterator 
-func (db *DB) ReverseIterator(rbegin []byte, rend []byte, limit int) *Iterator 
-</code></pre><p>具体的代码在<a href="https://github.com/siddontang/golib/tree/master/leveldb" target="_blank" rel="external">这里</a>。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1138,7 +1146,7 @@ func (db *DB) ReverseIterator(rbegin []byte, rend []byte, limit int) *Iterator
   
     <li><a href="/categories/c++/">c++</a><small>7</small></li>
   
-    <li><a href="/categories/go/">go</a><small>26</small></li>
+    <li><a href="/categories/go/">go</a><small>27</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   
@@ -1160,7 +1168,7 @@ func (db *DB) ReverseIterator(rbegin []byte, rend []byte, limit int) *Iterator
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.57px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 14.29px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.71px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 14.29px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.86px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.43px;">moonmq</a><a href="/tags/mysql/" style="font-size: 15.71px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.43px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.29px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.43px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.14px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.43px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.86px;">tornado</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a>
   </div>
 </div>
 
