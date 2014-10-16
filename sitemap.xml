@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>http://siddontang.com/2014/10/16/head-first-web-service/</loc>
+    <lastmod>2014-10-16T14:41:52.000Z</lastmod>
+  </url>
+  
+  <url>
     <loc>http://siddontang.com/2014/10/05/ledisdb-replication/</loc>
     <lastmod>2014-10-05T14:00:17.000Z</lastmod>
   </url>

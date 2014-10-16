@@ -4,7 +4,7 @@
   <subtitle><![CDATA[My thought for program]]></subtitle>
   <link href="/atom.xml" rel="self"/>
   <link href="http://siddontang.com/"/>
-  <updated>2014-10-05T14:01:17.838Z</updated>
+  <updated>2014-10-16T14:42:03.659Z</updated>
   <id>http://siddontang.com/</id>
   
   <author>
@@ -13,6 +13,103 @@
   </author>
   
   <generator uri="http://zespia.tw/hexo/">Hexo</generator>
+  
+  <entry>
+    <title><![CDATA[深入浅出Web Service]]></title>
+    <link href="http://siddontang.com/2014/10/16/head-first-web-service/"/>
+    <id>http://siddontang.com/2014/10/16/head-first-web-service/</id>
+    <published>2014-10-16T14:39:47.000Z</published>
+    <updated>2014-10-16T14:41:52.000Z</updated>
+    <content type="html"><![CDATA[<p>应<a href="http://my.oschina.net/javayou" target="_blank" rel="external">红薯</a>的邀约，决定给某大学的童鞋讲讲Web Service相关知识，鉴于是第一次在学校献丑，所以还是老老实实的准备，先把类似逐字稿的东西写出来，然后在准备PPT吧。</p>
+<p>关于Web service，这个话题太广太泛，加之我也只熟悉一些特定的领域，所以准备从两方面入手，1，什么是Web service，就当是概念性的介绍，让大家有个相关认识。2，则是根据一个简单的例子，告诉大家如何构建一个Web service服务。</p>
+<h2 id="什么是Web_service">什么是Web service</h2>
+<p>首先根据Wiki的定义：<strong>A Web Service is a method of communication between two electronic devices over a network.</strong> </p>
+<p>简单来说，Web Service就是基于网络不同设备之间互相通信的一种方式。Web Service是一个软件服务，它提供很多API，而客户端通过Web协议进行调用从而完成相关的功能。</p>
+<p>Web service并不是一个新奇的概念，相反从很早的分布式计算，到网格计算，到现在的云，都或多或少的有着Web service的影子。只不过随着近几年一浪高过一浪的互联网热潮以及Google，Amazon等公司的大力推动，Web service变得愈发流行。</p>
+<p>越来越多的公司开始提供Web service，而同时又有更多的公司基于这些Web service提供了更加上层的Web service。</p>
+<p>Amazon的S3（Simple Storage Service）是一个文件存储服务，用户通过S3将文件存放到Amazon的服务器上面，Amazon负责保证该文件的安全（包括不被别人获取，不丢失等）。而Drew Houston则在S3的基础上，构造了一个令人惊奇的同步网盘：Dropbox，同时，Dropbox又将相关API提供出去，供其他的Application其同步服务。</p>
+<p>可以看到，正是因为有了越来越多的Web services，才让我们现在的互联网生活变得越发精彩。</p>
+<h2 id="实现一个简单的Web_service">实现一个简单的Web service</h2>
+<p>好了，上面扯了这么多，是不是心痒痒想自己开发一个Web service？开发一个Web service并不是那么容易的事情，尤其是涉及到分布式之后。不过我觉得一个小例子没准就能说明很多东西。当然我自认并不是Web service的专家（这年头专家架构师太多，我只能算打酱油的），很多东西难免疏漏，并且一些设计也会带有很强烈的个人色彩，如果大家有啥更好的认识，欢迎跟我讨论（妹子优先！）。</p>
+<p>一个简单的例子：KV Storage Service，后面就叫KV吧。类似于S3，只是我们不是存文件，而是元数据。后面我们就用KV来表明服务的名字吧。</p>
+<p>对于KV来说，它只会涉及到三种操作，如果用代码表示如下：</p>
+<pre><code>//根据指定的key获取对应的value
+Get(key)
+
+//设置key的值为value，如果key本来存在，则更新，否则新建
+Put(key, value)
+
+//删除key
+Delete(key)
+</code></pre><h3 id="交互协议">交互协议</h3>
+<p>既然是Web service，自然选用HTTP来做交互，比起自己实现一套不通用的协议，或者使用Google Protocol Buffers这些的，HTTP具有太多的优势，虽然它的性能稍微有点差，数据量稍微有点臃肿，但几乎所有的浏览器以及数不清的库能直接支持，想想都有点小激动了。</p>
+<p>所以我们唯一要做的，就是设计好我们的API，让外面更方便的使用Web service。</p>
+<h3 id="API">API</h3>
+<p>根据wiki的定义，Web service通常有两种架构方式，RESTful和Arbitrary（RPC，SOAP，etc）。</p>
+<p>REST是Representational state transfer的缩写，而满足REST架构模型的我们通常称之为Restful：</p>
+<ul>
+<li>使用URI来表示资源，譬如<a href="http://example.com/user/1代表ID为1的user。" target="_blank" rel="external">http://example.com/user/1代表ID为1的user。</a></li>
+<li>使用标准HTTP方法GET，POST，PUT，DELETE等来操作资源，譬如Get <a href="http://example.com/user/1" target="_blank" rel="external">http://example.com/user/1</a> 来获取user 1的信息，而使用Delete <a href="http://example.com/user/1" target="_blank" rel="external">http://example.com/user/1</a> 来删除user 1。</li>
+<li>支持资源的多种表现形式，譬如上例Get中设置Content-Type为json，让服务端返回json格式的user信息。</li>
+</ul>
+<p>相对于Restful，另一种则是Arbitrary的，我不熟悉SOAP，这里就以RPC为例。</p>
+<p>RPC就是remote procedure call，它通过在HTTP请求中显示的制定需要调用的过程名字以及参数来与服务端进行交互。仍然是上面的例子，如果我们需要得到用户的信息，可能就是这样Get <a href="http://example.com/getuser?userid=1，如果要删除一个用户，没准是这样Get" target="_blank" rel="external">http://example.com/getuser?userid=1，如果要删除一个用户，没准是这样Get</a> <a href="http://example.com/delUser?userid=1。" target="_blank" rel="external">http://example.com/delUser?userid=1。</a></p>
+<p>那选择何种架构呢？在这里，我倾向使用Restful架构模型，很大原因在于它理解起来很容易，而且实现简单，而现在越来越多的Web service提供的API采用的是Restful模式，从另一个方面也印证了它的流行。</p>
+<p>所以这个Web service的接口就是这样了：</p>
+<pre><code>GET http://kv.com/key
+DELETE http://kv.com/key
+POST http://kv.com/key -dvalue
+PUT http://kv.com/key -dvalue
+</code></pre><p>上面POST和PUT可以等价，如果key存在，则用value覆盖，不存在则新建。</p>
+<h3 id="架构">架构</h3>
+<p>好了，扯了这么多，我们也要开始搭建我们的Web service了。因为采用的是HTTP协议，所以我们可以直接使用现成的HTTP server来帮我们处理HTTP请求。譬如nginx，apache，不过用go或者python直接写一个也不是特别困难的事情。</p>
+<p>我们还需要一个storage server用来存放key-value，mysql可以，redis也行，或者我的<a href="http://ledisdb.com" target="_blank" rel="external">ledisdb</a>，谁叫红薯说可以打广告的。</p>
+<p>最开始，我们就只有一台机器，启动一个nginx用来处理HTTP请求，然后启动一个ledisdb用来存放数据。然后开始对外happy的提供服务了。</p>
+<p>KV开始工作的很好，突然有一天，我们发现随着用户量的增大，一台机器处理不过来了。好吧，我们在加一台机器，将nginx和ledisdb放到不同的机器上面。</p>
+<p>可是好景不长，用户量越来越多，压力越来越大，我们需要再加机器了，因为nginx是一个无状态的服务，所以我们很容易的将其扩展到多台机器上面去运行，最外层通过DNS或者LVS来做负载均衡。但是对于有状态的服务，譬如上面的ledisdb，可不能这么简单的处理了。好吧，我们终于要开始扯到分布式了。</p>
+<h3 id="CAP">CAP</h3>
+<p>在聊分布式之前，我们需要知道CAP定理，因为在设计分布式系统的时候，CAP都是必须得面对的。</p>
+<ul>
+<li>Consistency，一致性</li>
+<li>Avaliability，可用性</li>
+<li>Partition tolerance，分区容忍性</li>
+</ul>
+<p>CAP的核心就在于在分布式系统中，你不可能同时满足CAP，而只能满足其中两项，但在分布式中，P是铁定存在的，所以我们设计系统的时候就需要在C和A之间权衡。</p>
+<p>譬如，对于MySQL,它最初设计的时候就没考虑分区P，所以很好的满足CA，所以做过MySQL proxy方面工作的童鞋应该都清楚，要MySQL支持分布式是多么的蛋疼。</p>
+<p>而对于一般的NoSQL，则是倾向于采用AP，但并不是说不管C，只是允许短时间的数据不一致，但能达到最终一致。</p>
+<p>而对于需要强一致的系统，则会考虑牺牲A来满足CP，譬如很多系统必须写多份才算成功，</p>
+<h3 id="Replication">Replication</h3>
+<p>对于前面提到的Ledisdb，因为涉及到数据存放，本着不要把鸡蛋放到一个篮子里面的原则，我们也不能将数据放到一台机器上面，不然当机了就happy了。而解决这个的办法就是replication。</p>
+<p>熟悉MySQL或者Redis的童鞋对replication应该都不会陌生，它们的replication都采用的是异步的方式，也就是在一段时间内不满足数据一致性，但铁定能达到最终一致性。</p>
+<p>但如果真想支持同步的replication，怎么办呢？谁叫我们容不得数据半点丢失。通常有几种做法：</p>
+<ul>
+<li>2PC，3PC</li>
+<li>Paxos，Raft</li>
+</ul>
+<p>因为这方面的坑很深，就不在累述，不过我是很推崇Raft的，相比于2PC，3PC，以及Paxos，Raft足够简单，并且很好理解。有机会在说明吧。</p>
+<h3 id="水平扩展">水平扩展</h3>
+<p>好了，通过replication解决了ledisdb数据安全问题，但总有一天，一台机器顶不住了，我们要考虑将ledisdb的数据进行拆分到多台机器。通常做法如下：</p>
+<ul>
+<li>最简单的做法，hash(key) % num，num是机器的数量，但这种做法在添加或者删除机器的时候会造成rehash，导致大量的数据迁移。</li>
+<li>一致性hash，它相对于传统的hash，在添加或者删除节点的时候，它能尽可能的少的进行数据迁移。不过终归还是有数据流动的。</li>
+<li>路由映射表，不同于一致性hash，我们在外部自己负责维护一张路由表，这样添加删除节点的时候只需要更改路由表就可以了，相对于一致性hash，个人感觉更加可控。</li>
+</ul>
+<p>我个人比较喜欢预分配+路由表的方式来进行水平扩展，所谓预分配，就是首先我就将数据切分到n个（譬如1024）shard，开始这些shard可以在一个node里面，随着node的增加，我们只需要迁移相关的shard，同时更新路由表就可以了。这种方式个人感觉灵活性最好，但对程序员要求较高，需要写出能自动处理resharding的健壮代码。</p>
+<p>好了，解决了replication，解决了水平扩展，很长一段时间我们都能happy，当然坑还是挺多的，遇到了慢慢再填吧。</p>
+<h2 id="没有提到的关键点">没有提到的关键点</h2>
+<ul>
+<li>Cache，无论怎样，cache在服务器领域都是一个非常关键的东西，用好了cache，你的服务能处理更多的并发访问。facebook这篇paper <a href="https://www.usenix.org/system/files/conference/nsdi13/nsdi13-final170_update.pdf" target="_blank" rel="external">Scaling Memcache at Facebook</a>专门讲解了相关知识，那是绝对的干货。</li>
+<li>消息队列，当并发量大了之后，光靠同步的API调用已经满足不了整个系统的性能需求，这时候就该MQ上场了，譬如RabbitMQ都是不错的选择。</li>
+<li>很多很多其他的。。。。。。。这里就不列举了。</li>
+</ul>
+<h2 id="总结">总结</h2>
+<p>上面只是我对于Web service一点浅显的见解，如果里面的知识稍微对你有用，那我已经感到非常高兴了。但就像实践才是检验真理的唯一标准一样，理论知道的再多，还不如先弄一个Web service来的实在，反正现在国内阿里云，腾讯云，百度云啥的都不缺，缺的只是跑在上面的好应用。</p>
+]]></content>
+    
+    
+      <category term="program" scheme="http://siddontang.com/categories/program/"/>
+    
+  </entry>
   
   <entry>
     <title><![CDATA[LedisDB Replication设计]]></title>
@@ -1428,38 +1525,6 @@ func main() {
       <category term="pprof" scheme="http://siddontang.com/tags/pprof/"/>
     
       <category term="goroutine" scheme="http://siddontang.com/tags/goroutine/"/>
-    
-      <category term="go" scheme="http://siddontang.com/categories/go/"/>
-    
-  </entry>
-  
-  <entry>
-    <title><![CDATA[Go Timer实现]]></title>
-    <link href="http://siddontang.com/2014/04/16/golang-timer/"/>
-    <id>http://siddontang.com/2014/04/16/golang-timer/</id>
-    <published>2014-04-16T01:57:46.000Z</published>
-    <updated>2014-08-08T16:06:20.000Z</updated>
-    <content type="html"><![CDATA[<p>在go自带的timer实现中，采用的是通常的最小堆的方式，具体可以参见<a href="http://golang.org/src/pkg/runtime/time.goc" target="_blank" rel="external">这里</a>。</p>
-<p>最小堆能够提供很好的定时精度，但是，在实际情况中，我们并不需要这样高精度的定时器，譬如对于一个连接，如果它在2分钟以内没有数据交互，我们就将其删除，2分钟并不需要那么精确，多几秒少几秒都无所谓的。</p>
-<p>以前我们单独实现了一个<a href="https://github.com/siddontang/golib/tree/master/timingwheel" target="_blank" rel="external">timingwheel</a>，采用的是channel close的方式来处理低精度，超大量timer定时的问题，详见<a href="http://blog.csdn.net/siddontang/article/details/18370541" target="_blank" rel="external">这里</a>。</p>
-<p>但是timingwheel只有After接口，远远不能满足实际的需求，于是我按照linux timer的实现方式，依葫芦画瓢，弄了一个go版本的实现。linux timer的实现，参考<a href="http://blog.csdn.net/tianmohust/article/details/8707162" target="_blank" rel="external">这篇</a>。</p>
-<p>后续用go timer来表示我自己实现的timer。</p>
-<p>在linux中，我们使用tick来表示一次中断的时间，用jiffies来表示系统自启动以来流逝的tick次数。在go timer中，我们在创建一个wheel的时候，需要指定一次tick的时间，如下：</p>
-<pre><code>func NewWheel(tick time.Duration) *Wheel
-</code></pre><p>Wheel是go timer统一对timer进行管理的地方。对于每一次tick，我们采用go自带的ticker进行模拟。</p>
-<p>为了便于外部使用，我仍然提供的是跟go自己timer一样的接口，譬如：</p>
-<pre><code>func NewTimer(d time.Duration) *Timer
-</code></pre><p>在NewTimer中，参数d是一个time duration，我们还需要根据tick来进行换算，得到go timer中实际的expires，也就是在多少次jiffies后该timer触发。</p>
-<p>譬如，NewTimer参数为10s，tick为1s，那么经过10个jiffies之后，该timer就会超时触发。如果tick为500ms，那么需要经过20个jiffies之后，该timer才会被触发。</p>
-<p>所以timer超时jiffies的计算如下：</p>
-<pre><code>expires = wheel.jiffies + d / wheel.tick
-</code></pre><p>详细的代码在<a href="https://github.com/siddontang/golib/tree/master/timer" target="_blank" rel="external">https://github.com/siddontang/golib/tree/master/timer</a>。</p>
-]]></content>
-    
-    
-      <category term="go" scheme="http://siddontang.com/tags/go/"/>
-    
-      <category term="timer" scheme="http://siddontang.com/tags/timer/"/>
     
       <category term="go" scheme="http://siddontang.com/categories/go/"/>
     

@@ -68,6 +68,52 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-06-04T08:56:27.000Z"><a href="/2014/06/04/record-bugs/">06-04-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/06/04/record-bugs/">最近几个bug记录</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>记录最近出的几个bug</p>
+<h2 id="connection_reset_by_peer">connection reset by peer</h2>
+<p>最近服务器经常性的出现connection reset by peer的错误，开始我们只是以为小概率的网络断开导致的，可是随着压力的增大，每隔2分钟开始出现一次，这就不得不引起我们的重视了。</p>
+<p>我们的业务很简单，lvs负责负载均衡（采用的是DR模式），keepalive timeout设置的为2分钟，后面支撑两台推送服务（后面叫做push），客户端首先通过lvs路由到某台push之后，频繁的向其发送推送消息。</p>
+<p>客户端使用的是python request（底层基于urllib3），首先我很差异出了这样的错误竟然没有重试，因为写代码的童鞋告诉我会有重试机制的。于是翻了一下request的代码，竟然发现默认的重试是0，一下子碉堡了。</p>
+<p>不过，即使改了重试，仍然没有解决reset by peer的问题。通常出现这种情况，很大的原因在于客户端使用的是keep alive长连接保活tcp，但是服务器端关闭了该连接。可是我们的服务器实现了定时ping的保活机制，应该也不会出现的。</p>
+<p>然后我将目光投向了lvs，因为它的timeout设置的为2分钟，而reset by peer这个错误也是两分钟一个，所以很有可能就是我们的定时ping机制不起作用，导致lvs直接close掉了连接。</p>
+<p>于是查看push自己的代码，陡然发现我们自己设置的定时ping的时间是3分钟，顿时无语了，于是立刻改成1分钟，重启push，世界清静了。</p>
+<h2 id="ifconfig_overruns">ifconfig overruns</h2>
+<p>push换上新的机器之后，（性能妥妥的强悍），我们竟然发现推送的丢包率竟然上升了，一下子碉堡了，觉得这事情真不应该发生的。通常这种情况发生在cpu处理网络中断响应不过来。但是我们可是妥妥的24核cpu，并且开启了irqbalance。</p>
+<p>好不，用cat /proc/interrupts之后，发现所有的网卡中断都被cpu0处理了，irqbalance完全没有起作用。google之后发现，有些网卡在PCI-MSI模式下面irqbalance无效，而我们的网卡恰好是PCI-MSI模式的。</p>
+<p>没办法，关停irqbalance，手动设置网卡中断的SMP_AFFINITY，一下子世界清静了。</p>
+<h2 id="总结">总结</h2>
+<p>可以发现，最近出的几次蛋疼的事情都是在运维层面上面出现的，实际测试也测不出来，碰到这样的问题，只能通过log这些的慢慢摸索排查了。当然也给了我一个教训，任何error级别的log都应该重视，不应该想当然的忽略。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-05-30T04:28:39.000Z"><a href="/2014/05/30/ledisdb-design-1/">05-30-2014</a></time>
       
       
@@ -1020,53 +1066,6 @@ func main() {
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-04-16T01:57:46.000Z"><a href="/2014/04/16/golang-timer/">04-16-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/04/16/golang-timer/">Go Timer实现</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>在go自带的timer实现中，采用的是通常的最小堆的方式，具体可以参见<a href="http://golang.org/src/pkg/runtime/time.goc" target="_blank" rel="external">这里</a>。</p>
-<p>最小堆能够提供很好的定时精度，但是，在实际情况中，我们并不需要这样高精度的定时器，譬如对于一个连接，如果它在2分钟以内没有数据交互，我们就将其删除，2分钟并不需要那么精确，多几秒少几秒都无所谓的。</p>
-<p>以前我们单独实现了一个<a href="https://github.com/siddontang/golib/tree/master/timingwheel" target="_blank" rel="external">timingwheel</a>，采用的是channel close的方式来处理低精度，超大量timer定时的问题，详见<a href="http://blog.csdn.net/siddontang/article/details/18370541" target="_blank" rel="external">这里</a>。</p>
-<p>但是timingwheel只有After接口，远远不能满足实际的需求，于是我按照linux timer的实现方式，依葫芦画瓢，弄了一个go版本的实现。linux timer的实现，参考<a href="http://blog.csdn.net/tianmohust/article/details/8707162" target="_blank" rel="external">这篇</a>。</p>
-<p>后续用go timer来表示我自己实现的timer。</p>
-<p>在linux中，我们使用tick来表示一次中断的时间，用jiffies来表示系统自启动以来流逝的tick次数。在go timer中，我们在创建一个wheel的时候，需要指定一次tick的时间，如下：</p>
-<pre><code>func NewWheel(tick time.Duration) *Wheel
-</code></pre><p>Wheel是go timer统一对timer进行管理的地方。对于每一次tick，我们采用go自带的ticker进行模拟。</p>
-<p>为了便于外部使用，我仍然提供的是跟go自己timer一样的接口，譬如：</p>
-<pre><code>func NewTimer(d time.Duration) *Timer
-</code></pre><p>在NewTimer中，参数d是一个time duration，我们还需要根据tick来进行换算，得到go timer中实际的expires，也就是在多少次jiffies后该timer触发。</p>
-<p>譬如，NewTimer参数为10s，tick为1s，那么经过10个jiffies之后，该timer就会超时触发。如果tick为500ms，那么需要经过20个jiffies之后，该timer才会被触发。</p>
-<p>所以timer超时jiffies的计算如下：</p>
-<pre><code>expires = wheel.jiffies + d / wheel.tick
-</code></pre><p>详细的代码在<a href="https://github.com/siddontang/golib/tree/master/timer" target="_blank" rel="external">https://github.com/siddontang/golib/tree/master/timer</a>。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -1114,7 +1113,7 @@ func main() {
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
-    <li><a href="/categories/program/">program</a><small>11</small></li>
+    <li><a href="/categories/program/">program</a><small>12</small></li>
   
     <li><a href="/categories/python/">python</a><small>6</small></li>
   
