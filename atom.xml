@@ -4,7 +4,7 @@
   <subtitle><![CDATA[My thought for program]]></subtitle>
   <link href="/atom.xml" rel="self"/>
   <link href="http://siddontang.com/"/>
-  <updated>2014-10-16T14:43:59.443Z</updated>
+  <updated>2014-10-16T14:48:26.248Z</updated>
   <id>http://siddontang.com/</id>
   
   <author>
@@ -19,7 +19,7 @@
     <link href="http://siddontang.com/2014/10/16/head-first-web-service/"/>
     <id>http://siddontang.com/2014/10/16/head-first-web-service/</id>
     <published>2014-10-16T14:39:47.000Z</published>
-    <updated>2014-10-16T14:43:57.000Z</updated>
+    <updated>2014-10-16T14:45:13.000Z</updated>
     <content type="html"><![CDATA[<p>应<a href="http://my.oschina.net/javayou" target="_blank" rel="external">红薯</a>的邀约，决定给某大学的童鞋讲讲Web Service相关知识，鉴于是第一次在学校献丑，所以还是老老实实的准备，先把类似逐字稿的东西写出来，然后在准备PPT吧。</p>
 <p>关于Web service，这个话题太广太泛，加之我也只熟悉一些特定的领域，所以准备从两方面入手，1，什么是Web service，就当是概念性的介绍，让大家有个相关认识。2，则是根据一个简单的例子，告诉大家如何构建一个Web service服务。</p>
 <h2 id="什么是Web_service">什么是Web service</h2>
@@ -48,12 +48,12 @@ Delete(key)
 <p>根据wiki的定义，Web service通常有两种架构方式，RESTful和Arbitrary（RPC，SOAP，etc）。</p>
 <p>REST是Representational state transfer的缩写，而满足REST架构模型的我们通常称之为Restful：</p>
 <ul>
-<li>使用URI来表示资源，譬如<a href="http://example.com/user/1" target="_blank" rel="external">http://example.com/user/1</a> 代表ID为1的user。</li>
-<li>使用标准HTTP方法GET，POST，PUT，DELETE等来操作资源，譬如Get <a href="http://example.com/user/1" target="_blank" rel="external">http://example.com/user/1</a> 来获取user 1的信息，而使用Delete <a href="http://example.com/user/1" target="_blank" rel="external">http://example.com/user/1</a> 来删除user 1。</li>
+<li>使用URI来表示资源，譬如<code>http://example.com/user/1</code> 代表ID为1的user。</li>
+<li>使用标准HTTP方法GET，POST，PUT，DELETE等来操作资源，譬如<code>Get http://example.com/user/1</code> 来获取user 1的信息，而使用<code>Delete http://example.com/user/1</code> 来删除user 1。</li>
 <li>支持资源的多种表现形式，譬如上例Get中设置Content-Type为json，让服务端返回json格式的user信息。</li>
 </ul>
 <p>相对于Restful，另一种则是Arbitrary的，我不熟悉SOAP，这里就以RPC为例。</p>
-<p>RPC就是remote procedure call，它通过在HTTP请求中显示的制定需要调用的过程名字以及参数来与服务端进行交互。仍然是上面的例子，如果我们需要得到用户的信息，可能就是这样Get <a href="http://example.com/getuser?userid=1，如果要删除一个用户，没准是这样Get" target="_blank" rel="external">http://example.com/getuser?userid=1，如果要删除一个用户，没准是这样Get</a> <a href="http://example.com/delUser?userid=1。" target="_blank" rel="external">http://example.com/delUser?userid=1。</a></p>
+<p>RPC就是remote procedure call，它通过在HTTP请求中显示的制定需要调用的过程名字以及参数来与服务端进行交互。仍然是上面的例子，如果我们需要得到用户的信息，可能就是这样 <code>Get http://example.com/getuser?userid=1</code>, 如果要删除一个用户，没准是这样<code>Get http://example.com/delUser?userid=1</code>。</p>
 <p>那选择何种架构呢？在这里，我倾向使用Restful架构模型，很大原因在于它理解起来很容易，而且实现简单，而现在越来越多的Web service提供的API采用的是Restful模式，从另一个方面也印证了它的流行。</p>
 <p>所以这个Web service的接口就是这样了：</p>
 <pre><code>GET http://kv.com/key
