@@ -68,6 +68,61 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2013-12-28T08:21:04.000Z"><a href="/2013/12/28/bin-packer/">12-28-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/12/28/bin-packer/">bin packer制作</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="起因">起因</h1>
+<p>一年前接触texture packer的时候，就一直有做一个类似工具的想法，当时想了一下，可以从以下几个方面入手：</p>
+<ul>
+<li>界面与功能分离，也就是提供命令行功能，界面直接通过命令行调用实现相关功能。界面可以考虑使用qt或者wxwidget。</li>
+<li>实现一个高效的packer算法</li>
+<li>图像处理问题，读入不同格式的文件，输出设定格式的文件，这个可以使用GraphicsMagick来处理。</li>
+</ul>
+<p>那么首要实现的其实就是一个好的packer算法。而对于图像处理，以及界面展示，这些我觉得都可以在后期考虑。</p>
+<p>虽然当时很有想做一个的冲动，但因为很多原因，停滞了下来。不过心里总有一个坎，直到现在又重新接触了cocos2d-x，立马觉得要实现这个packer了。</p>
+<h1 id="bin_packing_problem">bin packing problem</h1>
+<p>我们需要实现的功能就是把一批小的texture合并到一张大的texture上面，而这个就是bin packing problem需要解决的问题。</p>
+<p>参考了很多资料，譬如<a href="http://codeincomplete.com/posts/2011/5/7/bin_packing/" target="_blank" rel="external">这个</a>，<a href="http://www.codeproject.com/Articles/210979/Fast-optimizing-rectangle-packing-algorithm-for-bu" target="_blank" rel="external">这个</a>，还有<a href="http://www.blackpawn.com/texts/lightmaps/default.html" target="_blank" rel="external">这个</a>。</p>
+<p>理解了基本算法之后，自己也实现了很简单的<a href="https://gist.github.com/4168873" target="_blank" rel="external">packer</a>。大概原理也很简单:</p>
+<ul>
+<li>将所有texture从大到小排序，可以按照maxsize，area，width，height等。</li>
+<li>取出第一个texture，初始化root bin的大小为该texture大小。</li>
+<li>取出第二个texutre，通过root查找是否有bin能将其放下，如果能放下，则放入，并将该bin切分。</li>
+<li>如果没有可以放下的bin，则扩容root bin，并将原先root bin作为扩大bin之后的子节点，扩容bin设为root bin</li>
+<li>重复执行上述3，4，直到所有的texture都放入</li>
+</ul>
+<p>具体流程可以参考代码。</p>
+<h1 id="总结">总结</h1>
+<p>总的来说，实现一个简单的bin packer是比较简单的，当然还有很多复杂的实现，只是对于一般应用来说，足够了。这里还需要赞一下python，快速开发原型实在是太方便了。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2013-06-20T12:23:33.000Z"><a href="/2013/06/20/certificate-csp-openssl/">06-20-2013</a></time>
       
       
@@ -909,54 +964,6 @@ DELETE http://domain.com/file/1
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2012-09-19T10:00:00.000Z"><a href="/2012/09/19/network-prefork/">09-19-2012</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2012/09/19/network-prefork/">深入浅出网络模型(2)</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>在深入浅出网络模型里面，我大概介绍了几种个人理解的网络编程模型，从涛哥和葱头的反馈来看，讲的东西还不怎么详细，所以后续会不断的补充完善。</p>
-<h1 id="prefork模型">prefork模型</h1>
-<p>今天主要探讨的是prefork模型，我在前文说过，因为unix的fork很迅速，所以可以采用multi process模式，即每次accept到一个socket之后，就fork一个子进程，然后盖子进程进行处理。这样就有一个问题，如果连接数过多，会导致fork过多的子进程，造成系统压力。</p>
-<p>所以就有了prefork模型，也就是预先分配一些子进程进行后续网络处理。显而易见的好处就在于不用每次都fork，减少了很多系统开销。</p>
-<h2 id="main_accept_+_prefork_handle">main accept + prefork handle</h2>
-<p>prefork我认为有两种模型，第一种就是主进程bind，listen之后，就一直accept，当接收到新的连接的时候，将这个socket发给其中一个子进程处理。</p>
-<p>这里就涉及到一个问题，父进程如何将收到的socket发送给子进程。因为此时子进程在accept之前已经创建，所以不可能共享后续父进程新创建的socket。所以我们需要一套机制来进行进程之间的socket传递，而这个是早已经有的实现。</p>
-<ul>
-<li>*nix平台下面，使用socketpair + sendmsg + recvmsg</li>
-<li>windows平台下面，使用WSADuplicateSocket</li>
-</ul>
-<p>因为网上这方面的资料很多的，这里就不在详细说明，只是觉得对于这种方法，还需要写跨平台的代码，并且进程传递socket也需要系统开销，所以这种模型我没有实现过。flup的prefork模型采用的是这种做法，后续可以看看。</p>
-<h2 id="prefork_accept">prefork accept</h2>
-<p>当主进程bind，listen之后，各个子进程自己去accept，这样当有一个连接请求到来的时候，只要有一个子进程能够accept，就能进行后续处理了。这个模型相对来说，比较简单，较易实现，tornado的多进程模型就采用的是这样方案。</p>
-<p>不过这种方案有可能出现惊群效应，也就是说，当所有子进程都在accept的时候，如果来了一个请求，会将所有子进程唤醒，但是只有一个进程能够处理这个请求，而其他 进程继续休眠等待。</p>
-<p>解决这个问题，通常的做法就是在accept的时候进行锁保护，保证只能有一个进行进行accept，但是我觉得，惊群效应出现的情况在于休眠的进程很多，但请求很少的情况，如果有大量的连接请求，所有子进程都在忙碌，这个问题自然就没有了。所以也不需要怎么特别关注。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -1004,7 +1011,7 @@ DELETE http://domain.com/file/1
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
-    <li><a href="/categories/program/">program</a><small>12</small></li>
+    <li><a href="/categories/program/">program</a><small>13</small></li>
   
     <li><a href="/categories/python/">python</a><small>6</small></li>
   
@@ -1016,7 +1023,7 @@ DELETE http://domain.com/file/1
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 

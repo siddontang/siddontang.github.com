@@ -1,0 +1,281 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>zookeeper | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-27956076-1']);
+  
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+      <li><a href="/atom.xml">RSS</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper">
+<h2 class="archive-title tag">zookeeper</h2>
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-12-03T12:49:37.000Z"><a href="/2014/12/03/learn-zookeeper/">12-03-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/12/03/learn-zookeeper/">学习zookeeper</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>最近研究了一下zookeeper（后续以zk简称），对于一个自认为泡在服务器领域多年的老油条来说，现在才开始关注zk这个东西，其实有点晚了，但没办法，以前的工作经历让我压根用不到这个玩意。只是最近因为要考虑做ledisdb的cluster方案，以及重新考虑mixer的协调管理，才让我真正开始尝试去了解zk。</p>
+<h2 id="什么是zookeeper">什么是zookeeper</h2>
+<p>根据官网的介绍，zookeeper是一个分布式协调服务，主要用来处理分布式系统中各系统之间的协作问题的。</p>
+<p>其实这么说有点抽象，初次接触zk，很多人真不知道用它来干啥，你可以将它想成一个总控节点（当然它能用多机实现自身的HA），能对所有服务进行操作。这样就能实现对整个分布式系统的统一管理。</p>
+<p>譬如我现在有n台机器，需要动态更新某一个配置，一些做法可能是通过puppet或者salt将配置先分发到不同机器，然后运行指定的reload命令。zk的做法可能是所有服务都监听一个配置节点，直接更改这个节点的数据，然后各个服务就能收到更新消息，然后同步最新的配置，再自行reload了。</p>
+<p>上面只是一个很简单的例子，其实通过它并不能过多的体现zk的优势（没准salt可能还更简单），但zk不光只能干这些，还能干更awesome的事情。网上有太多关于zk应用场景一览的文章了，这里就不详细说明，后续我只会说一下自己需要用zk解决的棘手问题。</p>
+<h2 id="架构">架构</h2>
+<p>zk使用类paxos算法来保证其HA，每次通过选举得到一个master用来处理client的请求，client可以挂载到任意一台zk server上面，因为paxos这种是强一致同步算法，所以zk能保证每一台server上面数据都是一致的。架构如下：</p>
+<pre><code>                                                                     
+                      +-------------------------------+                         
+                      |                               |                         
+              +----+--++          +----+---+        +-+--+---+                  
+              | server |          | server |        | server |                  
+              |        +----------+ master +--------+        |                  
+              +--^--^--+          +----^---+        +----^---+                  
+                 |  |                  |                 |                      
+                 |  |                  |                 |                      
+                 |  |                  |                 |                      
+           +-----+  +-----+            +------+          +---------+            
+           |              |                   |                    |            
+           |              |                   |                    |            
+      +----+---+        +-+------+         +--+-----+           +--+-----+      
+      | client |        | client |         | client |           | client |      
+      +--------+        +--------+         +--------+           +--------+
+</code></pre><h2 id="Data_Model">Data Model</h2>
+<p>zk内部是按照类似文件系统层级方式进行数据存储的，就像这样：</p>
+<pre><code>                        +---+             
+                        | / |             
+                        +++-+             
+                         ||               
+                         ||               
+          +-------+------++----+-------+  
+          | /app1 |            | /app2 |  
+          +-+--+--+            +---+---+  
+            |  |                   |      
+            |  |                   |      
+            |  |                   |      
++----------++ ++---------+    +----+-----+
+| /app1/p1 |  | /app1/p2 |    | /app2/p1 |
++----------+  +----------+    +----------+
+</code></pre><p>对于任意一个节点，我们称之为znode，znode有很多属性，譬如<code>Zxid</code>（每次更新的事物ID）等，具体可以详见zk的文档。znode有ACL控制，我们可以很方便的设置其读写权限等，但个人感觉对于内网小集群来说意义不怎么大，所以也就没深入研究。</p>
+<p>znode有一种Ephemeral Node，也就是临时节点，它是session有效的，当session结束之后，这个node自动删除，所以我们可以用这种node来实现对服务的监控。譬如一个服务启动之后就向zk挂载一个ephemeral node，如果这个服务崩溃了，那么连接断开，session无效了，这个node就删除了，我们也就知道该服务出了问题。</p>
+<p>znode还有一种Sequence Node，用来实现序列化的唯一节点，我们可以通过这个功能来实现一个简单地leader服务选举，譬如每个服务启动的时候都向zk注册一个sequence node，谁最先注册，zk给的sequence最小，这个最小的就是leader了，如果leader当掉了，那么具有第二小sequence node的节点就成为新的leader。</p>
+<h3 id="Znode_Watch">Znode Watch</h3>
+<p>我们可以watch一个znode，用来监听对应的消息，zk会负责通知，但只会通知一次。所以需要我们再次重新watch这个znode。那么如果再次watch之前，znode又有更新了，client不是收不到了吗？这个就需要client不光要处理watch，同时也需要适当的主动get相关的数据，这样就能保证得到最新的消息了。也就是消息系统里面典型的推拉结合的方式。推只是为了提升性能，快速响应，而拉则为了更好的保证消息不丢失。</p>
+<p>但是，我们需要注意一点，zk并不能保证client收到消息之后同时处理，譬如配置文件更新，zk可能通知了所有client，但client并不能全部在同一个时间同时reload，所以为了处理这样的问题，我们需要额外的机制来保证，这个后续说明。</p>
+<p>watch只能应用于data（通过get，exists函数）以及children（通过getChildren函数）。也就是监控znode数据更新以及znode的子节点的改变。</p>
+<h2 id="API">API</h2>
+<p>zk的API时很简单的，如下：</p>
+<ul>
+<li>create</li>
+<li>delete</li>
+<li>exists</li>
+<li>set data</li>
+<li>get data</li>
+<li>get chilren</li>
+<li>sync</li>
+</ul>
+<p>就跟通常的文件系统操作差不多，就不过多说明了。</p>
+<h2 id="Example">Example</h2>
+<p>总的来说，如果我们不深入zk的内部实现，譬如paxos等，zk还是很好理解的，而且使用起来很简单。通常我们需要考虑的就是用zk来干啥，而不是为了想引入一个牛的新特性而用zk。</p>
+<h3 id="Lock">Lock</h3>
+<p>用zk可以很方便的实现一个分布式lock，记得最开始做企业群组盘的时候，我需要实现一个分布式lock，然后就用redis来弄了一个，其实当时就很担心redis单点当掉的问题，如果那时候我就引入了zk，可能就没这个担心了。</p>
+<p>官方文档已经很详细的给出了lock的实现流程：</p>
+<ol>
+<li>create一个类似path/lock-n的临时序列节点</li>
+<li>getChilren相应的path，注意这里千万不能watch，不然惊群很恐怖的</li>
+<li>如果1中n是最小的，则获取lock</li>
+<li>否则，调用exists watch到上一个比自己小的节点，譬如我现在n是5，我就可能watch node-4</li>
+<li>如果exists失败，表明前一个节点没了，则进入步骤2，否则等待，直到watch触发重新进入步骤2</li>
+</ol>
+<h3 id="Codis">Codis</h3>
+<p>最近在考虑ledisdb的cluster方案，本来也打算用proxy来解决的，然后就在想用zk来处理rebalance的问题，结果这时候codis横空出世，发现不用自己整了，于是就好好的研究了一下codis的数据迁移问题。其实也很简单：</p>
+<ol>
+<li>config发起pre migrate action</li>
+<li>proxy接收到这个action之后，将对应的slot设置为pre migrate状态，同时等待config发起migrate action</li>
+<li>config等待所有的proxy返回pre migrate之后，发起migrate action</li>
+<li>proxy收到migrate action，将对应的slot设置为migrate状态</li>
+</ol>
+<p>上面这些，都是通过zk来完成的，这里需要关注一下为啥要有pre migrate这个状态，如果config直接发起migrate，那么zk并不能保证proxy同一时间全部更新成migrate状态，所以我们必须有一个中间状态，在这个中间状态里面，proxy对于特定的slot不会干任何事情，只能等待config将其设置为migrate。虽然proxy对于相应slot一段时间无法处理外部请求，但这个时间是很短的（不过此时config当掉了就惨了）。config知道所有proxy都变成pre migrate状态之后，就可以很放心的发送migrate action了。因为这时候，proxy只有两种可能，变成migrate状态，能正常工作，仍然还是pre migrate状态，不能工作，也自然不会对数据造成破坏。</p>
+<p>其实上面也就是一个典型的2PC，虽然仍然可能有隐患，譬如config当掉，但并不会对实际数据造成破坏。而且config当掉了我们也能很快知晓并重新启动，所以问题不大。</p>
+<h2 id="总结">总结</h2>
+<p>总的来说，zk的使用还是挺简单的，只要我们知道它到底能用到什么地方，那zk就真的是分布式开发里面一把瑞士军刀了。不过我挺不喜欢装java那套东西，为了zk也没办法，虽然go现在也有etcd这些类zk的东西了，但毕竟还没经受过太多的考验，所以现在还是老老实实的zk吧。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+
+  <nav id="pagination">
+  
+  
+  <div class="clearfix"></div>
+</nav>
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.com">
+  </form>
+</div>
+
+  <div class="widget tag">
+  <h3 class="title">Github</h3>
+  <ul class="entry">
+  <li><a href="https://github.com/siddontang/ledisdb" target="_blank">LedisDB</a><small>Fast NoSQL</small></li>
+  <li><a href="https://github.com/siddontang/mixer" target="_blank">Mixer</a><small>MySQL Proxy with Go</small></li>
+  <li><a href="https://github.com/siddontang/libtnet" target="_blank">Libtnet</a><small>High Performance EventLoop</small></li>
+  <li><a href="https://github.com/siddontang/moonmq" target="_blank">MoonMQ</a><small>Fast Message Queue</small></li>
+  <li><a href="https://github.com/siddontang" target="_blank">More...</a></li>
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>7</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>27</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>13</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tagcloud">
+  <h3 class="title">标签云</h3>
+  <div class="entry">
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+  </div>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2014 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

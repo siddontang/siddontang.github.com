@@ -68,6 +68,54 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2012-09-19T10:00:00.000Z"><a href="/2012/09/19/network-prefork/">09-19-2012</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2012/09/19/network-prefork/">深入浅出网络模型(2)</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在深入浅出网络模型里面，我大概介绍了几种个人理解的网络编程模型，从涛哥和葱头的反馈来看，讲的东西还不怎么详细，所以后续会不断的补充完善。</p>
+<h1 id="prefork模型">prefork模型</h1>
+<p>今天主要探讨的是prefork模型，我在前文说过，因为unix的fork很迅速，所以可以采用multi process模式，即每次accept到一个socket之后，就fork一个子进程，然后盖子进程进行处理。这样就有一个问题，如果连接数过多，会导致fork过多的子进程，造成系统压力。</p>
+<p>所以就有了prefork模型，也就是预先分配一些子进程进行后续网络处理。显而易见的好处就在于不用每次都fork，减少了很多系统开销。</p>
+<h2 id="main_accept_+_prefork_handle">main accept + prefork handle</h2>
+<p>prefork我认为有两种模型，第一种就是主进程bind，listen之后，就一直accept，当接收到新的连接的时候，将这个socket发给其中一个子进程处理。</p>
+<p>这里就涉及到一个问题，父进程如何将收到的socket发送给子进程。因为此时子进程在accept之前已经创建，所以不可能共享后续父进程新创建的socket。所以我们需要一套机制来进行进程之间的socket传递，而这个是早已经有的实现。</p>
+<ul>
+<li>*nix平台下面，使用socketpair + sendmsg + recvmsg</li>
+<li>windows平台下面，使用WSADuplicateSocket</li>
+</ul>
+<p>因为网上这方面的资料很多的，这里就不在详细说明，只是觉得对于这种方法，还需要写跨平台的代码，并且进程传递socket也需要系统开销，所以这种模型我没有实现过。flup的prefork模型采用的是这种做法，后续可以看看。</p>
+<h2 id="prefork_accept">prefork accept</h2>
+<p>当主进程bind，listen之后，各个子进程自己去accept，这样当有一个连接请求到来的时候，只要有一个子进程能够accept，就能进行后续处理了。这个模型相对来说，比较简单，较易实现，tornado的多进程模型就采用的是这样方案。</p>
+<p>不过这种方案有可能出现惊群效应，也就是说，当所有子进程都在accept的时候，如果来了一个请求，会将所有子进程唤醒，但是只有一个进程能够处理这个请求，而其他 进程继续休眠等待。</p>
+<p>解决这个问题，通常的做法就是在accept的时候进行锁保护，保证只能有一个进行进行accept，但是我觉得，惊群效应出现的情况在于休眠的进程很多，但请求很少的情况，如果有大量的连接请求，所有子进程都在忙碌，这个问题自然就没有了。所以也不需要怎么特别关注。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2012-09-02T10:00:00.000Z"><a href="/2012/09/02/step-by-step-network/">09-02-2012</a></time>
       
       
@@ -468,7 +516,7 @@ code 200 -- 5000
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
-    <li><a href="/categories/program/">program</a><small>12</small></li>
+    <li><a href="/categories/program/">program</a><small>13</small></li>
   
     <li><a href="/categories/python/">python</a><small>6</small></li>
   
@@ -480,7 +528,7 @@ code 200 -- 5000
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 
