@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>http://siddontang.com/2014/12/27/my-2014/</loc>
+    <lastmod>2014-12-27T05:21:38.000Z</lastmod>
+  </url>
+  
+  <url>
     <loc>http://siddontang.com/2014/12/03/learn-zookeeper/</loc>
     <lastmod>2014-12-03T12:51:23.000Z</lastmod>
   </url>
