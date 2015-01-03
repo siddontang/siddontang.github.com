@@ -68,6 +68,209 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-01-16T07:33:02.000Z"><a href="/2014/01/16/lua-function-register/">01-16-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/01/16/lua-function-register/">Lua与C接口层开发</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="lua与c的交互">lua与c的交互</h1>
+<p>关于lua和c的交互，主要有两个方面，一是lua调用c的函数，而另一个则是c调用lua函数。而这些都是通过lua stack来进行的。</p>
+<h2 id="c调用lua">c调用lua</h2>
+<p>在c里面使用lua，主要是通过lua_call这类函数，下面来自lua manual的例子：</p>
+<pre><code>lua_getglobal(L, &quot;f&quot;);                  /* function to be called */
+lua_pushstring(L, &quot;how&quot;);                        /* 1st argument */
+lua_getglobal(L, &quot;t&quot;);                    /* table to be indexed */
+lua_getfield(L, -1, &quot;x&quot;);        /* push result of t.x (2nd arg) */
+lua_remove(L, -2);                  /* remove &#39;t&#39; from the stack */
+lua_pushinteger(L, 14);                          /* 3rd argument */
+lua_call(L, 3, 1);     /* call &#39;f&#39; with 3 arguments and 1 result */
+lua_setglobal(L, &quot;a&quot;);                         /* set global &#39;a&#39; */
+</code></pre><p>该例子等同于直接在lua里面调用 a = f(“how”, t.x, 14)。<br>通过上面的例子可以看到，在c中使用lua是一件很容易的事情，首先获取需要调用的lua函数，然后将其需要的参数依次压入stack，然后通过lua_call调用，该函数调用的返回值也压入stack，供c去获取。</p>
+<h2 id="lua调用c">lua调用c</h2>
+<p>对于lua调用c，我们首先需要将c函数注册给lua，而注册给lua的函数，需要满足 int (*lua_CFunction)(lua_State* pState) 这种类型。如下例子:</p>
+<pre><code>int multi(lua_State* pState)
+{
+    int data1 = int(lua_tonumber(pState, 1));
+    int data2 = int(lua_tonumber(pState, 2));
+    lua_pushnumber(pState, data1 * data2);
+    return 1;
+}
+
+lua_register(pState, multi, &quot;multi&quot;);
+
+#for use in lua
+#a = multi(10, 20)
+</code></pre><p>我们通过lua_register将mutli函数注册给lua，该函数接受两个参数，并且有一个返回值。当lua调用multi的时候，会将参数压入stack，所以我们可以通过lua_tonumber(pState, 1)和lua_tonumber(pState, 2)来获取，其中1为第一个参数10，2为第二个参数20。当运行完成之后，multi函数通过lua_pushnumber将结果压入lua堆栈，并通过return 1告知lua有一个返回值，为200。</p>
+<p>可以看到，在lua中使用c也是一件很简单的事情。</p>
+<h1 id="lua_mainly_or_c_mainly">lua mainly or c mainly</h1>
+<p>通过上面的例子可以看出，lua与c是很方便的交互的，但是在实际的游戏项目中，我们首先必须确定的一个问题就是，代码逻辑是以lua为主还是以c为主。</p>
+<ul>
+<li>lua为主的游戏就是逻辑主要由lua负责，核心的对性能要求较高的逻辑则由c负责，游戏中的数据大多由lua负责。</li>
+<li>c为主的游戏则是逻辑主要由c负责，lua只是负责简单的配置。</li>
+</ul>
+<p>这两种方式都有优劣，对于实际游戏项目来说，个人认为，应该采用lua为主，c作为高性能核心的方式。之所以这样选择，是因为游戏的逻辑变动很大，我们需要快速的进行代码迭代，这个对于lua来说非常方便。而对于核心引擎，因为变化不大，同时对性能要求较高，所以采用c是一个很好的选择。</p>
+<h1 id="reg_helper">reg helper</h1>
+<p>在实际的游戏项目中，我们会遇到这样一个问题，假设c提供的函数为 int func(int a, int b)，如果这个函数要提供给lua使用，我们需要写一个对应的注册函数，如下:</p>
+<pre><code>int func_wrapper(lua_State* pState)
+{
+    int a = int(lua_tonumber(pState, 1));
+    int b = int(lua_tonumber(pState, 2));
+    int ret = func(a, b);
+    lua_pushnumber(pState, ret);
+    return 1;
+}
+
+lua_register(pState, func_wrapper, &quot;func&quot;);
+</code></pre><p>对于任意的c函数，我们需要写一个对应的wrapper用来注册给lua。如果项目中只有几个c函数，那么无所谓，但是如果需要注册给lua的c函数很多，那么对于每一个c函数写一个wrapper，是一件很不现实的事情。并且如果c函数的参数或者返回值有变化，我们同时需要修改对应的wrapper函数。基于上述原因，我们需要一套自动机制，能够将任意的c函数注册给lua使用。实际来说，我们需要提供一个函数，对于任意的c函数func，我们只需要调用register(func, “func”)，那么就能直接注册给lua使用。</p>
+<h2 id="traits">traits</h2>
+<p>首先，我们必须面对的问题就是，不同的c函数，参数和返回值是不一样的，譬如对于int类型的参数，我们需要通过lua_tonumber获取数据，而对于const char* 类型的参数，我们需要通过lua_tostring来获取，同理对于返回值也一样。所以我们需要一套机制，根据c函数不同的参数和返回值类型来调用lua对应的stack操纵函数。我们可以通过c++ traits来实现。</p>
+<p>我们提供如下一套函数:</p>
+<pre><code>template&lt;typename T&gt;
+struct TypeHelper{};
+bool getValue(TypeHelper&lt;bool&gt;, lua_State* pState, int index)
+{
+    return lua_toboolean(pState, index) == 1;
+}
+char getValue(TypeHelper&lt;char&gt;, lua_State* pState, int index)
+{
+    return static_cast&lt;char&gt;(lua_tonumber(pState, index));
+}
+int getValue(TypeHelper&lt;int&gt;, lua_State* pState, int index)
+{
+    return static_cast&lt;int&gt;(lua_tonumber(pState, index));
+}
+void pushValue(lua_State* pState, bool value)
+{
+    lua_pushboolean(pState, int(value));
+}
+
+void pushValue(lua_State* pState, char value)
+{
+    lua_pushnumber(pState, value);
+}
+
+void pushValue(lua_State* pState, int value)
+{
+    lua_pushnumber(pState, value);
+}
+</code></pre><p>通过traits技术，对于不同的参数类型，我们可以调用对应的getValue函数，来从lua获取实际的数据，而对于返回值，通过c++自动的参数匹配，就能调用对应的pushValue函数。</p>
+<h2 id="CCallHelper">CCallHelper</h2>
+<p>上面解决了类型匹配的问题，下面就需要提供wrapper函数，用以封装c函数。这里我们提供call helper类来实现。</p>
+<pre><code>template&lt;typename Ret&gt;
+class CCallHelper
+{
+public:
+    static int call(Ret (*func)(), lua_State* pState)
+    {
+        Ret ret = (*func)();
+        pushValue(pState, ret);
+        return 1;
+    }
+
+    template&lt;typename P1&gt;
+    static int call(Ret (*func)(P1), lua_State* pState)
+    {
+        P1 p1 = getValue(TypeHelper&lt;P1&gt;(), pState, 1);
+        Ret ret = (*func)(p1);
+        pushValue(pState, ret);
+        return 1;
+    }
+};
+</code></pre><p>CCallHelper提供了静态的call函数，第一个参数就是实际c函数，通过函数模板可以进行任意c函数的匹配，这里只提供了匹配无参数和一个参数类型的c函数模板，我们可以扩展到支持任意参数个数，但也别太多了。因为对于任意c函数来说，可能有一个返回值，也可能没有返回值，那么我们如何匹配没有返回值的c函数呢？这里就是为什么我们需要CCallHelper的原因。在c++中，是不支持函数级别的模板特化的，但是类却可以，所以我们通过特化CCallHelper来匹配无返回值的c函数。如下：</p>
+<pre><code>template&lt;&gt;
+class CCallHelper&lt;void&gt;
+{
+public:
+    static int call(void (*func)(), lua_State* pState)
+    {
+        (*func)();
+        return 0;
+    } 
+
+    template&lt;typename P1&gt;
+    static int call(void (*func)(P1), lua_State* pState)
+    {
+        P1 p1 = getValue(TypeHelper&lt;P1&gt;(), pState, 1);
+        (*func)(p1);
+        return 0;
+    }
+};
+</code></pre><h2 id="CCallDispatcher">CCallDispatcher</h2>
+<p>通过CCallHelper::call(func, pState)，我们就可以与lua进行交互，那么又如何调用到相应的CCallHelper呢？这里我们通过CCallDispatcher来进行，如下：</p>
+<pre><code>template&lt;typename Func&gt;
+class CCallDispatcher
+{
+public:
+    template&lt;typename Ret&gt;
+    static int dispatch(Ret (*func)(), lua_State* pState)
+    {
+        return CCallHelper&lt;Ret&gt;::call(func, pState);
+    }
+
+    template&lt;typename Ret, typename P1&gt;
+    static int dispatch(Ret (*func)(P1), lua_State* pState)
+    {
+        return CCallHelper&lt;Ret&gt;::call(func, pState);
+    }
+};
+</code></pre><p>通过CCallDispatcher，我们就可以将不同的c函数dispatch到不同的CCallHelper上面。</p>
+<h2 id="CCallRegister_and_regFunction">CCallRegister and regFunction</h2>
+<p>解决了c函数派发调用的问题，最后我们就需要处理如何将任意的c函数注册给lua，代码如下：</p>
+<pre><code>template&lt;typename Func&gt;
+class CCallRegister
+{
+public:
+    static int call(lua_State* pState)
+    {
+        Func* func = static_cast&lt;Func*&gt;(lua_touserdata(pState, lua_upvalueindex(1));
+        return CCallDispatcher&lt;Func&gt;::dispatch(*func, pState);
+    }
+};
+
+template&lt;typename Func&gt;
+void regFunction(lua_State* pState, Func func, const char* funcName)
+{
+    int funcSize = sizeof(Func);
+    void* data = lua_newuserdata(pState, funcSize);
+    memcpy(data, &amp;func, funcSize);
+
+    lua_pushcclosure(pState, CCallRegister&lt;Func&gt;::call, 1);
+    lua_setglobal(pState, funcName);
+}
+</code></pre><p>首先，我们提供CCallRegister类，里面提供了一个static的call函数，该函数满足lua注册格式，所以实际我们是将该函数注册给lua，在call函数里面，我们通过lua_touserdata(pState, lua_upvalueindex(1))来获取实际的func，然后传递给CCallDispatcher进行派发。而将call注册则是通过regFunction，该函数将实际的c函数func存储在一个userdata中，然后将该userdata绑定到对应的CCallRgister call上面，作为一个upvalue，这样当在lua里面调用call函数的时候，通过lua_upvalueindex获取对应的upvalue，则可以取到实际的c函数。</p>
+<h1 id="一些设计上面的考虑">一些设计上面的考虑</h1>
+<p>上述reghelper的实现，我已经放到github <a href="https://github.com/siddontang/luahelper" target="_blank" rel="external">luahelper</a>上面，并且在max os，gcc 4.2，lua5.2环境下面测试通过。</p>
+<p>这里谈一些设计上面的问题，首先，我说的任意c函数，参数和返回值只能是基本数值类型，如bool，char，short，int，long，float，double以及字符串类型char*等，这里我并没有提供复杂类型譬如class，struct的支持。之所以这样考虑，是因为我想保证lua与<br>c交互的简单，云风曾经说过<a href="http://blog.codingnow.com/2008/08/lua_is_not_c_plus_plus.html" target="_blank" rel="external">lua不是c++</a>，我本人当年也曾经用了2年的时间做了同样的事情。但是实现了这套东西，功能是狠强大了，以至于可以把lua当成c++来用了，但是这真的是使用lua正确的方式吗？我现在觉得，引入复杂的结合层，反而在某些时候会带来更大的复杂性，导致语言侧重点的混淆。所以有时候，我反而觉得，对于这种语言的交互，可能使用其他方式，譬如json，反而来的更容易。</p>
+<h1 id="写在后面的话">写在后面的话</h1>
+<p>对于lua和游戏开发的一些东西，其实一直想写，但是以前因为很多方面的原因而中途放弃。现在重新开始，有几个方面的原因，一个在于仍然对于游戏开发的热爱，做了4年的游戏开发，虽然现在从事云存储方面的研究，但是对游戏热情依旧。另一个方面在于lua5.2的发布，觉得是应该对以前游戏人生做一个总结了。</p>
+<p>如果需要更强大的lua与c的交互，我觉得<a href="http://www.swig.org/" target="_blank" rel="external">swig</a>可能更合适。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-01-01T06:04:17.000Z"><a href="/2014/01/01/libtnet-comettest/">01-01-2014</a></time>
       
       
@@ -1052,142 +1255,6 @@ t.send(None)
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2013-12-28T08:33:15.000Z"><a href="/2013/12/28/learn-tornado-security/">12-28-2013</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2013/12/28/learn-tornado-security/">学习Tornado：安全</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>在web编程中，安全性是我们都必须面临的一个问题，包括cookie伪造，xsrf攻击等。tornado作为一个web framework，在安全性方面也提供了很多功能，这里简单介绍一下。</p>
-<h1 id="cookie">cookie</h1>
-<p>在web编程中，浏览器经常使用cookie来保存相关用户信息，用于与server交互，但是cookie有很多安全问题，譬如cookie伪造。cookie有很多方式被修改，javascript，flash，以及browser plugin等，所以首先需要保证cookie不被修改。</p>
-<h2 id="secure_cookie">secure cookie</h2>
-<p>tornado提供了secure cookie机制来保证cookie不被修改。tornado使用一个密钥用来给cookie进行签名，用来保证cookie只能被服务器修改。因为密钥只有tornado server知道，所以其它应用程序是没办法修改cookie的值。</p>
-<p>tornado使用set_secure_cookie和get_secure_cookie来设置和读取browser的cookie。使用secure cookie，只需要在tornado启动的时候设置cookie_secret就行了，如下：</p>
-<pre><code>import tornado.web 
-import tornado.httpserver 
-import tornado.ioloop 
-
-class MainHandler(tornado.web.RequestHandler):
-    def get(self):
-        count = self.get_secure_cookie(&#39;count&#39;)
-        count = (int(count) + 1) if count else 1
-
-        self.set_secure_cookie(&#39;count&#39;, str(count))
-
-        self.write(str(count))
-
-settings = {
-    &#39;cookie_secret&#39; : &#39;S6Bp2cVjSAGFXDZqyOh+hfn/fpBnaEzFh22IVmCsVJQ=&#39;
-}
-
-application = tornado.web.Application([
-    (r&quot;/&quot;, MainHandler),
-], **settings)
-
-http_server = tornado.httpserver.HTTPServer(application)
-http_server.listen(8080)
-tornado.ioloop.IOLoop.instance().start()
-</code></pre><p>cookie_secret的生成如下：</p>
-<pre><code>import base64
-import uuid
-base64.b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes)
-</code></pre><h2 id="httponly">httponly</h2>
-<p>为了防止cross-site scripting attack，tornado可以再设置cookie的时候增加httponly字段，这样该cookie就不能够被javascript读取。同时，为了更高的安全性，可以给cookie设置secure属性，这个跟先前讨论的set_secure_cookie不一样，上面那个是对cookie进行加密签名，保证不被修改，而这个则是让browser通过ssl传输cookie。启用这些功能很简单，只需要在设置cookie的时候处理。</p>
-<pre><code>class MainHandler(tornado.web.RequestHandler):
-    def get(self):
-        self.set_cookie(&#39;count1&#39;, &#39;1&#39;, httponly = True, secure = True)
-        self.set_secure_cookie(&#39;count2&#39;, &#39;2&#39;, httponly = True, secure = True)
-</code></pre><h1 id="XSRF">XSRF</h1>
-<p>上面介绍的方法虽然能够保证cookie的安全，但是还是防止不了<a href="http://en.wikipedia.org/wiki/Cross-site_request_forgery" target="_blank" rel="external">XSRF攻击</a>。为了防止XSRF攻击，首先设计web服务的时候就需要考虑http method的side effects。按照restful的编程模型，get只能用来获取数据，post才会去修改数据，这样就能在很大的程度上面防止XSRF，因为对于通常情况来说，XSRF攻击就是通过设置img的src为一个恶意的get请求，只要我们的get不会进行数据修改，自然就能防止。</p>
-<p>但是一些恶意的操作仍然能够发送post请求来进行攻击，譬如通过HTML forms或者XMLHTTPRequest API，所以为了防止post这种的攻击，我们需要一些额外的机制。</p>
-<p>tornado提供了一个XSRF保护机制，原理很简单，就是在post提交数据的时候额外加入一个_xsrf字段，这个字段的值是从secure cookie里面获取的，因为其它的应用程序获取不到这个cookie的值，所以我们能够保证post的安全性。开启xsrf protection也很简单。</p>
-<pre><code>settings = {
-    &#39;cookie_secret&#39; : &#39;S6Bp2cVjSAGFXDZqyOh+hfn/fpBnaEzFh22IVmCsVJQ=&#39;,
-    &#39;xsrf_cookies&#39; : True
-}
-
-application = tornado.web.Application([
-    (r&quot;/&quot;, MainHandler),
-    (r&quot;/purchase&quot;, PurchaseHandler)
-], **settings)
-</code></pre><p>在post提交的form里面，我们只需要设置如下：</p>
-<pre><code>&lt;form action=&quot;/purchase&quot; method=&quot;POST&quot;&gt;
-
-    &lt;input type=&quot;submit&quot; value=&quot;同意&quot; name=&quot;agree&quot;/&gt;
-&lt;/form&gt;
-</code></pre><h1 id="User_Authentication">User Authentication</h1>
-<p>tornado还提供了用户认证功能，当用户登录之后，会将用户的相关信息保存到一个地方，通常是在cookie里面。当用户的cookie过期，再次访问web服务的时候就会被重定向到登陆页面。</p>
-<p>要实现上述功能，只需要重载get_current_user函数，配置login_url和使用authenticated decorator就行了。如下：</p>
-<pre><code>class BaseHandler(tornado.web.RequestHandler):
-    def get_current_user(self):
-        return self.get_secure_cookie(&#39;username&#39;)
-
-class LoginHandler(BaseHandler):
-    def get(self):
-        str = &#39;&#39;&#39;&lt;body&gt;&lt;form action=&quot;/login&quot; method=&quot;POST&quot;&gt;
-                UserName: &lt;input type=&quot;text&quot; name=&quot;username&quot; /&gt;
-                          &lt;input type=&quot;submit&quot; value=&quot;Login&quot; /&gt;
-                &lt;/form&gt;&lt;/body&gt;&#39;&#39;&#39;
-        self.write(str)
-
-    def post(self):
-        self.set_secure_cookie(&#39;username&#39;, self.get_argument(&#39;username&#39;))
-        self.redirect(&#39;/&#39;)
-
-class MainHandler(BaseHandler):
-    @tornado.web.authenticated
-    def get(self):
-        user = self.current_user
-        self.write(&#39;hello &#39; + user)
-
-class LogoutHandler(BaseHandler):
-    def get(self):
-        self.clear_cookie(&#39;username&#39;)
-        self.redirect(&#39;/&#39;)
-
-settings = {
-    &#39;cookie_secret&#39; : &#39;S6Bp2cVjSAGFXDZqyOh+hfn/fpBnaEzFh22IVmCsVJQ=&#39;,
-    &#39;login_url&#39; : &#39;/login&#39;
-}
-
-application = tornado.web.Application([
-    (r&#39;/&#39;, MainHandler),
-    (r&#39;/login&#39;, LoginHandler),
-    (r&#39;/logout&#39;, LogoutHandler)
-], **settings)
-
-http_server = tornado.httpserver.HTTPServer(application)
-http_server.listen(8080)
-tornado.ioloop.IOLoop.instance().start()
-</code></pre><h1 id="总结">总结</h1>
-<p>web安全一直是一个非常严重的问题，我们在写代码的时候一定要注意，这里有一篇如何写安全web的<a href="https://wiki.mozilla.org/WebAppSec/Secure_Coding_Guidelines" target="_blank" rel="external">Guide</a>。tornado虽然提供了一些安全机制，但是仍然不能完全保证绝对安全性，所以很多时候就需要我们决定我所写的服务到底应该有什么样的安全级别，从在这个级别下面如何保证安全性就可以了。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -1231,7 +1298,7 @@ tornado.ioloop.IOLoop.instance().start()
   
     <li><a href="/categories/lua/">lua</a><small>2</small></li>
   
-    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+    <li><a href="/categories/mysql/">mysql</a><small>2</small></li>
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
@@ -1247,7 +1314,7 @@ tornado.ioloop.IOLoop.instance().start()
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.50px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 
@@ -1256,7 +1323,7 @@ tornado.ioloop.IOLoop.instance().start()
   </div>
   <footer id="footer" class="inner"><div class="alignleft">
   
-  &copy; 2014 SiddonTang
+  &copy; 2015 SiddonTang
   
 </div>
 <div class="clearfix"></div></footer>

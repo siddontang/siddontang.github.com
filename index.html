@@ -68,6 +68,104 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2015-01-03T13:20:27.000Z"><a href="/2015/01/03/mysql-ha/">01-03-2015</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2015/01/03/mysql-ha/">MySQL高可用浅析</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>对于多数应用来说，MySQL都是作为最关键的数据存储中心的，所以，如何让MySQL提供HA服务，是我们不得不面对的一个问题。当master当机的时候，我们如何保证数据尽可能的不丢失，如何保证快速的获知master当机并进行相应的故障转移处理，都是需要我们好好思考的。这里，笔者将结合这段时间做的MySQL proxy以及toolsets相关工作，说说我们现阶段以及后续会在项目中采用的MySQL HA方案。</p>
+<h2 id="Replication">Replication</h2>
+<p>要保证MySQL数据不丢失，replication是一个很好的解决方案，而MySQL也提供了一套强大的replication机制。只是我们需要知道，为了性能考量，replication是采用的asynchronous模式，也就是写入的数据并不会同步更新到slave上面，如果这时候master当机，我们仍然可能会面临数据丢失的风险。</p>
+<p>为了解决这个问题，我们可以使用semi-synchronous replication，semi-synchronous replication的原理很简单，当master处理完一个事务，它会等待至少一个支持semi-synchronous的slave确认收到了该事件并将其写入relay-log之后，才会返回。这样即使master当机，最少也有一个slave获取到了完整的数据。</p>
+<p>但是，semi-synchronous并不是100%的保证数据不会丢失，如果master在完成事务并将其发送给slave的时候崩溃，仍然可能造成数据丢失。只是相比于传统的异步复制，semi-synchronous replication能极大地提升数据安全。更为重要的是，它并不慢，MHA的作者都说他们在facebook的生产环境中使用了semi-synchronous（<a href="http://yoshinorimatsunobu.blogspot.ca/2014/04/semi-synchronous-replication-at-facebook.html" target="_blank" rel="external">这里</a>），所以我觉得真心没必要担心它的性能问题，除非你的业务量级已经完全超越了facebook或者google。</p>
+<p>如果真的想完全保证数据不会丢失，现阶段一个比较好的办法就是使用<a href="http://galeracluster.com/" target="_blank" rel="external">gelera</a>，一个MySQL集群解决方案，它通过同时写三份的策略来保证数据不会丢失。笔者没有任何使用gelera的经验，只是知道业界已经有公司将其用于生产环境中，性能应该也不是问题。但gelera对MySQL代码侵入性较强，可能对某些有代码洁癖的同学来说不合适了:-)</p>
+<p>我们还可以使用<a href="http://drbd.linbit.com/" target="_blank" rel="external">drbd</a>来实现MySQL数据复制，MySQL官方文档有一篇文档有详细<a href="http://dev.mysql.com/doc/refman/5.6/en/ha-drbd.html" target="_blank" rel="external">介绍</a>，但笔者并未采用这套方案，MHA的作者写了一些采用drdb的问题，<a href="https://code.google.com/p/mysql-master-ha/wiki/Other_HA_Solutions#Pacemaker_+_DRBD" target="_blank" rel="external">在这里</a>，仅供参考。</p>
+<p>在后续的项目中，笔者会优先使用semi-synchronous replication的解决方案，如果数据真的非常重要，则会考虑使用gelera。</p>
+<h2 id="Monitor">Monitor</h2>
+<p>前面我们说了使用replication机制来保证master当机之后尽可能的数据不丢失，但是我们不能等到master当了几分钟才知道出现问题了。所以一套好的监控工具是必不可少的。</p>
+<p>当master当掉之后，monitor能快速的检测到并做后续处理，譬如邮件通知管理员，或者通知守护程序快速进行failover。</p>
+<p>通常，对于一个服务的监控，我们采用keepalived或者heartbeat的方式，这样当master当机之后，我们能很方便的切换到备机上面。但他们仍然不能很即时的检测到服务不可用。笔者的公司现阶段使用的是keepalived的方式，但后续笔者更倾向于使用zookeeper来解决整个MySQL集群的monitor以及failover。</p>
+<p>对于任何一个MySQL实例，我们都有一个对应的agent程序，agent跟该MySQL实例放到同一台机器上面，并且定时的对MySQL实例发送ping命令检测其可用性，同时该agent通过ephemeral的方式挂载到zookeeper上面。这样，我们可以就能知道MySQL是否当机，主要有以下几种情况：</p>
+<ol>
+<li>机器当机，这样MySQL以及agent都会当掉，agent与zookeeper连接自然断开</li>
+<li>MySQL当掉，agent发现ping不通，主动断开与zookeeper的连接</li>
+<li>Agent当掉，但MySQL未当</li>
+</ol>
+<p>上面三种情况，我们都可以认为MySQL机器出现了问题，并且zookeeper能够立即感知。agent与zookeeper断开了连接，zookeeper触发相应的children changed事件，监控到该事件的管控服务就可以做相应的处理。譬如如果是上面前两种情况，管控服务就能自动进行failover，但如果是第三种，则可能不做处理，等待机器上面crontab或者supersivord等相关服务自动重启agent。</p>
+<p>使用zookeeper的好处在于它能很方便的对整个集群进行监控，并能即时的获取整个集群的变化信息并触发相应的事件通知感兴趣的服务，同时协调多个服务进行相关处理。而这些是keepalived或者heartbeat做不到或者做起来太麻烦的。</p>
+<p>使用zookeeper的问题在于部署起来较为复杂，同时如果进行了failover，如何让应用程序获取到最新的数据库地址也是一个比较麻烦的问题。</p>
+<p>对于部署问题，我们要保证一个MySQL搭配一个agent，幸好这年头有了docker，所以真心很简单。而对于第二个数据库地址更改的问题，其实并不是使用了zookeeper才会有的，我们可以通知应用动态更新配置信息，或者使用proxy来解决。</p>
+<p>虽然zookeeper的好处很多，但如果你的业务不复杂，譬如只有一个master，一个slave，zookeeper可能并不是最好的选择，没准keepalived就够了。</p>
+<h2 id="Failover">Failover</h2>
+<p>通过monitor，我们可以很方便的进行MySQL监控，同时在MySQL当机之后通知相应的服务做failover处理，假设现在有这样的一个MySQL集群，a为master，b，c为其slave，当a当掉之后，我们需要做failover，那么我们选择b，c中的哪一个作为新的master呢？</p>
+<p>原则很简单，哪一个slave拥有最近最多的原master数据，就选哪一个作为新的master。我们可以通过<code>show slave status</code>这个命令来获知哪一个slave拥有最新的数据。我们只需要比较两个关键字段<code>Master_Log_File</code>以及<code>Read_Master_Log_Pos</code>，这两个值代表了slave读取到master哪一个binlog文件的哪一个位置，binlog的索引值越大，同时pos越大，则那一个slave就是能被提升为master。这里我们不讨论多个slave可能会被提升为master的情况。</p>
+<p>在前面的例子中，假设b被提升为master了，我们需要将c重新指向新的master b来开始复制。我们通过<code>CHANGE MASTER TO</code>来重新设置c的master，但是我们怎么知道要从b的binlog的哪一个文件，哪一个position开始复制呢？</p>
+<h3 id="GTID">GTID</h3>
+<p>为了解决这一个问题，MySQL 5.6之后引入了GTID的概念，即uuid:gid，uuid为MySQL server的uuid，是全局唯一的，而gid则是一个递增的事务id，通过这两个东西，我们就能唯一标示一个记录到binlog中的事务。使用GTID，我们就能非常方便的进行failover的处理。</p>
+<p>仍然是前面的例子，假设b此时读取到的a最后一个GTID为<code>3E11FA47-71CA-11E1-9E33-C80AA9429562:23</code>，而c的为<code>3E11FA47-71CA-11E1-9E33-C80AA9429562:15</code>，当c指向新的master b的时候，我们通过GTID就可以知道，只要在b中的binlog中找到GTID为<code>3E11FA47-71CA-11E1-9E33-C80AA9429562:15</code>这个event，那么c就可以从它的下一个event的位置开始复制了。虽然查找binlog的方式仍然是顺序查找，稍显低效暴力，但比起我们自己去猜测哪一个filename和position，要方便太多了。</p>
+<p>google很早也有了一个<a href="https://code.google.com/p/google-mysql-tools/wiki/GlobalTransactionIds" target="_blank" rel="external">Global Transaction ID</a>的补丁，不过只是使用的一个递增的整形，<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">LedisDB</a>就借鉴了它的思路来实现failover，只不过google貌似现在也开始逐步迁移到MariaDB上面去了。</p>
+<p>MariaDB的GTID实现跟MySQL 5.6是不一样的，这点其实比较麻烦，对于我的MySQL工具集<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>来说，意味着要写两套不同的代码来处理GTID的情况了。后续是否支持MariaDB再看情况吧。</p>
+<h3 id="Pseudo_GTID">Pseudo GTID</h3>
+<p>GTID虽然是一个好东西，但是仅限于MySQL 5.6+，当前仍然有大部分的业务使用的是5.6之前的版本，笔者的公司就是5.5的，而这些数据库至少长时间也不会升级到5.6的。所以我们仍然需要一套好的机制来选择master binlog的filename以及position。</p>
+<p>最初，笔者打算研究<a href="https://code.google.com/p/mysql-master-ha/" target="_blank" rel="external">MHA</a>的实现，它采用的是首先复制relay log来补足缺失的event的方式，但笔者不怎么信任relay log，同时加之MHA采用的是perl，一个让我完全看不懂的语言，所以放弃了继续研究。</p>
+<p>幸运的是，笔者遇到了<a href="https://github.com/outbrain/orchestrator" target="_blank" rel="external">orchestrator</a>这个项目，这真的是一个非常神奇的项目，它采用了一种<a href="http://code.openark.org/blog/mysql/refactoring-replication-topology-with-pseudo-gtid" target="_blank" rel="external">Pseudo GTID</a>的方式，核心代码就是这个</p>
+<pre><code>create database if not exists meta;
+
+drop event if exists meta.create_pseudo_gtid_view_event;
+
+delimiter ;;
+create event if not exists
+  meta.create_pseudo_gtid_view_event
+  on schedule every 10 second starts current_timestamp
+  on completion preserve
+  enable
+  do
+    begin
+      set @pseudo_gtid := uuid();
+      set @_create_statement := concat(&#39;create or replace view meta.pseudo_gtid_view as select \&#39;&#39;, @pseudo_gtid, &#39;\&#39; as pseudo_gtid_unique_val from dual&#39;);
+      PREPARE st FROM @_create_statement;
+      EXECUTE st;
+      DEALLOCATE PREPARE st;
+    end
+;;
+
+delimiter ;
+
+set global event_scheduler := 1;
+</code></pre><p>它在MySQL上面创建了一个事件，每隔1s，就将一个uuid写入到一个view里面，而这个是会记录到binlog中的，虽然我们仍然不能像GTID那样直接定位到一个event，但也能定位到一个1s的区间了，这样我们就能在很小的一个区间里面对比两个MySQL的binlog了。</p>
+<p>继续上面的例子，假设c最后一次出现uuid的位置为s1，我们在b里面找到该uuid，位置为s2，然后依次对比后续的event，如果不一致，则可能出现了问题，停止复制。当遍历到c最后一个binlog event之后，我们就能得到此时b下一个event对应的filename以及position了，然后让c指向这个位置开始复制。</p>
+<p>使用Pseudo GTID需要slave打开<code>log-slave-update</code>的选项，考虑到GTID也必须打开该选项，所以个人感觉完全可以接受。</p>
+<p>后续，笔者自己实现的failover工具，将会采用这种Pseudo GTID的方式实现。</p>
+<p>在《MySQL High Availability》这本书中，作者使用了另一种GTID的做法，每次commit的时候，需要在一个表里面记录gtid，然后就通过这个gtid来找到对应的位置信息，只是这种方式需要业务MySQL客户端的支持，笔者不很喜欢，就不采用了。</p>
+<h2 id="后记">后记</h2>
+<p>MySQL HA一直是一个水比较深的领域，笔者仅仅列出了一些最近研究的东西，有些相关工具会尽量在<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>中实现。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-12-27T05:21:03.000Z"><a href="/2014/12/27/my-2014/">12-27-2014</a></time>
       
       
@@ -781,80 +879,6 @@ def my_task_A():
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/golang-func-vargs/">07-20-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/07/20/golang-func-vargs/">一个Go可变参数问题</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>几天前纠结了一个蛋疼的问题，在go里面函数式支持可变参数的，譬如…T，go会创建一个slice，用来存放传入的可变参数，那么，如果创建一个slice，例如a，然后以a…这种方式传入，go会不会还会新建一个slice，将a的数据全部拷贝一份过去？</p>
-<p>如果a很大，那么将会造成很严重的性能问题，不过后来想想，可能是自己多虑了，于是查看go的文档，发现如下东西：</p>
-<blockquote>
-<p>Passing arguments to … parameters</p>
-<p>If f is variadic with a final parameter p of type …T, then within f the type of p is equivalent to type []T. If f is invoked with no actual arguments for p, the value passed to p is nil. Otherwise, the value passed is a new slice of type []T with a new underlying array whose successive elements are the actual arguments, which all must be assignable to T. The length and capacity of the slice is therefore the number of arguments bound to p and may differ for each call site.</p>
-<p>Given the function and calls</p>
-<pre><code>func Greeting(prefix string, who ...string)
-Greeting(&quot;nobody&quot;)
-Greeting(&quot;hello:&quot;, &quot;Joe&quot;, &quot;Anna&quot;, &quot;Eileen&quot;)
-</code></pre><p>within Greeting, who will have the value nil in the first call, and []string{“Joe”, “Anna”, “Eileen”} in the second.</p>
-<p>If the final argument is assignable to a slice type []T, it may be passed unchanged as the value for a …T parameter if the argument is followed by …. In this case no new slice is created.</p>
-<p>Given the slice s and call</p>
-<pre><code>s := []string{&quot;James&quot;, &quot;Jasmine&quot;}
-Greeting(&quot;goodbye:&quot;, s...)
-</code></pre><p>within Greeting, who will have the same value as s with the same underlying array.</p>
-</blockquote>
-<p>也就是说，如果我们传入的是slice…这种形式的参数，go不会创建新的slice。写了一个简单的例子验证：</p>
-<pre><code>package main
-
-import &quot;fmt&quot;
-
-func t(args ...int) {
-    fmt.Printf(&quot;%p\n&quot;, args)
-}
-
-func main() {
-    a := []int{1,2,3}
-    b := a[1:]
-
-    t(a...)
-    t(b...)
-
-    fmt.Printf(&quot;%p\n&quot;, a)
-    fmt.Printf(&quot;%p\n&quot;, b)
-}
-
-//output
-0x1052e120
-0x1052e124
-0x1052e120
-0x1052e124
-</code></pre><p>可以看到，可变参数args的地址跟实际外部slice的地址一样，用的同一个slice。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -896,7 +920,7 @@ func main() {
   
     <li><a href="/categories/lua/">lua</a><small>2</small></li>
   
-    <li><a href="/categories/mysql/">mysql</a><small>1</small></li>
+    <li><a href="/categories/mysql/">mysql</a><small>2</small></li>
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
@@ -912,7 +936,7 @@ func main() {
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 16.25px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.50px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 
@@ -921,7 +945,7 @@ func main() {
   </div>
   <footer id="footer" class="inner"><div class="alignleft">
   
-  &copy; 2014 SiddonTang
+  &copy; 2015 SiddonTang
   
 </div>
 <div class="clearfix"></div></footer>
