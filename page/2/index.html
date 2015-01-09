@@ -68,6 +68,101 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/celery-best-practices/">07-20-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/07/20/celery-best-practices/">celery最佳实践</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>作为一个Celery使用重度用户，看到<a href="https://denibertovic.com/posts/celery-best-practices/" target="_blank" rel="external">Celery Best Practices</a>这篇文章，不由得菊花一紧。干脆翻译出来，同时也会加入我们项目中celery的实战经验。</p>
+<p>通常在使用Django的时候，你可能需要执行一些长时间的后台任务，没准你可能需要使用一些能排序的任务队列，那么Celery将会是一个非常好的选择。</p>
+<p>当把Celery作为一个任务队列用于很多项目中后，作者积累了一些最佳实践方式，譬如如何用合适的方式使用Celery，以及一些Celery提供的但是还未充分使用的特性。</p>
+<h2 id="1，不要使用数据库作为你的AMQP_Broker">1，不要使用数据库作为你的AMQP Broker</h2>
+<p>数据库并不是天生设计成能用于AMQP broker的，在生产环境下，它很有可能在某时候当机（PS，当掉这点我觉得任何系统都不能保证不当吧！！！）。</p>
+<p>作者猜想为啥很多人使用数据库作为broker主要是因为他们已经有一个数据库用来给web app提供数据存储了，于是干脆直接拿来使用，设置成Celery的broker是很容易的，并且不需要再安装其他组件（譬如RabbitMQ）。</p>
+<p>假设有如下场景：你有4个后端workers去获取并处理放入到数据库里面的任务，这意味着你有4个进程为了获取最新任务，需要频繁地去轮询数据库，没准每个worker同时还有多个自己的并发线程在干这事情。</p>
+<p>某一天，你发现因为太多的任务产生，4个worker不够用了，处理任务的速度已经大大落后于生产任务的速度，于是你不停去增加worker的数量。突然，你的数据库因为大量进程轮询任务而变得响应缓慢，磁盘IO一直处于高峰值状态，你的web应用也开始受到影响。这一切，都因为workers在不停地对数据库进行DDOS。</p>
+<p>而当你使用一个合适的AMQP（譬如RabbitMQ）的时候，这一切都不会发生，以RabbitMQ为例，首先，它将任务队列放到内存里面，你不需要去访问硬盘。其次，consumers（也就是上面的worker）并不需要频繁地去轮询因为RabbitMQ能将新的任务推送给consumers。当然，如果RabbitMQ真出现问题了，至少也不会影响到你的web应用。</p>
+<p>这也就是作者说的不用数据库作为broker的原因，而且很多地方都提供了编译好的RabbitMQ镜像，你都能直接使用，譬如<a href="https://registry.hub.docker.com/search?q=rabbitmq" target="_blank" rel="external">这些</a>。</p>
+<p>对于这点，我是深表赞同的。我们系统大量使用Celery处理异步任务，大概平均一天几百万的异步任务，以前我们使用的mysql，然后总会出现任务处理延时太严重的问题，即使增加了worker也不管用。于是我们使用了redis，性能提升了很多。至于为啥使用mysql很慢，我们没去深究，没准也还真出现了DDOS的问题。</p>
+<h2 id="2，使用更多的queue（不要只用默认的）">2，使用更多的queue（不要只用默认的）</h2>
+<p>Celery非常容易设置，通常它会使用默认的queue用来存放任务（除非你显示指定其他queue）。通常写法如下：</p>
+<pre><code>@app.task()
+def my_taskA(a, b, c):
+    print(&quot;doing something here...&quot;)
+
+@app.task()
+def my_taskB(x, y):
+    print(&quot;doing something here...&quot;)
+</code></pre><p>这两个任务都会在同一个queue里面执行，这样写其实很有吸引力的，因为你只需要使用一个decorator就能实现一个异步任务。作者关心的是taskA和taskB没准是完全两个不同的东西，或者一个可能比另一个更加重要，那么为什么要把它们放到一个篮子里面呢？（鸡蛋都不能放到一个篮子里面，是吧！）没准taskB其实不怎么重要，但是量太多，以至于重要的taskA反而不能快速地被worker进行处理。增加workers也解决不了这个问题，因为taskA和taskB仍然在一个queue里面执行。</p>
+<h2 id="3，使用具有优先级的workers">3，使用具有优先级的workers</h2>
+<p>为了解决2里面出现的问题，我们需要让taskA在一个队列Q1，而taskB在另一个队列Q2执行。同时指定<strong>x</strong> workers去处理队列Q1的任务，然后使用其它的workers去处理队列Q2的任务。使用这种方式，taskB能够获得足够的workers去处理，同时一些优先级workers也能很好地处理taskA而不需要进行长时间的等待。</p>
+<p>首先手动定义queue</p>
+<pre><code>CELERY_QUEUES = (
+    Queue(&#39;default&#39;, Exchange(&#39;default&#39;), routing_key=&#39;default&#39;),
+    Queue(&#39;for_task_A&#39;, Exchange(&#39;for_task_A&#39;), routing_key=&#39;for_task_A&#39;),
+    Queue(&#39;for_task_B&#39;, Exchange(&#39;for_task_B&#39;), routing_key=&#39;for_task_B&#39;),
+)
+</code></pre><p>然后定义routes用来决定不同的任务去哪一个queue</p>
+<pre><code>CELERY_ROUTES = {
+    &#39;my_taskA&#39;: {&#39;queue&#39;: &#39;for_task_A&#39;, &#39;routing_key&#39;: &#39;for_task_A&#39;},
+    &#39;my_taskB&#39;: {&#39;queue&#39;: &#39;for_task_B&#39;, &#39;routing_key&#39;: &#39;for_task_B&#39;},
+}
+</code></pre><p>最后再为每个task启动不同的workers</p>
+<pre><code>celery worker -E -l INFO -n workerA -Q for_task_A
+celery worker -E -l INFO -n workerB -Q for_task_B
+</code></pre><p>在我们项目中，会涉及到大量文件转换问题，有大量小于1mb的文件转换，同时也有少量将近20mb的文件转换，小文件转换的优先级是最高的，同时不用占用很多时间，但大文件的转换很耗时。如果将转换任务放到一个队列里面，那么很有可能因为出现转换大文件，导致耗时太严重造成小文件转换延时的问题。</p>
+<p>所以我们按照文件大小设置了3个优先队列，并且每个队列设置了不同的workers，很好地解决了我们文件转换的问题。</p>
+<h2 id="4，使用Celery的错误处理机制">4，使用Celery的错误处理机制</h2>
+<p>大多数任务并没有使用错误处理，如果任务失败，那就失败了。在一些情况下这很不错，但是作者见到的多数失败任务都是去调用第三方API然后出现了网络错误，或者资源不可用这些错误，而对于这些错误，最简单的方式就是重试一下，也许就是第三方API临时服务或者网络出现问题，没准马上就好了，那么为什么不试着重试一下呢？</p>
+<pre><code>@app.task(bind=True, default_retry_delay=300, max_retries=5)
+def my_task_A():
+    try:
+        print(&quot;doing stuff here...&quot;)
+    except SomeNetworkException as e:
+        print(&quot;maybe do some clenup here....&quot;)
+        self.retry(e)
+</code></pre><p>作者喜欢给每一个任务定义一个等待多久重试的时间，以及最大的重试次数。当然还有更详细的参数设置，自己看文档去。</p>
+<p>对于错误处理，我们因为使用场景特殊，例如一个文件转换失败，那么无论多少次重试都会失败，所以没有加入重试机制。</p>
+<h2 id="5，使用Flower">5，使用Flower</h2>
+<p><a href="http://celery.readthedocs.org/en/latest/userguide/monitoring.html#flower-real-time-celery-web-monitor" target="_blank" rel="external">Flower</a>是一个非常强大的工具，用来监控celery的tasks和works。</p>
+<p>这玩意我们也没怎么使用，因为多数时候我们都是直接连接redis去查看celery相关情况了。貌似挺傻逼的对不，尤其是celery在redis里面存放的数据并不能方便的取出来。</p>
+<h2 id="6，没事别太关注任务退出状态">6，没事别太关注任务退出状态</h2>
+<p>一个任务状态就是该任务结束的时候成功还是失败信息，没准在一些统计场合，这很有用。但我们需要知道，任务退出的状态并不是该任务执行的结果，该任务执行的一些结果因为会对程序有影响，通常会被写入数据库（例如更新一个用户的朋友列表）。</p>
+<p>作者见过的多数项目都将任务结束的状态存放到sqlite或者自己的数据库，但是存这些真有必要吗，没准可能影响到你的web服务的，所以作者通常设置<strong>CELERY_IGNORE_RESULT = True</strong>去丢弃。</p>
+<p>对于我们来说，因为是异步任务，知道任务执行完成之后的状态真没啥用，所以果断丢弃。</p>
+<h2 id="7，不要给任务传递_Database/ORM_对象">7，不要给任务传递 Database/ORM 对象</h2>
+<p>这个其实就是不要传递Database对象（例如一个用户的实例）给任务，因为没准序列化之后的数据已经是过期的数据了。所以最好还是直接传递一个user id，然后在任务执行的时候实时的从数据库获取。</p>
+<p>对于这个，我们也是如此，给任务只传递相关id数据，譬如文件转换的时候，我们只会传递文件的id，而其它文件信息的获取我们都是直接通过该id从数据库里面取得。</p>
+<h2 id="最后">最后</h2>
+<p>后面就是我们自己的感触了，上面作者提到的Celery的使用，真的可以算是很好地实践方式，至少现在我们的Celery没出过太大的问题，当然小坑还是有的。至于RabbitMQ，这玩意我们是真没用过，效果怎么样不知道，至少比mysql好用吧。</p>
+<p>最后，附上作者的一个Celery Talk <a href="https://denibertovic.com/talks/celery-best-practices/" target="_blank" rel="external">https://denibertovic.com/talks/celery-best-practices/</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/golang-func-vargs/">07-20-2014</a></time>
       
       
@@ -980,98 +1075,6 @@ MSET (10 keys): 21881.84 requests per second
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-04-27T06:08:47.000Z"><a href="/2014/04/27/golang-why-go/">04-27-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/04/27/golang-why-go/">为什么使用Go</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>这里，我并不打算引起语言争论的口水仗，我并不是什么大牛，对语言的造诣也不深，只是想通过自己实际的经历，来说说为什么我在项目中选择go。</p>
-<h1 id="其他语言的经历">其他语言的经历</h1>
-<h2 id="C++">C++</h2>
-<p>在接触go之前，我已经有多年的c++开发经验。主要用在游戏服务端引擎开发以及P2P上面，那可是一段痛并快乐的时期，以至于我看到任何的程序钉子问题都觉得可以用c++这把锤子给敲定。但是对于互联网项目开发来说，除非你的团队整体的c++技术水平nb，并且有很强的代码规范，不然真可能是一场灾难，更别说我们现有团队几乎没其他人会这玩意了。</p>
-<p>本来，我打算在现有项目中的推送系统中使用c++，并用业余时间写好了一个网络底层库<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>，但后来还是决定打住，因为没有人能够协助我开发。令我比较欣慰的是，libtnet有一个游戏公司在使用，现处于内部测试阶段，即将放出去，我倒是很期待他们的好消息。</p>
-<h2 id="Lua">Lua</h2>
-<p>在做游戏的过程中，我也学会了lua这门语言，并且还有幸接触并完善了云风在<a href="http://blog.codingnow.com/2008/08/lua_is_not_c_plus_plus.html" target="_blank" rel="external">Lua 不是 C++</a>中提到的那个恐怖的lua，c++粘合层。</p>
-<p>lua真的是一门非常好的语言，性能高，开发快速。不光游戏公司大量使用，在互联网领域，因为openresty的流行，一些公司（包括我们）也开始在web端使用lua进行开发。（颇为自豪的是还给openresty反馈过几个bug）</p>
-<p>但是，lua因为太短小精悍，功能库并不多，很多需要自己去实现，而且，写出高性能，高质量lua代码也并不是很容易的事情。另外，因为其动态语言的特性，我们也栽了不少坑，这个后续在详说。</p>
-<h2 id="Python">Python</h2>
-<p>在我来现有的团队之前，他们就已经使用python进行整个系统的开发，甚至包括客户端GUI（这对客户端童鞋当时就是一个灾难，后来换成Qt就舒爽了）。</p>
-<p>python的好处不必说，从数不清的公司用它进行开发就知道，库非常丰富，代码简洁，开发迅速。</p>
-<p>但是，在项目中经过两年多python开发之后，我们渐渐出现了很多问题：</p>
-<ul>
-<li>性能，python的性能是比较偏低的，对于很多性能热点代码，通常都会采用其他的方式实现。在我们的项目中，需要对任何API调用进行签名认证，认证服务我们开始使用的是tornado实现，但很不幸运的是，放到外网并没有顶住压力。所以我们引入openresty，专门用以解决性能问题。</li>
-<li>部署，python的库因为太丰富了，所以我们的童鞋引入了很多的库，个人感觉在pythoner的世界里面，可没有造轮子的兴趣。有时候发版本的时候，我们会因为忘记安装一个库导致程序无法运行。这可能跟我们团队没有成熟运维经验有关，后续通过salt，puppet这种发布工具应该能解决。</li>
-<li>质量，通常我们都认为，因为python代码的简洁，我们很容易的能写出高质量的代码，但是如果没有好的代码控制手段，用python也仍然能写出渣的代码，我甚至觉得因为其灵活性，可能会更容易写出烂的代码。这可以说是我们团队的教训。</li>
-</ul>
-<p>这里，我并没有喷python的意思，它真的是一门好语言，我能够通过它快速的构建原型，验证我的想法，而且还一直在使用。只是在项目中，我们的一些疏忽，导致代码不可控了，到了不得不重构的地步了。</p>
-<h1 id="Why_GO？">Why GO？</h1>
-<p>前面说了我的语言经历，以及项目到了重构地步的原因，但是为什么会是go呢？我们可以有很多其他的选择，譬如java，erlang，或者仍然采用python。我觉得有很多因素考量：</p>
-<ul>
-<li><p>静态，go是一门静态语言，有着强类型约束，所以我们不太可能出现在python中变量在运行时类型不匹配（譬如int + string）这样的runtime error。 在编译阶段就能够帮我们发现很多问题，不用等到运行时。（当然，这个静态语言都能做到）</p>
-</li>
-<li><p>代码规范，很多人都比较反感go强制的编码规范，譬如花括号的位置。但我觉得，就因为强制约定，所以大家写出来的go代码样子都差不多，不用费心再去深究代码样式问题。而且我发现，因为规范统一，我很容易就能理解别人写的代码。</p>
-</li>
-<li><p>库支持，go的库非常丰富，而且能通过go get非常方便的获取github，google code上面的第三方库（质量你自己得担着了），再不行，用go自己造轮子也是很方便的，而且造的轮子通常都比较稳定。</p>
-</li>
-<li><p>开发迅速，不得不说，当你习惯用go开发之后，用go开发功能非常的快，相对于静态语言c++，开发的效率快的没话说，我觉得比python都不差，而且质量有保证。我们花了不到一个星期进行推送服务核心功能开发，到现在都没怎么变动，稳定运行。</p>
-</li>
-<li><p>部署方便，因为是静态的，只需要build成一个可运行程序就可以了，部署的时候直接扔一个文件过去，不需要像python那样安装太多的依赖库。</p>
-</li>
-</ul>
-<h1 id="GO特性">GO特性</h1>
-<p>go现在的这个样子，有些人喜欢，有些人不喜欢，我无法知道为啥google那帮人把go设计成这样，但是我觉得，既然存在，就有道理，我只需要知道什么该用，什么不该用就可以了。</p>
-<h2 id="gc">gc</h2>
-<p>GO提供了gc，这对于c++的童鞋来说，极大的减少了在内存上面犯错的机会，只是go的gc这个效率还真的不好恭维，比起java来说，还有很大的提升空间。</p>
-<p>所以有时候写代码，我们还得根据tuning来提升gc的效率，譬如采用内存池的方式来管理大块的slice分配，采用<a href="http://blog.csdn.net/siddontang/article/details/23541587" target="_blank" rel="external">no copy</a>的方式来进行string，slice的互转。</p>
-<p>不过go1.3貌似gc性能有了很大的改善，这点让我比较期待。</p>
-<h2 id="defer">defer</h2>
-<p>go的defer其实是一个让人又爱又恨的东西，对于防止资源泄露，defer可是一个很不错的东西，但是滥用defer可是会让你面临很严重的内存问题，尤其是像下面的代码：</p>
-<pre><code>for {
-    defer func(){
-        //do somthing
-    }
-}
-</code></pre><p>别以为go会在调用完成defer之后就好好的进行gc回收defer里面的东西，在我们进行内存profile的时候，发现大量的内存占用都是defer引起的。所以使用起来需要特别谨慎。</p>
-<p>但我觉得，这个go应该会稍微改善，在go1.3里面，也有了对defer的优化。</p>
-<h2 id="error">error</h2>
-<p>也许error是一个让人争议很大的东西，现代方式的exception那里去呢？但是我觉得error能够非常明确的告诉使用者该函数会有错误返回，如果使用exception，除非文档足够详细，我还真不知道哪里就会蹦出一个异常了。</p>
-<p>只是，go又提供了类似exception的<a href="http://blog.golang.org/defer-panic-and-recover" target="_blank" rel="external">defer,panic,recover</a>，这是要闹哪出。</p>
-<p>其实<a href="http://blog.iwinux.info/blog/2012/12/error-handling-in-go.html" target="_blank" rel="external">这篇文章</a>我觉得已经解释的很好了，go程序的惯例是对外的API使用error，而内部错误处理可以用defer，recover和panic来简化流程。</p>
-<p>其实这倒跟我一贯的编程准则对应，在团队在用python进行开发的时候，我们都明确要求库对外提供的API需要使用返回值来表示错误，而在内部可以使用try，catch异常机制。</p>
-<h2 id="interface">interface</h2>
-<p>go提供了interface来进行抽象编程。何谓接口，最通常的例子就是鸭子的故事，“当看到一只鸟走起来像鸭子、游泳起来像鸭子、叫起来也像鸭子，那么这只鸟就可以被称为鸭子“。</p>
-<p>在go里面，interface就是一堆方法的集合，如果某个对象实现了这些方法，那么该对象可以就算是该interface。使用interface，我们可以很方便的实现非侵入式编程，进行模块功能的替换。</p>
-<p>对于长时间沉浸c++和python的童鞋来说，一下子要用interface来解决抽象问题，可能会很不适应。但当习惯之后，你会发现，其实interface非常的灵活方便。</p>
-<h1 id="写到后面">写到后面</h1>
-<p>在使用的时候，我们需要知道go到底适用在什么地方，譬如我们现在也就将API服务使用go重构，我们可没傻到用go去替换openresty。</p>
-<p>总之，go是一门很新的语言，国内也已经有很多公司开始吃这个螃蟹，也有成功的例子了，而我们也正开始了这段旅程。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -1109,7 +1112,7 @@ MSET (10 keys): 21881.84 requests per second
   
     <li><a href="/categories/c++/">c++</a><small>7</small></li>
   
-    <li><a href="/categories/go/">go</a><small>27</small></li>
+    <li><a href="/categories/go/">go</a><small>28</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   
@@ -1131,7 +1134,7 @@ MSET (10 keys): 21881.84 requests per second
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.00px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.50px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 14.44px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 

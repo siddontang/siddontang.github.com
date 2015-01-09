@@ -4,7 +4,7 @@
   <subtitle><![CDATA[My thought for program]]></subtitle>
   <link href="/atom.xml" rel="self"/>
   <link href="http://siddontang.com/"/>
-  <updated>2015-01-03T13:25:53.789Z</updated>
+  <updated>2015-01-09T14:49:33.760Z</updated>
   <id>http://siddontang.com/</id>
   
   <author>
@@ -13,6 +13,94 @@
   </author>
   
   <generator uri="http://zespia.tw/hexo/">Hexo</generator>
+  
+  <entry>
+    <title><![CDATA[Docker实践]]></title>
+    <link href="http://siddontang.com/2015/01/09/docker-practise/"/>
+    <id>http://siddontang.com/2015/01/09/docker-practise/</id>
+    <published>2015-01-09T14:48:10.000Z</published>
+    <updated>2015-01-09T14:49:18.000Z</updated>
+    <content type="html"><![CDATA[<h2 id="起因">起因</h2>
+<p>Docker算是现在非常火的一个项目，但笔者对其一直不怎么感冒，毕竟没啥使用场景。只是最近，笔者需要在自己的mac电脑上面安装项目的开发环境，发现需要安装MySQL，LedisDB，xcodis，Redis，Zookeeper等一堆东西，而同样的流程仍然要在Windows的机器上面再来一遍，陡然觉得必须得有一个更好的方式来管理整个项目的开发环境了。自然，笔者将目光放到了Docker上面。</p>
+<p>根据官方自己的介绍，Docker其实是一个为开发和运维人员提供构建，分发以及运行分布式应用的开源平台（野心真的不小，难怪CoreOS要新弄一个Rocket来跟他竞争的）。</p>
+<p>Docker主要包括Docker Engine，一个轻量级的运行和包管理工具，Docker Hub，一个用来共享和自动化工作流的云服务。实际在使用Docker的工程中，我们通常都是会在Docker Hub上面找到一个base image，编写Dockerfile，构建我们自己的image。所以很多时候，学习使用Docker，我们仅需要了解Docker Engine的东西就可以了。</p>
+<p>至于为啥选用Docker，原因还是很明确的，轻量简单，相比于使用VM，Docker实在是太轻量了，笔者在自己的mac air上面同时可以运行多个Docker container进行开发工作，而这个对VM来说是不敢想象的。</p>
+<p>后面，笔者将结合自己的经验，来说说如何构建一个MySQL Docker，以及当中踩过的坑。</p>
+<h2 id="MySQL_Docker">MySQL Docker</h2>
+<p>笔者一直从事MySQL相关工具的开发，对于MySQL的依赖很深，但每次安装MySQL其实是让笔者非常头疼的一件事情，不同平台安装方式不一样，加上一堆设置，很容易就把人搞晕了。所以自然，我的Docker第一次尝试就放到了MySQL上面。</p>
+<p>对于mac用户，首先需要安装boot2docker这个工具才能使用Docker，这个工具是挺方便的，但也有点坑，后续会说明。</p>
+<p>笔者前面说了，通常使用Docker的方式是在Hub上面找一个base image，虽然Hub上面有很多MySQL的image，但笔者因为开发<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>，需要在MySQL启动的时候传入特定的参数，所以决定自行编写Dockerfile来构建。</p>
+<p>首先，笔者使用的base image为ubuntu:14.04，Dockerfile文件很简单，如下:</p>
+<pre><code>FROM ubuntu:14.04
+
+# 安装MySQL 5.6，因为笔者需要使用GTID
+RUN apt-get update \
+    &amp;&amp; apt-get install -y mysql-server-5.6
+
+# 清空apt-get的cache以及MySQL datadir
+RUN apt-get clean
+RUN rm -rf /var/lib/apt/lists/* /var/lib/mysql
+
+# 使用精简配置，主要是为了省内存，笔者机器至少要跑6个MySQL
+ADD my.cnf /etc/mysql/my.cnf
+
+# 这里主要是给mysql_install_db脚本使用
+ADD my-default.cnf /usr/share/mysql/my-default.cnf
+
+# 增加启动脚本
+ADD start.sh /start.sh
+RUN chmod +x /start.sh
+
+# 将MySQL datadir设置成可外部挂载
+VOLUME [&quot;/var/lib/mysql&quot;]
+
+# 导出3306端口
+EXPOSE 3306
+
+# 启动执行start.sh脚本
+CMD [&quot;/start.sh&quot;]
+</code></pre><p>我们需要注意，对于MySQL这种需要存储数据的服务来说，一定需要给datadir设置VOLUMN，这样你才能存储数据。笔者当初就忘记设置VOLUMN，结果启动6个MySQL Docker container之后，突然发现这几个MySQL使用的是同一份数据。</p>
+<p>如果有VOLUMN, 我们可以在<code>docker run</code>的时候指定对应的外部挂载点，如果没有指定，Docker会在自己的vm目录下面生成一个唯一的挂载点，我们可以通过<code>docker inspect</code>命令详细了解每个container的情况。</p>
+<p>对于<code>start.sh</code>，比较简单：</p>
+<ul>
+<li>判断MySQL datadir下面有没有数据，如果没有，调用<code>mysql_install_db</code>初始化。</li>
+<li>允许任意ip都能使用root账号访问，<code>mysql -uroot -e &quot;GRANT ALL ON *.* TO &#39;root&#39;@&#39;%&#39; IDENTIFIED BY &#39;&#39; WITH GRANT OPTION;&quot;</code>，否则我们在外部无法连接MySQL。</li>
+<li>启动mysql</li>
+</ul>
+<p>构建好了MySQL Docker image，我们就能使用<code>docker run</code>来运行了，很简单</p>
+<pre><code>docker run -d -p 3306:3306 --name=mysql siddontang/mysql:latest
+</code></pre><p>这里，我们基于siddontang/mysql这个image创建了一个名叫mysql的container并运行，它会调用<code>start.sh</code>脚本来启动MySQL。</p>
+<p>而我们通过<code>docker stop mysql</code>就可以停止mysql container了。</p>
+<p>如果笔者需要运行多个MySQL，仅仅需要多新建几个container并运行就可以了，当然得指定对应的端口。可以看到，这种方式非常的简单，虽然使用<code>mysqld_multi</code>也能达到同样的效果，但是如果我需要在新增一个MySQL实例，<code>mysqld_mutli</code>还需要去更改配置文件，以及在对应的MySQL里面设置允许<code>mysqld_multi stop</code>的权限，其实算是比较麻烦的。而这些，在Docker里面，一个<code>docker run</code>就搞定了。</p>
+<p>完整的构建代码在这里，<a href="https://github.com/siddontang/mysql-docker" target="_blank" rel="external">mysql-docker</a>，你也可以pull笔者提交到Hub的image <code>siddontang/mysql</code>来直接使用<code>docker pull siddontang/mysql:latest</code>。</p>
+<h2 id="Boot2Docker_Pitfall">Boot2Docker Pitfall</h2>
+<p>从前面可以看到，Docker的使用是非常方便的，但笔者在使用的时候仍然碰到了一点坑，这里记录一下。</p>
+<h3 id="IP">IP</h3>
+<p>最开始碰到的就是ip问题，笔者在run的时候做了端口映射，但是外部使用MySQL客户端死活连接不上，而这个只在笔者mac上面出现，linux上面正常，后来发现是boot2docker的问题，我们需要使用<code>boot2docker ip</code>返回的ip来访问container，在笔者的机器上面，这个ip为192.168.59.103。</p>
+<h3 id="Volumn">Volumn</h3>
+<p>仍然是boot2docker的问题，笔者在<code>docker run</code>的时候，使用<code>-v</code>来将外部的目录绑定到datadir这个VOLUMN上面，这个在linux上面是成功的，可是在mac上面，笔者发现<code>mysql_install_db</code>死活没有权限写入磁盘。后来才知道，boot2docker只允许对自己VM下面的路径进行绑定。鉴于在mac下面仅仅是调试，数据不许持久化保存，这个问题也懒得管了。反正只要不删除掉container，数据还是会在的。</p>
+<h2 id="Flatten_Image">Flatten Image</h2>
+<p>在使用Dockerfile构建自己的image的时候，对于Dockerfile里面的每一步，Docker都会生成一个layer来对应，也就是每一步都是一次提交，到最后你会发现，生成的image非常的庞大，而当你push这个image到Hub上面的时候，你的所有layer都会提交上去，加之我们国家的网速水平，会让人崩溃的。</p>
+<p>所以我们需要精简生成的image大小，也就是flatten，这个Docker官方还没有支持，但至少我们还是有办法的：</p>
+<ul>
+<li><code>docker export</code> and <code>docker import</code>，通过对特定container的export和import操作，我们可以生成一个无历史的新container，详见<a href="http://tuhrig.de/flatten-a-docker-container-or-image/" target="_blank" rel="external">这里</a>。</li>
+<li><a href="https://github.com/jwilder/docker-squash" target="_blank" rel="external">docker-squash</a>，很方便的一个工具，笔者就使用这个进行image的flatten处理。</li>
+</ul>
+<h2 id="后记">后记</h2>
+<p>总的来说，Docker还是很容易上手的，只要我们熟悉了它的命令，Dockerfile的编写以及相应的运行机制，就能很方便的用Docker来进行团队的持续集成开发。而在生产环境中使用Docker，笔者还没有相关的经验，没准后续私有云会采用Docker进行部署。</p>
+<p>后续，对于多个Container的交互，以及服务发现，扩容等，笔者也还需要好好研究，CoreOS没准是一个方向，或者研究下<a href="https://github.com/coreos/rocket" target="_blank" rel="external">rocket</a> :-)</p>
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/tags/go/"/>
+    
+      <category term="docker" scheme="http://siddontang.com/tags/docker/"/>
+    
+      <category term="mysql" scheme="http://siddontang.com/tags/mysql/"/>
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
   
   <entry>
     <title><![CDATA[MySQL高可用浅析]]></title>
@@ -1443,87 +1531,6 @@ MSET (10 keys): 21881.84 requests per second
     
     
       <category term="program" scheme="http://siddontang.com/categories/program/"/>
-    
-  </entry>
-  
-  <entry>
-    <title><![CDATA[为什么使用Go]]></title>
-    <link href="http://siddontang.com/2014/04/27/golang-why-go/"/>
-    <id>http://siddontang.com/2014/04/27/golang-why-go/</id>
-    <published>2014-04-27T06:08:47.000Z</published>
-    <updated>2014-08-08T16:06:45.000Z</updated>
-    <content type="html"><![CDATA[<p>这里，我并不打算引起语言争论的口水仗，我并不是什么大牛，对语言的造诣也不深，只是想通过自己实际的经历，来说说为什么我在项目中选择go。</p>
-<h1 id="其他语言的经历">其他语言的经历</h1>
-<h2 id="C++">C++</h2>
-<p>在接触go之前，我已经有多年的c++开发经验。主要用在游戏服务端引擎开发以及P2P上面，那可是一段痛并快乐的时期，以至于我看到任何的程序钉子问题都觉得可以用c++这把锤子给敲定。但是对于互联网项目开发来说，除非你的团队整体的c++技术水平nb，并且有很强的代码规范，不然真可能是一场灾难，更别说我们现有团队几乎没其他人会这玩意了。</p>
-<p>本来，我打算在现有项目中的推送系统中使用c++，并用业余时间写好了一个网络底层库<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>，但后来还是决定打住，因为没有人能够协助我开发。令我比较欣慰的是，libtnet有一个游戏公司在使用，现处于内部测试阶段，即将放出去，我倒是很期待他们的好消息。</p>
-<h2 id="Lua">Lua</h2>
-<p>在做游戏的过程中，我也学会了lua这门语言，并且还有幸接触并完善了云风在<a href="http://blog.codingnow.com/2008/08/lua_is_not_c_plus_plus.html" target="_blank" rel="external">Lua 不是 C++</a>中提到的那个恐怖的lua，c++粘合层。</p>
-<p>lua真的是一门非常好的语言，性能高，开发快速。不光游戏公司大量使用，在互联网领域，因为openresty的流行，一些公司（包括我们）也开始在web端使用lua进行开发。（颇为自豪的是还给openresty反馈过几个bug）</p>
-<p>但是，lua因为太短小精悍，功能库并不多，很多需要自己去实现，而且，写出高性能，高质量lua代码也并不是很容易的事情。另外，因为其动态语言的特性，我们也栽了不少坑，这个后续在详说。</p>
-<h2 id="Python">Python</h2>
-<p>在我来现有的团队之前，他们就已经使用python进行整个系统的开发，甚至包括客户端GUI（这对客户端童鞋当时就是一个灾难，后来换成Qt就舒爽了）。</p>
-<p>python的好处不必说，从数不清的公司用它进行开发就知道，库非常丰富，代码简洁，开发迅速。</p>
-<p>但是，在项目中经过两年多python开发之后，我们渐渐出现了很多问题：</p>
-<ul>
-<li>性能，python的性能是比较偏低的，对于很多性能热点代码，通常都会采用其他的方式实现。在我们的项目中，需要对任何API调用进行签名认证，认证服务我们开始使用的是tornado实现，但很不幸运的是，放到外网并没有顶住压力。所以我们引入openresty，专门用以解决性能问题。</li>
-<li>部署，python的库因为太丰富了，所以我们的童鞋引入了很多的库，个人感觉在pythoner的世界里面，可没有造轮子的兴趣。有时候发版本的时候，我们会因为忘记安装一个库导致程序无法运行。这可能跟我们团队没有成熟运维经验有关，后续通过salt，puppet这种发布工具应该能解决。</li>
-<li>质量，通常我们都认为，因为python代码的简洁，我们很容易的能写出高质量的代码，但是如果没有好的代码控制手段，用python也仍然能写出渣的代码，我甚至觉得因为其灵活性，可能会更容易写出烂的代码。这可以说是我们团队的教训。</li>
-</ul>
-<p>这里，我并没有喷python的意思，它真的是一门好语言，我能够通过它快速的构建原型，验证我的想法，而且还一直在使用。只是在项目中，我们的一些疏忽，导致代码不可控了，到了不得不重构的地步了。</p>
-<h1 id="Why_GO？">Why GO？</h1>
-<p>前面说了我的语言经历，以及项目到了重构地步的原因，但是为什么会是go呢？我们可以有很多其他的选择，譬如java，erlang，或者仍然采用python。我觉得有很多因素考量：</p>
-<ul>
-<li><p>静态，go是一门静态语言，有着强类型约束，所以我们不太可能出现在python中变量在运行时类型不匹配（譬如int + string）这样的runtime error。 在编译阶段就能够帮我们发现很多问题，不用等到运行时。（当然，这个静态语言都能做到）</p>
-</li>
-<li><p>代码规范，很多人都比较反感go强制的编码规范，譬如花括号的位置。但我觉得，就因为强制约定，所以大家写出来的go代码样子都差不多，不用费心再去深究代码样式问题。而且我发现，因为规范统一，我很容易就能理解别人写的代码。</p>
-</li>
-<li><p>库支持，go的库非常丰富，而且能通过go get非常方便的获取github，google code上面的第三方库（质量你自己得担着了），再不行，用go自己造轮子也是很方便的，而且造的轮子通常都比较稳定。</p>
-</li>
-<li><p>开发迅速，不得不说，当你习惯用go开发之后，用go开发功能非常的快，相对于静态语言c++，开发的效率快的没话说，我觉得比python都不差，而且质量有保证。我们花了不到一个星期进行推送服务核心功能开发，到现在都没怎么变动，稳定运行。</p>
-</li>
-<li><p>部署方便，因为是静态的，只需要build成一个可运行程序就可以了，部署的时候直接扔一个文件过去，不需要像python那样安装太多的依赖库。</p>
-</li>
-</ul>
-<h1 id="GO特性">GO特性</h1>
-<p>go现在的这个样子，有些人喜欢，有些人不喜欢，我无法知道为啥google那帮人把go设计成这样，但是我觉得，既然存在，就有道理，我只需要知道什么该用，什么不该用就可以了。</p>
-<h2 id="gc">gc</h2>
-<p>GO提供了gc，这对于c++的童鞋来说，极大的减少了在内存上面犯错的机会，只是go的gc这个效率还真的不好恭维，比起java来说，还有很大的提升空间。</p>
-<p>所以有时候写代码，我们还得根据tuning来提升gc的效率，譬如采用内存池的方式来管理大块的slice分配，采用<a href="http://blog.csdn.net/siddontang/article/details/23541587" target="_blank" rel="external">no copy</a>的方式来进行string，slice的互转。</p>
-<p>不过go1.3貌似gc性能有了很大的改善，这点让我比较期待。</p>
-<h2 id="defer">defer</h2>
-<p>go的defer其实是一个让人又爱又恨的东西，对于防止资源泄露，defer可是一个很不错的东西，但是滥用defer可是会让你面临很严重的内存问题，尤其是像下面的代码：</p>
-<pre><code>for {
-    defer func(){
-        //do somthing
-    }
-}
-</code></pre><p>别以为go会在调用完成defer之后就好好的进行gc回收defer里面的东西，在我们进行内存profile的时候，发现大量的内存占用都是defer引起的。所以使用起来需要特别谨慎。</p>
-<p>但我觉得，这个go应该会稍微改善，在go1.3里面，也有了对defer的优化。</p>
-<h2 id="error">error</h2>
-<p>也许error是一个让人争议很大的东西，现代方式的exception那里去呢？但是我觉得error能够非常明确的告诉使用者该函数会有错误返回，如果使用exception，除非文档足够详细，我还真不知道哪里就会蹦出一个异常了。</p>
-<p>只是，go又提供了类似exception的<a href="http://blog.golang.org/defer-panic-and-recover" target="_blank" rel="external">defer,panic,recover</a>，这是要闹哪出。</p>
-<p>其实<a href="http://blog.iwinux.info/blog/2012/12/error-handling-in-go.html" target="_blank" rel="external">这篇文章</a>我觉得已经解释的很好了，go程序的惯例是对外的API使用error，而内部错误处理可以用defer，recover和panic来简化流程。</p>
-<p>其实这倒跟我一贯的编程准则对应，在团队在用python进行开发的时候，我们都明确要求库对外提供的API需要使用返回值来表示错误，而在内部可以使用try，catch异常机制。</p>
-<h2 id="interface">interface</h2>
-<p>go提供了interface来进行抽象编程。何谓接口，最通常的例子就是鸭子的故事，“当看到一只鸟走起来像鸭子、游泳起来像鸭子、叫起来也像鸭子，那么这只鸟就可以被称为鸭子“。</p>
-<p>在go里面，interface就是一堆方法的集合，如果某个对象实现了这些方法，那么该对象可以就算是该interface。使用interface，我们可以很方便的实现非侵入式编程，进行模块功能的替换。</p>
-<p>对于长时间沉浸c++和python的童鞋来说，一下子要用interface来解决抽象问题，可能会很不适应。但当习惯之后，你会发现，其实interface非常的灵活方便。</p>
-<h1 id="写到后面">写到后面</h1>
-<p>在使用的时候，我们需要知道go到底适用在什么地方，譬如我们现在也就将API服务使用go重构，我们可没傻到用go去替换openresty。</p>
-<p>总之，go是一门很新的语言，国内也已经有很多公司开始吃这个螃蟹，也有成功的例子了，而我们也正开始了这段旅程。</p>
-]]></content>
-    
-    
-      <category term="go" scheme="http://siddontang.com/tags/go/"/>
-    
-      <category term="c++" scheme="http://siddontang.com/tags/c++/"/>
-    
-      <category term="lua" scheme="http://siddontang.com/tags/lua/"/>
-    
-      <category term="python" scheme="http://siddontang.com/tags/python/"/>
-    
-      <category term="go" scheme="http://siddontang.com/categories/go/"/>
     
   </entry>
   
