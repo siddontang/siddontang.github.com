@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>http://siddontang.com/2015/01/18/elasticsearch-note/</loc>
+    <lastmod>2015-01-18T06:59:35.000Z</lastmod>
+  </url>
+  
+  <url>
     <loc>http://siddontang.com/2015/01/09/docker-practise/</loc>
     <lastmod>2015-01-09T14:49:18.000Z</lastmod>
   </url>
