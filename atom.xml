@@ -4,7 +4,7 @@
   <subtitle><![CDATA[My thought for program]]></subtitle>
   <link href="/atom.xml" rel="self"/>
   <link href="http://siddontang.com/"/>
-  <updated>2015-01-18T10:04:32.796Z</updated>
+  <updated>2015-01-18T10:05:16.693Z</updated>
   <id>http://siddontang.com/</id>
   
   <author>
@@ -19,7 +19,7 @@
     <link href="http://siddontang.com/2015/01/18/elasticsearch-note/"/>
     <id>http://siddontang.com/2015/01/18/elasticsearch-note/</id>
     <published>2015-01-18T06:58:47.000Z</published>
-    <updated>2015-01-18T10:04:01.000Z</updated>
+    <updated>2015-01-18T10:05:05.000Z</updated>
     <content type="html"><![CDATA[<h2 id="Why_Elasticsearch？">Why Elasticsearch？</h2>
 <p>由于需要提升项目的搜索质量，最近研究了一下Elasticsearch，一款非常优秀的分布式搜索程序。最开始的一些笔记放到<a href="https://github.com/siddontang/elasticsearch-note" target="_blank" rel="external">github</a>，这里只是归纳总结一下。</p>
 <p>首先，为什么要使用Elasticsearch？最开始的时候，我们的项目仅仅使用MySQL进行简单的搜索，然后一个不能索引的like语句，直接拉低MySQL的性能。后来，我们曾考虑过sphinx，并且sphinx也在之前的项目中成功实施过，但想想现在的数据量级，多台MySQL，以及搜索服务本身HA，还有后续扩容的问题，我们觉得sphinx并不是一个最优的选择。于是自然将目光放到了Elasticsearch上面。</p>
