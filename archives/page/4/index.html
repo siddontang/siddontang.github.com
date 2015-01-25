@@ -72,6 +72,173 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-04-07T13:34:36.000Z"><a href="/2014/04/07/golang-log/">04-07-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/07/golang-log/">Go Log模块开发</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在go里面，虽然有log模块，但是该模块提供的功能并不强，譬如就没有我们常用的level log功能，但是自己实现一个log模块也并不困难。</p>
+<p>对于log的level，我们定义如下:</p>
+<pre><code>const (
+    LevelTrace = iota
+    LevelDebug
+    LevelInfo
+    LevelWarn
+    LevelError
+    LevelFatal
+)    
+</code></pre><p>相应的，提供如下几个函数:</p>
+<pre><code>func Trace(format string, v ...interface{}) 
+func Debug(format string, v ...interface{}) 
+func Info(format string, v ...interface{}) 
+func Warn(format string, v ...interface{}) 
+func Error(format string, v ...interface{}) 
+func Fatal(format string, v ...interface{}) 
+</code></pre><p>另外，对于一个log，我们可能将其写入不同的地方，譬如可能直接输出到stdout，或者写文件，或者写socket，在创建特定logger的时候，我们需要指定对应的handler，用来实现不同的写入方式。</p>
+<p>handler的定义如下：</p>
+<pre><code>type Handler interface {
+    Write(p []byte) (n int, err error)
+    Close() error
+}
+</code></pre><p>我们可以参考python的log模块，实现几个通用的handler，譬如StreamHandler，FileHandler，TimeRotatingFileHandler。</p>
+<p>log模块的实现<a href="https://github.com/siddontang/golib/tree/master/log" target="_blank" rel="external">https://github.com/siddontang/golib/tree/master/log</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-04-03T10:30:17.000Z"><a href="/2014/04/03/moonmq-introduction/">04-03-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/03/moonmq-introduction/">MoonMQ 高性能消息队列介绍</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>moonmq是一个用go实现的高性能消息队列系统，后续准备用于我们消息推送服务以及各个后台的异步任务。</p>
+<p>在设计上面，moonmq主要借鉴了rabbitmq以及rocketmq相关的思想，但是做了很多减法，毕竟我不是要设计成一个非常通用的mq。</p>
+<h1 id="名词解释">名词解释</h1>
+<ul>
+<li>publisher，消息生产者</li>
+<li>consumer，消息消费者</li>
+<li>broker，消息中转站</li>
+<li>queue，消息存储队列</li>
+</ul>
+<p>publisher给一个命名的queue发送消息msg，broker负责将msg存放在queue里面。</p>
+<p>consumer可以关注自己感兴趣的queue，这样当queue里面有消息的时候，broker就会将该消息推送给该consumer。</p>
+<h1 id="推拉模型">推拉模型</h1>
+<p>在rocketmq里面，支持的是pull msg，而rabbitmq则是支持push和pull msg。moonmq只支持push msg。主要有如下考量：</p>
+<ul>
+<li>当consumer在线的时候，push是最及时的，因为这时候铁定能把msg push成功。</li>
+<li>当consumer离线，broker会保存离线消息，当consumer上线之后，broker仍然按照push的方式将离线消息进行推送。</li>
+</ul>
+<p>另外，因为moonmq后续会支持我们的消息推送系统，如果采用pull模型，几十万的consumer定期的pull，我有点担心moonmq会吃不消。</p>
+<h1 id="消息类型">消息类型</h1>
+<p>moonmq将msg分为direct和fanout，fanout就是广播消息，moonmq会将任何订阅了该queue的consumer进行msg push。</p>
+<p>如果msg的type为direct，moonmq将会采用轮询的方式，选择一个consumer进行msg push。</p>
+<h1 id="消息优先级">消息优先级</h1>
+<p>moonmq不支持消息优先级，处理起来会很麻烦，而且通常我们并不需要特别精细的优先级控制。</p>
+<p>可以通过一个简单的方式实现粗粒度的优先级控制：</p>
+<ul>
+<li>设置queue1，queue2，queue3三个队列，queue1用来处理保存优先级最高的消息，queue2次之，queue3最低</li>
+<li>publisher发送消息的时候根据优先级发送到指定的queue上面去</li>
+<li>我们可以有多个consumer处理queue1的消息，譬如3个，然后用2个处理queue2的，1个处理queue1的，这样实现优先级控制。</li>
+</ul>
+<h1 id="消息过滤">消息过滤</h1>
+<p>moonmq通过routing key来进行消息过滤。</p>
+<p>publisher在给特定queue发送msg的时候，还可以指定对应的routing key，只有关注了该queue同时也指定了相同的routing key的consumer才会收到该msg。</p>
+<h1 id="Ack">Ack</h1>
+<p>moonmq支持ack机制，当push一个msg到consumer的时候，consumer必须回应一个ack，moonmq才认为msg push成功。如果长时间没有ack，则moonmq会重新选择一个consumer再次发送。</p>
+<p>ack能够很大程度的保证消息推送的成功率，但是对于消息的快速推送会有影响，所以moonmq也支持no ack模式，这种模式下moonmq只要发送成功了msg，就认为push成功，无需等待ack的回执。</p>
+<h1 id="延迟消息">延迟消息</h1>
+<p>这个现在还没支持，后续是情况而定</p>
+<h1 id="定时消息">定时消息</h1>
+<p>难度比较大，不会实现</p>
+<h1 id="协议">协议</h1>
+<p>moonmq采用的是类似rocketmq的协议，如下：</p>
+<pre><code>|total length(4 bytes)|header length(4 bytes)|header json|body|
+
+total length = 4 + len(header json) + len(body)
+header length = len(header json)
+</code></pre><p>在moonmq里面，我们使用Proto来定义协议</p>
+<pre><code>type Proto struct {
+    Method uint32 `json:&quot;method&quot;`
+
+    Fields map[string]string `json:&quot;fields&quot;`
+
+    Body []byte `json:&quot;-&quot;`
+}
+</code></pre><p>moonmq的任何协议，都需要带上method，我们通过method进行实际的消息处理。</p>
+<p>moonmq的method参考rabbitmq，有如下几种类型的method：</p>
+<ul>
+<li>同步request method，客户端在发送request method之后必须等待对应的response method，在等待的过程中也能够处理push，error等异步method。</li>
+<li>同步response method，对应特定的request method。</li>
+<li>异步method，发送之后无需等待。</li>
+</ul>
+<p>现阶段，moonmq支持如下同步method：</p>
+<ul>
+<li>auth, auth_ok</li>
+<li>publish, publish_o</li>
+<li>bind, bind_ok</li>
+<li>unbind, unbind_ok</li>
+</ul>
+<p>同时支持如下异步method:</p>
+<ul>
+<li>push</li>
+<li>error</li>
+<li>heartbeat</li>
+<li>ack</li>
+</ul>
+<h1 id="后续">后续</h1>
+<p>这只是moonmq的一个简单介绍，后续我们会不断完善moonmq，争取也能成为一个不错的mq产品。</p>
+<p>moonmq的代码在这里<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">https://github.com/siddontang/moonmq</a>，期待大家的反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-03-30T13:50:44.000Z"><a href="/2014/03/30/golang-linked-channel/">03-30-2014</a></time>
       
       
@@ -862,224 +1029,6 @@ Delete(env *Env)
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-03-05T06:26:04.000Z"><a href="/2014/03/05/libcoro/">03-05-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/03/05/libcoro/">简易的C++协程库</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="起因">起因</h1>
-<p>在第一个版本的<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>开发完成之后，我一直在思考如何让异步方式的网络编程更加简单。</p>
-<p>虽然<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>通过c++ shared_ptr以及function等技术很大程度上面解决了异步代码编写的一些问题，但是仍然会出现代码逻辑被强制拆分的情况。而这个则是项目中童鞋无法很好的使用其进行开发的原因。</p>
-<p>所以我考虑让<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine。</p>
-<h1 id="Coroutine">Coroutine</h1>
-<p>第一次接触coroutine的概念是在lua里面，记得当时想了很久才算弄明白了coroutine的使用以及原理。在lua中，coroutine的使用如下：</p>
-<pre><code>co = coroutine.create(function ()
-        print(&quot;begin yield&quot;)
-        coroutine.yield()
-        print(&quot;after yield&quot;)
-    end)
-
-coroutine.resume(co)
-print(&quot;after resume&quot;)
-
-coroutine.resume(co)
-</code></pre><p>我们可以通过resume执行一个新创建或者已经被挂起的coroutine，通过yield挂起当前的coroutine，这样就可以实现类似多线程方式下面的多任务调度。</p>
-<p>至于coroutine的原理，很多地方都有说明，主要就在于每个coroutine都有自己的堆栈，这样当coroutine挂起的时候，它的当前执行状态会被完整保留，下次resume的时候就可以接着执行了。</p>
-<p>而使用coroutine的好处，我觉得最大的一点在于它将拆分的异步逻辑同步化了，更利于代码编写。</p>
-<p>在使用python tornado的时候，我们开始阶段写了太多的callback回调，以至于代码的维护非常困难，而这个则在引入<a href="https://github.com/python-greenlet/greenlet" target="_blank" rel="external">greenlet</a>后有了明显好转。</p>
-<p>而后续在使用go语言中，因为它原生的支持coroutine（其实在go里面更准确的说法应该是goroutine），写代码非常的方便，所以现在go已经成为了我服务器的首选开发语言，我也用它开发了多个项目（如<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，一个mysql proxy），并且已经在公司项目中实施。</p>
-<p>当然，使用coroutine并不是毫无缺点的：</p>
-<ul>
-<li>每个coroutine都需要维护自己的堆栈，当我们需要创建数以百万计的coroutine的时候，内存的开销就需要考虑了。</li>
-<li>coroutine的切换，都需要保留当前的上下文环境，以便于下次resume的时候接着执行，如果coroutine切换频繁，开销也不小。</li>
-</ul>
-<h1 id="libcoro">libcoro</h1>
-<p>很早之前使用luajit的时候，我就知道可以在c++中实现coroutine的功能，在linux中，这通过makecontext，swapcontext等相关函数实现。虽然也可以通过setjmp/longjmp这两个古老的函数实现，但看了luajit的coco就知道，即使在linux下面，它也需要写很多define宏去适配。</p>
-<p>所以，我只考虑使用makecontext这套函数族来实现coroutine。虽然swapcontext会有性能问题，详见<a href="http://rethinkdb.com/blog/making-coroutines-fast/" target="_blank" rel="external">这里</a>，但早期我还不打算对其进行性能优化。</p>
-<p><a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>是一个简单的c++ coroutine库，只支持linux（因为我们的服务器只有linux的）。</p>
-<p>在接口上面，<a href="https://github.com/siddontang/libcoro" target="_blank" rel="external">libcoro</a>参考的是lua的coroutine的接口设计，使用非常简单:</p>
-<pre><code>void func1()
-{
-    coroutine.yield();
-}
-
-void func2(Coro_t co1)
-{
-    coroutine.resume(co1);    
-    coroutine.yield();
-}
-
-void func()
-{
-    Coro_t co1 = coroutine.create(std::bind(&amp;func1));    
-    coroutine.resume(co1);    
-    Coro_t co2 = coroutine.create(std::bind(&amp;func2, co1));
-    coroutine.resume(co2);
-    coroutine.resume(co2);
-}
-
-int main()
-{    
-    Coro_t co = coroutine.create(std::bind(&amp;func));
-    coroutine.resume(co);
-    return 0;
-}
-</code></pre><ul>
-<li>coroutine.create创建一个coroutine，参数为一个std::function，这样我们就可以通过std::bind非常方便的实现函数闭包了。</li>
-<li>coroutine.resume唤醒一个挂起或者新建的coroutine。</li>
-<li>coroutine.yield挂起当前coroutine。</li>
-<li>coroutine.running获取当前运行的coroutine，如果是主线程调用，则返回0。</li>
-<li>coroutine.status获取coroutine的状态。</li>
-</ul>
-<p>后续我考虑将<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>支持coroutine，不过这可能会成为一个新的网络库了。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-02-24T05:41:38.000Z"><a href="/2014/02/24/go-mysql-introduction/">02-24-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/02/24/go-mysql-introduction/">Go MySQL接口开发</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="介绍">介绍</h1>
-<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>是一个用go写的mysql driver，使用接口类似于go自身的database sql，但是稍微有一点不同，现阶段还不支持集成进go database/sql中，但实现难度并不大，后续可能会接入。</p>
-<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>最先开始于<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>（一个用go实现的mysql proxy）中，随着mixer的演化，我觉得有必要将其mysql模块独立出来使用。对于<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，后续我会详细介绍。</p>
-<p>为什么要自己实现一套新的接口，而不是go自身的sql接口呢？最主要的原因在于我很不习惯使用Query的查询方式。go自身的query例子：</p>
-<pre><code>age := 27
-rows, err := db.Query(&quot;SELECT name FROM users WHERE age=?&quot;, age)
-if err != nil {
-    log.Fatal(err)
-}
-for rows.Next() {
-    var name string
-    if err := rows.Scan(&amp;name); err != nil {
-        log.Fatal(err)
-    }
-    fmt.Printf(&quot;%s is %d\n&quot;, name, age)
-}
-if err := rows.Err(); err != nil {
-    log.Fatal(err)
-}
-</code></pre><p>可以看到，使用起来非常的繁琐复杂，如果代码里面select语句很多（恰恰我们代码里面n多select），那么如果每次select都要靠这种方式得到我们需要的结果，那我可能写代码会写崩溃的。所以势必我们需要提供一套封装用来简化select的结果集获取。</p>
-<h1 id="Resultset">Resultset</h1>
-<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>跟go自身的sql接口最大的不一样在于Query的时候直接返回了一个resultset，而这个resultset定义如下：</p>
-<pre><code>type Field struct {
-    Name []byte
-    Type uint8
-    Flag uint16
-}
-
-type Resultset struct {
-    Status uint16 //server status for this query resultset
-
-    Fields     []Field
-    FieldNames map[string]int
-
-    Data [][]interface{}
-}
-</code></pre><p>Field用来表示查询的时候返回的数据每列的名字，数据类型以及一些特定的Flag。而resultset中的Data则是存放了query结果中对于的实际数据。因为对于mysql select来说，它返回的是一个<strong>“m x n”</strong>的结果集，我们直接使用[][]interface{}在go中表示。</p>
-<p>Resultset提供了非常方便的接口用于select数据的获取：</p>
-<pre><code>//指定某一行，某一列获取数据，结果为string
-func (r *Resultset) GetString(row, column int) (string, error)
-//执行某一行，某一列的名字获取数据，结果为string
-func (r *Resultset) GetStringByName(row int, columnName int) (string, error)
-</code></pre><h1 id="接口">接口</h1>
-<p><a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>除了query之外，几乎提供了与go database/sql一样的接口使用方式：</p>
-<pre><code>//创建一个db，最大允许保活16个空闲连接
-//dsn格式为：&lt;username&gt;:&lt;password&gt;@&lt;host&gt;:&lt;port&gt;/&lt;database&gt;
-db := NewDB(&quot;qing:admin@127.0.0.1:3306/mixer&quot;, 16)
-
-//ping一下，看mysql server是不是还是活的
-db.Ping()
-
-//执行exec，包括insert,update,delete,replace
-r, err := db.Exec(&quot;insert into mixer_conn (id, str) values (1, `abc`)&quot;)
-println(r.LastInsertId(), r.RowsAffected())
-
-//执行exec，语句中包含 ？占位符，需要传递相应的参数
-r, err := db.Exec(&quot;insert into mixer_conn (id, str) values (?, ?)&quot;, 2, &quot;efg&quot;)
-println(r.LastInsertId(), r.RowsAffected())
-
-//执行select，得到结果集，并获取相关数据
-r, err := db.Query(&quot;select str from mixer_conn where id     = 1&quot;)
-str, _ = r.GetString(0, 0)
-str, _ = r.GetStringByName(0, &quot;str&quot;)
-
-//开始一个事物
-tx, err = db.Begin()
-
-//在事物里面执行语句
-tx.Exec(&quot;insert into mixer_conn (id, str) values (3, `abc`)&quot;)
-
-//提交事物
-tx.Commit()
-
-//创建一个prepare statement
-s, err := db.Prepare(&quot;insert into mixer_conn (id, str) values(?, ?)&quot;)
-
-//执行 prepare statement
-s.Exec(5, &quot;abc&quot;)
-
-//关闭 prepare statement
-s.Close()
-</code></pre><p>不光如此，<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>还提供单独获取一个conn，用于给外部额外使用的功能，譬如:</p>
-<pre><code>conn, err := db.GetConn()
-
-//我需要设置conn的字符集为gb2312
-conn.SetCharset(&quot;gb2312&quot;)    
-
-conn.Close()
-</code></pre><p>可以看到，<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>的使用非常简单，现阶段正逐渐在我们项目中使用，也非常期待您的反馈。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1120,13 +1069,13 @@ conn.Close()
   
     <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
   
-    <li><a href="/categories/go/">go</a><small>28</small></li>
+    <li><a href="/categories/go/">go</a><small>29</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   
     <li><a href="/categories/lua/">lua</a><small>2</small></li>
   
-    <li><a href="/categories/mysql/">mysql</a><small>2</small></li>
+    <li><a href="/categories/mysql/">mysql</a><small>3</small></li>
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   

@@ -72,6 +72,97 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-03-23T08:39:08.000Z"><a href="/2014/03/23/mixer-tokenizer/">03-23-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/23/mixer-tokenizer/">Mixer MySQL词法分析</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>mixer希望在proxy这层就提供自定义路由，sql黑名单，防止sql注入攻击等功能，而这些的基石就在于将用户发上来的sql语句进行解析。也就是我最头大的词法分析和语法分析。</p>
+<p>到现在为止，我只是实现了一个比较简单的词法分析器，用以将sql语句分解成多个token。而对于从token在进行语法分析，构建sql的AST，我现在还真没啥经验（编译原理太差了），急需牛人帮忙。</p>
+<p>所以，这里只是简单介绍一下mixer的词法分析。</p>
+<h1 id="tokenize">tokenize</h1>
+<p>在很多地方，我们都需要进行词法分析，通常会有几种方式：</p>
+<ul>
+<li>使用一个强大的工具，譬如lex，mysql-proxy就用的这种方式</li>
+<li>使用正则表达式</li>
+<li>state machine</li>
+</ul>
+<p>对于使用工具，我觉得有一个不怎么好的地方在于学习成本，譬如我用lex的时候就需要学习它的语法，同时通过工具生成的代码可读性都不怎么好，代码量大，更严重的是可能会比较慢。所以mysql自身也是自己实现一个词法分析模块。</p>
+<p>而对于正则表达式，性能问题可能是一个很需要考虑的，而且复杂度并不比使用类似lex这样的工具低。</p>
+<p>状态机可能是我觉得自己动手实现词法解析一个很好的方式，对于sql的词法解析，我觉得使用state machine的方式来自己写一个难度并不大，所以mixer自己实现了一个。</p>
+<h1 id="state_machine">state machine</h1>
+<p>通常，一个状态机的实现采用的是state + action + switch的做法，可能如下：</p>
+<pre><code>switch state {
+    case state1:
+        state = action1()
+    case state2:
+        state = action2()
+    case state3:
+        state = action3()
+}
+</code></pre><p>对于一个state，我们通过switch知道它将会由哪一个action进行处理，而对于每一个action，我们则知道执行完成之后下一个state是什么。</p>
+<p>对于上面的实现，如果state过多，可能会导致太多的case语句，我们可以通过state function进行简化。</p>
+<p>一个state function就是执行当前的state action，并且直接返回下一个state function。</p>
+<p>我们可以这样做：</p>
+<pre><code>type stateFn func(*Lexer) stateFn
+
+for state := startState; state != nil {
+    state = state(lexer)
+}
+</code></pre><p>所以我们需要实现的就是每一个state function以及对应的它的下一个需要执行的state function。</p>
+<h1 id="mixer_lexer">mixer lexer</h1>
+<p>mixer的词法分析实现主要参考<a href="http://cuddle.googlecode.com/hg/talk/lex.html" target="_blank" rel="external">这个</a>。主要实现在<a href="https://github.com/siddontang/mixer/tree/master/src/parser" target="_blank" rel="external">parser模块</a>。</p>
+<p>对于一个lexer，需要提供的是NextToken的功能，供外部获取下一个token，从而进行后续的操作（譬如语法分析）。</p>
+<p>lexer的next token如下：</p>
+<pre><code>func (l *Lexer) NextToken() (Token, error) {
+    for {
+        select {
+            case t := &lt;-l.tokens:
+                return t, nil
+            default:
+                if l.state == nil {
+                    return Token{TK_EOF, &quot;&quot;}, l.err
+                }
+                l.state = l.state(l)
+                if l.err != nil {
+                    return Token{TK_UNKNOWN, &quot;&quot;}, l.err
+                }
+        }
+    }
+}
+</code></pre><p>tokens是一个channel，每次state解析的token都会emit到这个channel上面，供NextToken获取，如果channel为空了，则再次调用state function。</p>
+<p>可以看到，用go实现一个词法解析是很容易的事情，剩下的就是写相应的state function用来解析sql。</p>
+<h1 id="todo">todo</h1>
+<p>mixer的词法分析还有很多不完善的地方，譬如对于科学计数法数值的解析就不完善，后续准备参考mysql官方的词法分析模块在好好完善一下。</p>
+<p>mixer的代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>，希望感兴趣的童鞋共同完善。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-03-19T01:33:52.000Z"><a href="/2014/03/19/polaris-session-middleware/">03-19-2014</a></time>
       
       
@@ -890,13 +981,13 @@ w := timingwheel.NewTimingWheel(1 * time.Second, 3600)
   
     <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
   
-    <li><a href="/categories/go/">go</a><small>28</small></li>
+    <li><a href="/categories/go/">go</a><small>29</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   
     <li><a href="/categories/lua/">lua</a><small>2</small></li>
   
-    <li><a href="/categories/mysql/">mysql</a><small>2</small></li>
+    <li><a href="/categories/mysql/">mysql</a><small>3</small></li>
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   

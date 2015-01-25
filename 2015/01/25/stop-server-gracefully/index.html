@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   
-  <title>Libtnet HTTP实现 | Siddon&#39;s Blog</title>
+  <title>Go中优雅的关闭HTTP服务 | Siddon&#39;s Blog</title>
   <meta name="author" content="SiddonTang">
   
   <meta name="description" content="My thought for program">
@@ -11,7 +11,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 
-  <meta property="og:title" content="Libtnet HTTP实现"/>
+  <meta property="og:title" content="Go中优雅的关闭HTTP服务"/>
   <meta property="og:site_name" content="Siddon&#39;s Blog"/>
 
   
@@ -67,117 +67,95 @@
     <header>
       
         <div class="icon"></div>
-        <time datetime="2013-12-29T08:27:12.000Z"><a href="/2013/12/29/libtnet-http/">12-29-2013</a></time>
+        <time datetime="2015-01-25T13:05:04.000Z"><a href="/2015/01/25/stop-server-gracefully/">01-25-2015</a></time>
       
       
   
-    <h1 class="title">Libtnet HTTP实现</h1>
+    <h1 class="title">Go中优雅的关闭HTTP服务</h1>
   
 
     </header>
     <div class="entry">
       
-        <h1 id="HTTP">HTTP</h1>
-<p>libtnet提供了简单的http支持，使用也很简单。</p>
-<p>一个简单的http server：</p>
-<pre><code>void onHandler(const HttpConnectionPtr_t&amp; conn, const HttpRequest&amp; request)
-{
-    HttpResponse resp;
-    resp.statusCode = 200;
-    resp.setContentType(&quot;text/html&quot;);
-    resp.body.append(&quot;Hello World&quot;);    
-    conn-&gt;send(resp);
-}
+        <p>虽然写出7x24小时不间断运行的服务是一件很酷的事情，但是我们仍然在某些时候，譬如服务升级，配置更新等，得考虑如何优雅的结束这个服务。</p>
+<p>当然，最暴力的做法直接就是<code>kill -9</code>，但这样直接导致的后果就是可能干掉了很多运行到一半的任务，最终导致数据不一致，这个苦果只有遇到过的人才能深深地体会，数据的修复真的挺蛋疼，有时候还得给用户赔钱啦。</p>
+<p>所以，通常我们都是给服务发送一个信号，SIGTERM也行，SIGINTERRUPT也成，反正要让服务知道该结束了。而服务收到结束信号之后，首先会拒绝掉所有外部新的请求，然后等待当前所有正在执行的请求完成之后，在结束。当然很有可能当前在执行一个很耗时间的任务，导致服务长时间不能结束，这时候就得决定是否强制结束了。</p>
+<p>具体到go的HTTP Server里面，如何优雅的结束一个HTTP Server呢？</p>
+<p>首先，我们需要显示的创建一个listener，让其循环不断的accept新的连接供server处理，为啥不用默认的http.ListenAndServe，主要就在于我们可以在结束的时候通过关闭这个listener来主动的拒绝掉外部新的连接请求。代码如下:</p>
+<pre><code>l, _ := net.Listen(&quot;tcp&quot;, address)
+svr := http.Server{Handler: handler}
+svr.Serve(l)
+</code></pre><p>Serve这个函数是个死循环，我们可以在外部通过close对应的listener来结束。</p>
+<p>当listener accept到新的请求之后，会开启一个新的goroutine来执行，那么在server结束的时候，我们怎么知道这个goroutine是否完成了呢？</p>
+<p>在很早之前，大概go1.2的时候，笔者通过在handler入口处使用sync WaitGroup来实现，因为我们有统一的一个入口handler，所以很容易就可以通过如下方式知道请求是否完成，譬如：</p>
+<pre><code>func (h *Handler) ServeHTTP(w ResponseWriter, r *Request) {
+    h.svr.wg.Add(1)
+    defer h.svr.wg.Done()
 
-TcpServer s;
-HttpServer httpd(&amp;s);
-httpd.setHttpCallback(&quot;/test&quot;, std::bind(&amp;onHandler, _1, _2));
-httpd.listen(Address(80));
-s.start(4);
-</code></pre><p>我们对http server的<strong>“/test”</strong>注册了一个handler，当用户访问该url的时候，就会显示”Hello World”。</p>
-<p>同样，http client的使用也很简单：</p>
-<pre><code>void onResponse(IOLoop* loop, const HttpResponse&amp; resp)
-{
-    cout &lt;&lt; resp.body &lt;&lt; endl;
-    loop-&gt;stop();
+    ......
 }
-
-IOLoop loop;
-HttpClientPtr_t client = std::make_shared&lt;HttpClient&gt;(&amp;loop);
-client-&gt;request(&quot;http://127.0.0.1:80/test&quot;, std::bind(&amp;onResponse, &amp;loop, _1));
-loop.start(); 
-</code></pre><p>这里，我们使用了一个http client，向server请求”/test”的内容，当服务器有响应之后，会调用响应的回调函数。</p>
-<h1 id="HTTP_Parser">HTTP Parser</h1>
-<p>对于http的解析，我采用的是<a href="https://github.com/joyent/http-parser" target="_blank" rel="external">http parser</a>，因为它采用的是流式解析，同时非常容易集成进libtnet。</p>
-<p>使用http parser只需要设置相应的回调函数即可。http parser有如下几种回调：</p>
+</code></pre><p>但这样其实只是用来判断请求是否结束了，我们知道在HTTP 1.1中，connection是能够keepalived的，也就是请求处理完成了，但是connection仍是可用的，我们没有一个好的办法close掉这个connection。不过话说回来，我们只要保证当前请求能正常结束，connection能不能正常close真心无所谓，毕竟服务都结束了，connection自动就close了。但谁叫笔者是典型的处女座呢。</p>
+<p>在go1.3之后，提供了一个ConnState的hook，我们能通过这个来获取到对应的connection，这样在服务结束的时候我们就能够close掉这个connection了。该hook会在如下几种ConnState状态的时候调用。</p>
 <ul>
-<li>message begin，解析开始的时候调用</li>
-<li>url，解析url的时候调用</li>
-<li>status complete，http response解析status的时候调用</li>
-<li>header field，解析http header的field调用</li>
-<li>header value，解析http header的value调用</li>
-<li>headers complete，解析完成http header调用</li>
-<li>body，解析http body调用</li>
-<li>message complete，解析完成调用</li>
+<li>StateNew：新的连接，并且马上准备发送请求了</li>
+<li>StateActive：表明一个connection已经接收到一个或者多个字节的请求数据，在server调用实际的handler之前调用hook。</li>
+<li>StateIdle：表明一个connection已经处理完成一次请求，但因为是keepalived的，所以不会close，继续等待下一次请求。</li>
+<li>StateHijacked：表明外部调用了hijack，最终状态。</li>
+<li>StateClosed：表明connection已经结束掉了，最终状态。</li>
 </ul>
-<p>这里特别需要注意的是http header的解析，因为http parser将其拆分成了两种回调，所以我们在处理的时候需要记录上一次header callback是field的还是value的。在解析field的时候，如果上一次是value callback，那我们就需要将上一次解析的field和value保存下来，而该次的解析则是一个新的field了。</p>
-<p>另外，http parser还提供了upgrade的支持，所以我们很方便的就能区分该次请求是否为websocket。</p>
-<h1 id="Websocket">Websocket</h1>
-<p>libtnet也提供了websocket的支持，现阶段，只支持<a href="http://tools.ietf.org/html/rfc6455" target="_blank" rel="external">RFC6455</a>。</p>
-<p>当libtnet通过http parser发现该次请求为websocket的时候，就进入了websocket的流程。websocket的使用也很简单，当握手成功之后，后续的所有通讯就是纯粹的tcp通信了。</p>
-<p>一个简单的websocket server：</p>
-<pre><code>void onWsCallback(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
-{
-    switch(event)
-    {
-        case Ws_CloseEvent:
-            break;
-        case Ws_MessageEvent:
-            {
-                const string&amp; str = *(const string*)context;
-                conn-&gt;send(str);
-            }
-            break;
-        case Ws_PongEvent:
-            break;
+<p>通常，我们不会进入hijacked的状态（如果是websocket就得考虑了），所以一个可能的hook函数如下，参考<a href="http://rcrowley.org/talks/gophercon-2014.html" target="_blank" rel="external">http://rcrowley.org/talks/gophercon-2014.html</a></p>
+<pre><code>s.ConnState = func(conn net.Conn, state http.ConnState) {
+    switch state {
+    case http.StateNew:
+        // 新的连接，计数加1
+        s.wg.Add(1)
+    case http.StateActive:
+        // 有新的请求，从idle conn pool中移除
+        s.mu.Lock()
+        delete(s.conns, conn.LocalAddr().String())
+        s.mu.Unlock()
+    case http.StateIdle:
+        select {
+        case &lt;-s.quit:
+            // 如果要关闭了，直接Close，否则加入idle conn pool中。
+            conn.Close()
         default:
-            break;
+            s.mu.Lock()
+            s.conns[conn.LocalAddr().String()] = conn
+            s.mu.Unlock()
+        }
+    case http.StateHijacked, http.StateClosed:
+        // conn已经closed了，计数减一
+        s.wg.Done()
     }
+</code></pre><p>当结束的时候，会走如下流程：</p>
+<pre><code>func (s *Server) Close() error {
+    // close quit channel, 广播我要结束啦
+    close(s.quit)
+
+    // 关闭keepalived，请求返回的时候会带上Close header。客户端就知道要close掉connection了。
+    s.SetKeepAlivesEnabled(false)
+    s.mu.Lock()
+
+    // close listenser
+    if err := s.l.Close(); err != nil {
+        return err 
+    }
+
+    //将当前idle的connections设置read timeout，便于后续关闭。
+    t := time.Now().Add(100 * time.Millisecond)
+    for _, c := range s.conns {
+        c.SetReadDeadline(t)
+    }
+    s.conns = make(map[string]net.Conn)
+    s.mu.Unlock()
+
+    // 等待所有连接结束
+    s.wg.Wait()
+    return nil
 }
+</code></pre><p>好了，通过以上方法，我们终于能从容的关闭server了。但这里仅仅是针对跟客户端的连接，实际还有MySQL连接，Redis连接，打开的文件句柄，等等，总之，要实现优雅的服务关闭，真心不是一件很简单的事情。</p>
 
-TcpServer s;
-HttpServer httpd(&amp;s);
-httpd.setWsCallback(&quot;/push/ws&quot;, std::bind(&amp;onWsCallback, _1, _2, _3));    
-httpd.listen(Address(80));
-s.start();
-</code></pre><p>可以看到，websocket的callback机制也类似于libtnet connection的callback机制，用户需通过event + context的方式来处理该次回调的数据。</p>
-<p>libtnet对websocket的frame的处理参照的是tornado的websocket模块。也能够组合多frame的数据，外部只需要关注Ws_MessageEvent即可。</p>
-<p>websocket client的实现也很简单：</p>
-<pre><code>void onWsConnEvent(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
-{
-    switch(event)
-    {
-        case Ws_OpenEvent:
-            conn-&gt;send(&quot;Hello world&quot;);
-            break;    
-        case Ws_MessageEvent:
-            {
-                const string&amp; msg = *(const string*)context;
-
-                LOG_INFO(&quot;message %s&quot;, msg.c_str());
-                conn-&gt;close();                        
-            }
-            break;
-        default:
-            break;
-    }    
-}
-
-IOLoop loop;
-WsClientPtr_t client = std::make_shared&lt;WsClient&gt;(&amp;loop);    
-client-&gt;connect(&quot;ws://127.0.0.1:80/push/ws&quot;, std::bind(&amp;onWsConnEvent, _1, _2, _3));
-loop.start();
-</code></pre>
       
     </div>
     <footer>
@@ -185,15 +163,10 @@ loop.start();
         
   
   <div class="categories">
-    <a href="/categories/c++/">c++</a>
+    <a href="/categories/go/">go</a>
   </div>
 
         
-  
-  <div class="tags">
-    <a href="/tags/c++/">c++</a>, <a href="/tags/libtnet/">libtnet</a>
-  </div>
-
         
       
       <div class="clearfix"></div>
