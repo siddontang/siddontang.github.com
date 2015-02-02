@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>http://siddontang.com/2015/02/02/mysql-replication-protocol/</loc>
+    <lastmod>2015-02-02T13:10:53.000Z</lastmod>
+  </url>
+  
+  <url>
     <loc>http://siddontang.com/2015/01/25/two-mysql-problems/</loc>
     <lastmod>2015-01-25T13:07:08.000Z</lastmod>
   </url>

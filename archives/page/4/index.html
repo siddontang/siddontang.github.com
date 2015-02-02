@@ -72,6 +72,75 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-04-12T09:10:16.000Z"><a href="/2014/04/12/golang-no-copy/">04-12-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/12/golang-no-copy/">Go中Slice与String的无内存copy</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在go里面，string和slice的互换是需要进行内存拷贝的，虽然在底层，它们都只是用 pointer + len来表示的一段内存。</p>
+<p>通常，我们不会在意string和slice的转换带来的内存拷贝性能问题，但是总有些地方需要关注的，刚好在看vitess代码的时候，发现了一种很hack的做法，string和slice的转换只需要拷贝底层的指针，而不是内存拷贝。当然这样做的风险各位就要好好担当了：</p>
+<pre><code>func String(b []byte) (s string) {
+    pbytes := (*reflect.SliceHeader)(unsafe.Pointer(&amp;b))
+    pstring := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))
+    pstring.Data = pbytes.Data
+    pstring.Len = pbytes.Len
+    return
+}
+
+func Slice(s string) (b []byte) {
+    pbytes := (*reflect.SliceHeader)(unsafe.Pointer(&amp;b))
+    pstring := (*reflect.StringHeader)(unsafe.Pointer(&amp;s))
+    pbytes.Data = pstring.Data
+    pbytes.Len = pstring.Len
+    pbytes.Cap = pstring.Len
+    return
+}
+</code></pre><p>在我的测试例子中，slice转string之后，如果slice的值有变化，string也会跟着改变，如下：</p>
+<pre><code>b := []byte(&quot;hello world&quot;)
+
+a := String(b)
+
+b[0] = &#39;a&#39;
+
+println(a)  //output  aello world
+</code></pre><p>但是string转slice之后，就不能更改slice了，如下：</p>
+<pre><code>a := &quot;hello world&quot;
+
+b := Slice(a)
+
+b[0] = &#39;a&#39;  //这里就等着崩溃吧
+
+//但是可以这样，因为go又重新给b分配了内存
+b = append(b, &quot;hello world&quot;…)
+</code></pre><p>上面为什么会崩溃我猜想可能是string是immutable的，可能对应的内存地址也是不允许改动的。</p>
+<p>另外，上面这个崩溃在defer里面是recover不回来的，真的就崩溃了，原因可能就跟c的非法内存访问一样，os不跟你玩了。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-04-07T13:34:36.000Z"><a href="/2014/04/07/golang-log/">04-07-2014</a></time>
       
       
@@ -951,84 +1020,6 @@ Delete(env *Env)
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-03-10T01:35:51.000Z"><a href="/2014/03/10/mixer-introduction/">03-10-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/03/10/mixer-introduction/">Mixer 一个用Go实现的MySQL Proxy</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="介绍">介绍</h1>
-<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>是一个用go实现的mysql proxy，支持基本的mysql代理功能。</p>
-<p>mysql的中间件很多，对于市面上面现有的功能强大的proxy，我主要考察了如下几个：</p>
-<ul>
-<li>mysql-proxy，mysql官方的代理，使用起来并不友好，需要进行lua定制，而且本人对其稳定性和性能存疑。</li>
-<li>Cobar，阿里的东西，品质没的说，但对于我们项目，有点杀鸡用牛刀的感觉，另外我们都不会java。</li>
-<li>Atlas，360出品的基于mysql-proxy的增强版，几乎用c重写了核心框架，性能和稳定性都没话说。</li>
-</ul>
-<p>当然，还有很多强大的proxy，我不可能一一涉及，而现阶段我们项目中使用的是Atlas（这算不算给Atlas打了一个广告？）。</p>
-<p>既然有这么多的proxy，为什么我还想自己实现一个呢？可能最主要的原因在于兴趣使然吧。</p>
-<h1 id="mysql功能支持">mysql功能支持</h1>
-<p>当开始着手进行<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>开发的时候，我就知道，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>不是mysql，它不可能proxy所有mysql的功能。所以，我决定<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>只支持如下mysql命令：</p>
-<ul>
-<li>COM_QUERY<ul>
-<li>select, insert, update, delete, replace</li>
-<li>set autocommit</li>
-<li>set names</li>
-<li>begin, commit, rollback</li>
-</ul>
-</li>
-<li>COM_PING</li>
-<li>COM_INIT_DB</li>
-<li>COM<em>STMT_PREPARE, COM_STMT_EXEC等COM_STMT</em>*命令，仅支持上述COM_QUERY命令的prepare</li>
-</ul>
-<p>[mixer](<a href="https://github.com/siddontang/mixer不支持命令挺多的，列举一些：" target="_blank" rel="external">https://github.com/siddontang/mixer不支持命令挺多的，列举一些：</a></p>
-<ul>
-<li>set variable。如果支持，<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>需要维护每一个变量的状态，增加了复杂度。但<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>支持autocommit和names的设置。</li>
-<li>sql text模式的prepare statement。</li>
-<li>show命令。</li>
-<li>存储过程。</li>
-</ul>
-<p>虽然很多功能现阶段没有，但不排除后续支持。</p>
-<h1 id="高可用方案">高可用方案</h1>
-<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>提供了一套mysql高可用使用方案，现阶段主要功能如下：</p>
-<ul>
-<li>读写分离，将select发送到slave，其余发送到master执行，事物所有在master执行。现阶段只支持一主一备。</li>
-<li>主备自动切换，当主mysql不可用，根据相关规则切换到backup mysql执行。</li>
-</ul>
-<h1 id="Todo">Todo</h1>
-<p><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>还不完善，很多功能需要实现，后续优先需要实现的功能：</p>
-<ul>
-<li>parser，将sql进行语法解析，构建AST，在proxy层面就防止一些mysql隐患，譬如注入攻击，delete没有where等。</li>
-<li>自定义路由，根据路由规则将sql路由到不同mysql执行。譬如根据主键将select语句hash到不同的slave上面执行。</li>
-<li>统计功能。</li>
-</ul>
-<p>代码在这里<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">https://github.com/siddontang/mixer</a>。非常希望对proxy感兴趣的童鞋参与进来，共同完善<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">mixer</a>，使其成为另一个mysql中间件解决方案。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1075,7 +1066,7 @@ Delete(env *Env)
   
     <li><a href="/categories/lua/">lua</a><small>2</small></li>
   
-    <li><a href="/categories/mysql/">mysql</a><small>3</small></li>
+    <li><a href="/categories/mysql/">mysql</a><small>4</small></li>
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   

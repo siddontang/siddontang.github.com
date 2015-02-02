@@ -68,6 +68,39 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-08-12T15:03:49.000Z"><a href="/2014/08/12/reinventing-the-wheel/">08-12-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/08/12/reinventing-the-wheel/">Reinventing the wheel?</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p><script async src="https://static.medium.com/embed.js"></script><a class="m-story" data-collapsed="true" href="https://medium.com/@siddontang/8241f1ba9068" target="_blank" rel="external">Reinventing the wheel?</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-08-10T11:51:37.000Z"><a href="/2014/08/10/how-do-I-develop-libtnet/">08-10-2014</a></time>
       
       
@@ -258,80 +291,6 @@ gopkg.in/user/pkg.v3 → github.com/user/pkg   (branch/tag v3, v3.N, or v3.N.M)
     <header>
       
         <div class="icon"></div>
-        <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/golang-func-vargs/">07-20-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/07/20/golang-func-vargs/">一个Go可变参数问题</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>几天前纠结了一个蛋疼的问题，在go里面函数式支持可变参数的，譬如…T，go会创建一个slice，用来存放传入的可变参数，那么，如果创建一个slice，例如a，然后以a…这种方式传入，go会不会还会新建一个slice，将a的数据全部拷贝一份过去？</p>
-<p>如果a很大，那么将会造成很严重的性能问题，不过后来想想，可能是自己多虑了，于是查看go的文档，发现如下东西：</p>
-<blockquote>
-<p>Passing arguments to … parameters</p>
-<p>If f is variadic with a final parameter p of type …T, then within f the type of p is equivalent to type []T. If f is invoked with no actual arguments for p, the value passed to p is nil. Otherwise, the value passed is a new slice of type []T with a new underlying array whose successive elements are the actual arguments, which all must be assignable to T. The length and capacity of the slice is therefore the number of arguments bound to p and may differ for each call site.</p>
-<p>Given the function and calls</p>
-<pre><code>func Greeting(prefix string, who ...string)
-Greeting(&quot;nobody&quot;)
-Greeting(&quot;hello:&quot;, &quot;Joe&quot;, &quot;Anna&quot;, &quot;Eileen&quot;)
-</code></pre><p>within Greeting, who will have the value nil in the first call, and []string{“Joe”, “Anna”, “Eileen”} in the second.</p>
-<p>If the final argument is assignable to a slice type []T, it may be passed unchanged as the value for a …T parameter if the argument is followed by …. In this case no new slice is created.</p>
-<p>Given the slice s and call</p>
-<pre><code>s := []string{&quot;James&quot;, &quot;Jasmine&quot;}
-Greeting(&quot;goodbye:&quot;, s...)
-</code></pre><p>within Greeting, who will have the same value as s with the same underlying array.</p>
-</blockquote>
-<p>也就是说，如果我们传入的是slice…这种形式的参数，go不会创建新的slice。写了一个简单的例子验证：</p>
-<pre><code>package main
-
-import &quot;fmt&quot;
-
-func t(args ...int) {
-    fmt.Printf(&quot;%p\n&quot;, args)
-}
-
-func main() {
-    a := []int{1,2,3}
-    b := a[1:]
-
-    t(a...)
-    t(b...)
-
-    fmt.Printf(&quot;%p\n&quot;, a)
-    fmt.Printf(&quot;%p\n&quot;, b)
-}
-
-//output
-0x1052e120
-0x1052e124
-0x1052e120
-0x1052e124
-</code></pre><p>可以看到，可变参数args的地址跟实际外部slice的地址一样，用的同一个slice。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
         <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/celery-best-practices/">07-20-2014</a></time>
       
       
@@ -405,6 +364,80 @@ def my_task_A():
 <h2 id="最后">最后</h2>
 <p>后面就是我们自己的感触了，上面作者提到的Celery的使用，真的可以算是很好地实践方式，至少现在我们的Celery没出过太大的问题，当然小坑还是有的。至于RabbitMQ，这玩意我们是真没用过，效果怎么样不知道，至少比mysql好用吧。</p>
 <p>最后，附上作者的一个Celery Talk <a href="https://denibertovic.com/talks/celery-best-practices/" target="_blank" rel="external">https://denibertovic.com/talks/celery-best-practices/</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/golang-func-vargs/">07-20-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/07/20/golang-func-vargs/">一个Go可变参数问题</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>几天前纠结了一个蛋疼的问题，在go里面函数式支持可变参数的，譬如…T，go会创建一个slice，用来存放传入的可变参数，那么，如果创建一个slice，例如a，然后以a…这种方式传入，go会不会还会新建一个slice，将a的数据全部拷贝一份过去？</p>
+<p>如果a很大，那么将会造成很严重的性能问题，不过后来想想，可能是自己多虑了，于是查看go的文档，发现如下东西：</p>
+<blockquote>
+<p>Passing arguments to … parameters</p>
+<p>If f is variadic with a final parameter p of type …T, then within f the type of p is equivalent to type []T. If f is invoked with no actual arguments for p, the value passed to p is nil. Otherwise, the value passed is a new slice of type []T with a new underlying array whose successive elements are the actual arguments, which all must be assignable to T. The length and capacity of the slice is therefore the number of arguments bound to p and may differ for each call site.</p>
+<p>Given the function and calls</p>
+<pre><code>func Greeting(prefix string, who ...string)
+Greeting(&quot;nobody&quot;)
+Greeting(&quot;hello:&quot;, &quot;Joe&quot;, &quot;Anna&quot;, &quot;Eileen&quot;)
+</code></pre><p>within Greeting, who will have the value nil in the first call, and []string{“Joe”, “Anna”, “Eileen”} in the second.</p>
+<p>If the final argument is assignable to a slice type []T, it may be passed unchanged as the value for a …T parameter if the argument is followed by …. In this case no new slice is created.</p>
+<p>Given the slice s and call</p>
+<pre><code>s := []string{&quot;James&quot;, &quot;Jasmine&quot;}
+Greeting(&quot;goodbye:&quot;, s...)
+</code></pre><p>within Greeting, who will have the same value as s with the same underlying array.</p>
+</blockquote>
+<p>也就是说，如果我们传入的是slice…这种形式的参数，go不会创建新的slice。写了一个简单的例子验证：</p>
+<pre><code>package main
+
+import &quot;fmt&quot;
+
+func t(args ...int) {
+    fmt.Printf(&quot;%p\n&quot;, args)
+}
+
+func main() {
+    a := []int{1,2,3}
+    b := a[1:]
+
+    t(a...)
+    t(b...)
+
+    fmt.Printf(&quot;%p\n&quot;, a)
+    fmt.Printf(&quot;%p\n&quot;, b)
+}
+
+//output
+0x1052e120
+0x1052e124
+0x1052e120
+0x1052e124
+</code></pre><p>可以看到，可变参数args的地址跟实际外部slice的地址一样，用的同一个slice。</p>
 
       
     </div>
@@ -766,102 +799,6 @@ key=score:member //&gt;=0
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-05-20T00:44:58.000Z"><a href="/2014/05/20/ledisdb-embed-introduction/">05-20-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/05/20/ledisdb-embed-introduction/">LedisDB嵌入使用介绍</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>ledisdb现在可以支持嵌入式使用。你可以将其作为一个独立的lib（类似leveldb）直接嵌入到你自己的应用中去，而无需在启动单独的服务。</p>
-<p>ledisdb提供的API仍然类似redis接口。首先，你需要创建ledis对象：</p>
-<pre><code>import &quot;github.com/siddontang/ledisdb/ledis&quot;
-
-configJson = []byte(&#39;{
-    &quot;data_db&quot; : 
-    {
-        &quot;path&quot; : &quot;/tmp/testdb&quot;,
-        &quot;compression&quot;:true,
-        &quot;block_size&quot; : 32768,
-        &quot;write_buffer_size&quot; : 2097152,
-        &quot;cache_size&quot; : 20971520
-    }    
-}
-&#39;)
-
-l, _ := ledis.Open(configJson)
-</code></pre><p>data_db就是数据存储的leveldb位置，简单起见，所有的size配置全部使用byte作为单位。</p>
-<p>然后我们选择一个db使用，</p>
-<pre><code>db, _ := l.Select(0)
-</code></pre><p>类似redis，我们也只支持数字类型的db，最多16个db，索引范围为[0-15]。支持太多的db真没啥意义。</p>
-<p>下面是一些简单的例子：</p>
-<h2 id="kv">kv</h2>
-<pre><code>db.Set(key, value)
-db.Get(key)
-db.SetNX(key, value)
-db.Incr(key)
-db.IncrBy(key, 10)
-db.Decr(key)
-db.DecrBy(key, 10)
-
-db.MSet(KVPair{key1, value1}, KVPair{key2, value2})
-db.MGet(key1, key2)
-</code></pre><h2 id="list">list</h2>
-<pre><code>db.LPush(key, value1, value2, value3)
-db.RPush(key, value4, value5, value6)
-
-db.LRange(key, 1, 10)
-db.LIndex(key, 10)
-
-db.LLen(key)
-</code></pre><h2 id="hash">hash</h2>
-<pre><code>db.HSet(key, field1, value1)
-db.HMSet(key, FVPair{field1, value1}, FVPair{field2, value2})
-
-db.HGet(key, field1)
-
-db.HGetAll()
-db.HKeys()
-</code></pre><h2 id="zset">zset</h2>
-<pre><code>db.ZAdd(key, ScorePair{score1, member1}, ScorePair{score2, member2})
-
-db.ZCard(key)
-
-//range by score [0, 100], withscores = true and no limit
-db.ZRangeByScore(key, 0, 100, true, 0, -1)
-
-//range by score [0, 100], withscores = true and limit offset = 10, count = 10
-db.ZRangeByScore(key, 0, 100, true, 10, 10)
-
-db.ZRank(key, member1)
-
-db.ZCount(key, member1)
-</code></pre><p>ledisdb的源码在这里<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">https://github.com/siddontang/ledisdb</a>，欢迎反馈。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -907,7 +844,7 @@ db.ZCount(key, member1)
   
     <li><a href="/categories/lua/">lua</a><small>2</small></li>
   
-    <li><a href="/categories/mysql/">mysql</a><small>3</small></li>
+    <li><a href="/categories/mysql/">mysql</a><small>4</small></li>
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
