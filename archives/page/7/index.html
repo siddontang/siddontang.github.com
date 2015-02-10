@@ -72,6 +72,84 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2013-06-16T14:16:14.000Z"><a href="/2013/06/16/introduction-mtunnel/">06-16-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/06/16/introduction-mtunnel/">mtunnel - a simple http tunnel</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>mtunnel是一个简易的http隧道工具，使用python实现，基于tornado。</p>
+<p>为了解决远端用户服务器的一些问题，我们需要远程连接到用户的服务器上面，但因为企业安全性问题，外部根本不可能访问相关服务器，只能通过用户的本地机器去访问，但是用户本地机器也在内网环境下面，外部不能直接连接。</p>
+<p>因为用户的机器在内网环境下面，也不可能通过通常的代理去连接。所以比较好的方式就是通过一台双方都能访问的公网服务器，来交换双方的数据。</p>
+<p>mtunnel通过http tunnel的方式来进行数据的交互。它将双方交互的数据封装到http的body里面，通过http协议进行传输。这样有几个好处：</p>
+<ul>
+<li>不用关心交互的具体协议，mtunnel只是将双方交互的所有信息完全封装到http body里面进行传递。</li>
+<li>http一般不会被企业的网络安全规则给屏蔽，内网穿透性更好。</li>
+</ul>
+<p>假设，企业服务器启动了sshd，而我们这边使用putty。流程如下：</p>
+<p><img src="https://raw.github.com/siddontang/blog/master/asserts/mtunnel-flow.png" alt="image"></p>
+<ul>
+<li>putty直接将数据发送给forward proxy，由forward proxy将数据通过http body发送给server。</li>
+<li>server收到数据之后将其放置在一个buffer中。如果reverse proxy这时候已经连接到server，则直接将数据发送给reverse proxy。</li>
+<li>reverse proxy定时去server获取数据，如果有则将其发送给sshd。</li>
+<li>sshd返回的数据同样流程返回给putty。</li>
+</ul>
+<h2 id="使用">使用</h2>
+<p>mtunnel分为3个部分，与putty交互的forward proxy，与sshd交互的reverse proxy以及负责双方数据中转的server。</p>
+<h3 id="start_server">start server</h3>
+<pre><code>    python server.py -p 8888
+</code></pre><p>假设sever的ip地址为10.20.187.118，监听port为8888。</p>
+<h3 id="start_reverse_proxy">start reverse proxy</h3>
+<p>因为我们需要通过用户本地机器去访问服务器，所以首先必须用户同意让我们访问，也就是他需要在本地启动reverse proxy。</p>
+<pre><code>    python rproxy.py -host 10.20.189.241 -p 22 --server 10.20.187.118:8888
+</code></pre><p>host和port连接的是sshd的ip和port，而server则是服务器的地址。<br>reverse proxy如果成功连接上了server，则会获取一个channel id。后续所有的通信都必须通过该channel id进行。</p>
+<h3 id="start_forward_proxy">start forward proxy</h3>
+<pre><code>    python fproxy.py --server 10.20.187.118:8888 --channel 112122 -p 8889
+</code></pre><p>我们在本地启动forward proxy，监听本地8889端口，server为服务器的地址，而channel则是用户启动reverse proxy之后获取的channel id，由用户负责告诉我们。</p>
+<h3 id="use">use</h3>
+<p>当做了上述操作之后，我们只需要启动putty，连接forward proxy。然后putty就能与远端的sshd交互了。</p>
+<h2 id="远程协助？">远程协助？</h2>
+<p>为什么不使用QQ远程协助这种类似功能？主要有以下几点原因：</p>
+<ul>
+<li>QQ远程协助能看到用户本地机器的很多信息，企业用户对于安全性问题比较敏感。</li>
+<li>网络问题，现在很多企业的网络环境非常不好，我们就碰到过太多次远程的时候网络坑爹造成完全无法工作的情况。</li>
+</ul>
+<h2 id="后续方向">后续方向</h2>
+<p>现在的版本只是一个最基本的版本，很多问题没有考虑，后续主要考虑以下几个方面：</p>
+<ul>
+<li>安全性，尤其要保证channel id的安全性。后续考虑使用签名机制等。</li>
+<li>网络容错，还没怎么很好的处理网络出问题的情况，譬如网络断开等。</li>
+<li>P2P，数据都走server会有延时，稳定等问题，如果能够P2P互通，就很强大了。</li>
+</ul>
+<p>代码在<a href="http://https://github.com/siddontang/mtunnel" target="_blank" rel="external">这里</a>，该版本只是笔者使用python实现的一个非常基础的版本，很多地方存在不足，后续会慢慢完善。</p>
+<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2013-05-29T13:05:05.000Z"><a href="/2013/05/29/nginx-vhost-deploy/">05-29-2013</a></time>
       
       
@@ -1076,98 +1154,13 @@ code 200 -- 5000
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2012-08-20T10:00:00.000Z"><a href="/2012/08/20/safe-server-interaction/">08-20-2012</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2012/08/20/safe-server-interaction/">思考的一套安全的服务交互模型</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>在服务器端，一般采用多服的方案来进行架构，也就是一个服务器只提供特定的服务。客户端要完成一个功能，可能需要访问不同服务器，而这时候就会有很多问题，包括服务器之间如何交互，客户端与服务器如何交互，安全问题等。</p>
-<h1 id="安全的登陆">安全的登陆</h1>
-<p>对于用户来说，他要使用服务，首先需要做的事情就是登陆，对于登陆来说，我们可以通过oauth，openid等方案，将整个登陆验证交给其他服务提供商（譬如google）来进行。但是，在某些时候，我们仍然需要通过username + password的方式来登陆。这里就有一个问题，如何保证账号密码的安全性？</p>
-<p>我觉得，通常一般有如下几种做法：</p>
-<ul>
-<li><p>使用username + md5(password)的方式，这样的方式虽然不会导致用户的密码明文泄漏，但是如果中途通信被窃听，窃听者直接使用username和密文密码就可以直接登陆了。</p>
-</li>
-<li><p>在登陆之前，服务器首先下发一个随机的aes key，用户使用key将username + md5(password)进行加密。<br>  对于key服务器应该有一个时间限制，即在一段时间之后，该key就失效。这样即使通信被窃听了，破解获取username + md5（password）的时间较长，同时即使使用相同的信息登陆，因为key的时效性，也可能会因为key的失效失败。</p>
-<p>  这种方式比较容易实现，但是如果在服务器下发aes key下发的时候就被窃取到了，那么用户的username和md5(password)信息就很容易被窃取到了。</p>
-</li>
-<li><p>使用https，貌似这是最安全的一种方式，但是https的证书是要钱的，虽然有免费的，但是限制颇多。<br>  另外https也可能出现证书欺骗，所以在某种程度上面来说也是不安全。不过鉴于很多网站都使用https处理登陆，所以现阶段来说还是很安全的。</p>
-</li>
-</ul>
-<p>除了上面的几种方法之外，还有很多其他的处理方式，这里不在详细表述，但是对于我来说，现阶段因为关注点在web上面，所以使用https算是一个很好的方案，所以后续所有客户端与服务器的交互，都准备采用https协议。</p>
-<h1 id="高效的交互">高效的交互</h1>
-<p>当用户登陆之后，我们会给用户生成一个对应的stub（存根），后续用户只要拿着这个存根就能继续访问login server了。这里引入了stub概念，因为对于client来说，它不可能每次与server交互都使用username + password等方式，所以通过引入stub，来维持client与server的会话状态。</p>
-<p>当然，stub不可能一直有效，如果一直有效，那么如果其他用户拿到了这个stub，就可以欺骗server访问服务器了。所以stub一般都有一个时效性的。</p>
-<p>通常的做法，是server会在一个地方保存stub的信息，譬如在memcache里面，然后该stub会对应一些信息（譬如stub创建时间，过期时间），当每次交互的时候，server在cache里面查询到这个stub对应的信息，如果查询不到该stub，那我们就认为这是一次非法的会话，需要用户重新登陆。而如果查询到了相关信息，则判断stub是否过期，如果过期，仍然需要用户重新登录再次去申请新的stub。</p>
-<p>但是这种方式，有几个问题：</p>
-<ul>
-<li>stub存放到一个cache里面，所有与server的交互都会访问该cache，即使memcache很快，但是可能部署在不同的物理机器上面，网络还是有开销的。</li>
-<li>单点问题，如果cache挂掉了，那么在一定时间里面，所有的访问都是非法的。即使cache能很快恢复，但是会导致所有的stub都必须重新申请了。</li>
-</ul>
-<p>鉴于上述情况，我考虑使用另一种方式。</p>
-<ul>
-<li>提供一个key gen服务，该服务每隔一段时间生成一个aes key，推送到server上面。每一个server保存当前aes key以及上一次推送过来的key</li>
-<li>生成stub的时候，使用当前的key加密一段数据（包括创建时间，过期时间等），将加密过的这段数据作为stub</li>
-<li>client通过stub访问的时候，server使用当前的key或者上一次key进行解密，如果解密成功，那么就认为是合法的stub</li>
-<li>stub通过key解密出来的数据，判断是否过期，如果过期或者解密失败，则需要client重新在申请新的stub</li>
-</ul>
-<p>这套机制有点在于对于stub的校验与存储不需要一个中心cache来处理，即使key gen服务当掉了，重启生成一个新的key的时候，也能够保证上一次的key有效，尽量减少重新申请stub的client数量。</p>
-<h1 id="信任链机制">信任链机制</h1>
-<p>前面说了，对于登陆流程来说，采用的是https的方式进行，但是还存在一个问题，即对于分布式服务器来说，每一个服务器怎么认为客户端是可信任的。</p>
-<p>对于login server来说，可以认为访问它的client是可信任的，因为client能提供正确的登陆信息（譬如username + password或者oauth的token），但是对于其他server，是不知道这些信息的。所以我们需要一套机制来来让server知道client是可信任的。</p>
-<p>这里，我准备采用一种信任链的方式，即如果client可以通过login server向其他server申请一个stub，然后client就可以通过这个stub来访问该服务。</p>
-<p>对于信任链我们可以这么理解，如果a信任b，b信任c，那么a也就信任c。那么对于我们整个信任体系，可以这样，假设server1信任client，client需要访问server2，流程可以这样：</p>
-<ul>
-<li>server1向server2申请一个stub</li>
-<li>server2给server1返回一个stub</li>
-<li>server1向client返回stub</li>
-<li>client通过stub访问server2</li>
-</ul>
-<p>这里同时需要处理一个问题，client可以通过一些机制让server可信，那么server之间如何互信，即server2为什么允许server1去申请stub。</p>
-<p>其实，对于server来说，它既是一个server（为client提供服务），也同时算是一个client（需要访问其他服务）。所以在某些方面，server与server的交互可以当成client与server的交互一样处理。只是我们不是通过username + password形式。</p>
-<p>一般server之间互相信任，是比较容易处理的。通常有几种做法：</p>
-<ul>
-<li>iptable 因为server都是我们内部自己部署配置，所以iptable可以很好的解决server信任问题</li>
-<li>公私钥 server1有一个priv key，server2有一个对应的public key，server1与server2第一次交互的时候通过公私钥验证。验证通过之后，server2会生成一个stub，后续server1会通过这个stub访问server2，直到stub失效。<br>  这里我们需要注意，这里的公私钥跟前面提到的https是不一样的，前面的https是保证整个通信信道的安全，而这里是为了验证是否可信。</li>
-</ul>
-<h1 id="权限机制">权限机制</h1>
-<p>对于server来说，它对外提供相应的服务，而这些服务是通过api来暴露的。对于client来说，即使它是可信的，但是对于某些api接口，只能由特定的用户去访问，所以我们还需要实现一套api的权限认证机制。</p>
-<p>一般的做法，对于一个用户，有相应的角色，譬如普通用户，管理员等。然后会有一个权限表，存储的是相应角色对应的可访问api。当用户访问server调用相应api的时候，会首先看该角色是否有权限，如果有权限，则允许调用。</p>
-<p>当用户首先登陆的时候，会在login server里面获取到其对应的角色。那么我们还需要面对一个问题，权限表怎么存储？对于一个server来说，某一个权限对应相应的api这个是预先可以定义的，所以我们可以在server启动的时候就放置在内存里面，这样当用户访问服务的时候就可以直接通过内存里面的权限表知道是否可访问。那么现在又有一个问题，用户每次访问都需要带上role这一个参数？从前面可知，client通过stub与server进行通信，所以我们可以在生成stub的时候直接将用户的role放置在stub里，这样server解开这个stub之后就可以得到相应的role了。</p>
-<h1 id="总结">总结</h1>
-<p>上面介绍的就是设想的一套安全高效的分布式服务器架构。当然对于分布式服务来说，还有很多问题没有考虑，譬如负载均衡，数据库等问题，后续我会不断探索思考，归纳总结。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
     <a href="/archives/page/6/" class="alignleft prev">上一页</a>
   
+  
+    <a href="/archives/page/8/" class="alignright next">下一页</a>
   
   <div class="clearfix"></div>
 </nav>
@@ -1201,7 +1194,7 @@ code 200 -- 5000
   
     <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
   
-    <li><a href="/categories/go/">go</a><small>29</small></li>
+    <li><a href="/categories/go/">go</a><small>30</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   

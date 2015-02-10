@@ -68,6 +68,114 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-03-12T06:16:43.000Z"><a href="/2014/03/12/polaris-introduction/">03-12-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/03/12/polaris-introduction/">Polaris 一个用Go实现的Restful Web框架</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>是一个用go实现的支持restful的web框架，主要参考tornado进行设计。</p>
+<p>虽然在go里面搭建一个http server非常的简单，这里强烈推荐<a href="http://www.gorillatoolkit.org/" target="_blank" rel="external">gorilla</a>，但并没有很好的对restful模型进行支持。考察了很多开源实现，我决定还是重新造一个轮子，毕竟难度也不怎么大，而且能够根据项目的使用慢慢调整完善。</p>
+<h1 id="使用">使用</h1>
+<p>设计<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>还是参考了tornado，虽然一段时间不用python了，但是我还是对tornado念念不忘。</p>
+<p>在<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>，我现在只支持get，post，put，head和delete这几种method，剩下的貌似我也没用到过。只要一个对象，它提供了以上一个或多个接口，就能注册进<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的router中。</p>
+<p>先上一个例子：</p>
+<pre><code>type Handler1 struct {
+
+}
+
+func (h *Handler1) Prepare(env *Env) {
+    fmt.Println(&quot;hello prepare&quot;)
+}
+
+func (h *Handler1) Get(env *Env) {
+    env.WriteString(&quot;hello get&quot;)
+}
+
+func (h *Handler1) Post(env *Env) {
+    env.WriteString(&quot;hello post&quot;)
+}
+
+type Handler2 struct {
+
+}
+
+//id is a captured submatch for regexp url below
+func (h *Handler2) Get(env *Env, id string) {
+    env.WriteString(&quot;hello &quot; + id)
+}
+
+r = NewRouter()
+
+r.Handle(&quot;/handler1&quot;, new(Handler1))
+r.Handle(&quot;/handler2/([0-9]+)&quot;, new(Handler2))
+
+http.Handle(&quot;/&quot;, r)
+http.ListenAndServe(&quot;127.0.0.1:11181&quot;, nil)
+</code></pre><p>上面，我们实现了两个handler，对于每一个handler，需要实现以下一个或多个接口:</p>
+<pre><code>Get(env *Env)
+Post(env *Env)
+Head(env *Env)
+Put(env *Env)
+Delete(env *Env)
+</code></pre><p>Env用以表明该次请求的上下文环境，主要是为了纪念一个内部库stars，以此命名。</p>
+<p>鉴于tornado也提供了prepare支持，所以，如果handler提供了Prepare(env *Env)接口，每次调用相应的函数的时候，会优先调用Prepare。</p>
+<p>在handler2中，我们可以看到，Get函数多了一个参数id，这主要是为了处理对应的正则url里面含有group的情况。上面handler2对应的url里面有一个([0-9]+) group，所以当url匹配成功之后，我们会将该group实际的数据传递给handler2。</p>
+<p>因为正则匹配的结果都是string，所以Get后面的参数都必须是string类型的。实际的类型转换需要handler自行处理。</p>
+<h1 id="路由规则">路由规则</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>的路由规则比较简单，参考nginx分为literal pattern和regexp pattern两种。当有请求需要处理的时候，首先查看是否在literal pattern中，如果不是，则根据注册的regexp pattern依次匹配。</p>
+<p>上面的例子中，<strong>/handler1</strong>就是literal pattern，而<strong>/handler2/([0-9]+)</strong>则是regexp pattern。在go中，判断一个字符串是否是正则表达式，只要通过regexp.QuoteMeta就可以了，如果得到的值跟原字符串一样，该字符串就是literal pattern。</p>
+<h1 id="实现">实现</h1>
+<p><a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>核心实现是基于reflect，这里列举一些：</p>
+<h2 id="判断一个handler是否具有相关接口">判断一个handler是否具有相关接口</h2>
+<ul>
+<li>reflect.ValueOf(handler)得到handler的value v</li>
+<li>v.MethodByName(“Get”)得到get function的value m</li>
+<li>m.Kind() == reflect.Func判断是否存在Get函数</li>
+</ul>
+<h2 id="判断接口是否满足规范">判断接口是否满足规范</h2>
+<ul>
+<li>m.NumIn()获取该函数输入参数的个数</li>
+<li>m.In(0).Kind() == reflect.Ptr和m.In(0).String() == “<em>polaris.Env”判断第一个参数必须为\</em>Env</li>
+<li>m.In(i).Kind() == reflect.String判断第i(i&gt;=1)个参数必须为string</li>
+</ul>
+<h2 id="根据传入的参数调用相应的函数">根据传入的参数调用相应的函数</h2>
+<ul>
+<li>根据传入的http request method找到对应的函数 m</li>
+<li>values = make([]relfect.Value, nArgs)</li>
+<li>通过reflect.ValueOf填充参数，第一个参数为*Env</li>
+<li>m.Call(values)，使用Call进行函数调用</li>
+</ul>
+<h1 id="后续">后续</h1>
+<p>现在的<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>只支持基本的restful模型，后续我考虑将自己开发的其他库，譬如log，mysql等进行整合，使其真正成为一个可用的restful web framework。</p>
+<p>代码在这里<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">https://github.com/siddontang/polaris</a>，欢迎大家反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-03-10T01:35:51.000Z"><a href="/2014/03/10/mixer-introduction/">03-10-2014</a></time>
       
       
@@ -1069,138 +1177,6 @@ index2abc
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2013-12-29T08:27:12.000Z"><a href="/2013/12/29/libtnet-http/">12-29-2013</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2013/12/29/libtnet-http/">Libtnet HTTP实现</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="HTTP">HTTP</h1>
-<p>libtnet提供了简单的http支持，使用也很简单。</p>
-<p>一个简单的http server：</p>
-<pre><code>void onHandler(const HttpConnectionPtr_t&amp; conn, const HttpRequest&amp; request)
-{
-    HttpResponse resp;
-    resp.statusCode = 200;
-    resp.setContentType(&quot;text/html&quot;);
-    resp.body.append(&quot;Hello World&quot;);    
-    conn-&gt;send(resp);
-}
-
-TcpServer s;
-HttpServer httpd(&amp;s);
-httpd.setHttpCallback(&quot;/test&quot;, std::bind(&amp;onHandler, _1, _2));
-httpd.listen(Address(80));
-s.start(4);
-</code></pre><p>我们对http server的<strong>“/test”</strong>注册了一个handler，当用户访问该url的时候，就会显示”Hello World”。</p>
-<p>同样，http client的使用也很简单：</p>
-<pre><code>void onResponse(IOLoop* loop, const HttpResponse&amp; resp)
-{
-    cout &lt;&lt; resp.body &lt;&lt; endl;
-    loop-&gt;stop();
-}
-
-IOLoop loop;
-HttpClientPtr_t client = std::make_shared&lt;HttpClient&gt;(&amp;loop);
-client-&gt;request(&quot;http://127.0.0.1:80/test&quot;, std::bind(&amp;onResponse, &amp;loop, _1));
-loop.start(); 
-</code></pre><p>这里，我们使用了一个http client，向server请求”/test”的内容，当服务器有响应之后，会调用响应的回调函数。</p>
-<h1 id="HTTP_Parser">HTTP Parser</h1>
-<p>对于http的解析，我采用的是<a href="https://github.com/joyent/http-parser" target="_blank" rel="external">http parser</a>，因为它采用的是流式解析，同时非常容易集成进libtnet。</p>
-<p>使用http parser只需要设置相应的回调函数即可。http parser有如下几种回调：</p>
-<ul>
-<li>message begin，解析开始的时候调用</li>
-<li>url，解析url的时候调用</li>
-<li>status complete，http response解析status的时候调用</li>
-<li>header field，解析http header的field调用</li>
-<li>header value，解析http header的value调用</li>
-<li>headers complete，解析完成http header调用</li>
-<li>body，解析http body调用</li>
-<li>message complete，解析完成调用</li>
-</ul>
-<p>这里特别需要注意的是http header的解析，因为http parser将其拆分成了两种回调，所以我们在处理的时候需要记录上一次header callback是field的还是value的。在解析field的时候，如果上一次是value callback，那我们就需要将上一次解析的field和value保存下来，而该次的解析则是一个新的field了。</p>
-<p>另外，http parser还提供了upgrade的支持，所以我们很方便的就能区分该次请求是否为websocket。</p>
-<h1 id="Websocket">Websocket</h1>
-<p>libtnet也提供了websocket的支持，现阶段，只支持<a href="http://tools.ietf.org/html/rfc6455" target="_blank" rel="external">RFC6455</a>。</p>
-<p>当libtnet通过http parser发现该次请求为websocket的时候，就进入了websocket的流程。websocket的使用也很简单，当握手成功之后，后续的所有通讯就是纯粹的tcp通信了。</p>
-<p>一个简单的websocket server：</p>
-<pre><code>void onWsCallback(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
-{
-    switch(event)
-    {
-        case Ws_CloseEvent:
-            break;
-        case Ws_MessageEvent:
-            {
-                const string&amp; str = *(const string*)context;
-                conn-&gt;send(str);
-            }
-            break;
-        case Ws_PongEvent:
-            break;
-        default:
-            break;
-    }
-}
-
-TcpServer s;
-HttpServer httpd(&amp;s);
-httpd.setWsCallback(&quot;/push/ws&quot;, std::bind(&amp;onWsCallback, _1, _2, _3));    
-httpd.listen(Address(80));
-s.start();
-</code></pre><p>可以看到，websocket的callback机制也类似于libtnet connection的callback机制，用户需通过event + context的方式来处理该次回调的数据。</p>
-<p>libtnet对websocket的frame的处理参照的是tornado的websocket模块。也能够组合多frame的数据，外部只需要关注Ws_MessageEvent即可。</p>
-<p>websocket client的实现也很简单：</p>
-<pre><code>void onWsConnEvent(const WsConnectionPtr_t&amp; conn, WsEvent event, const void* context)
-{
-    switch(event)
-    {
-        case Ws_OpenEvent:
-            conn-&gt;send(&quot;Hello world&quot;);
-            break;    
-        case Ws_MessageEvent:
-            {
-                const string&amp; msg = *(const string*)context;
-
-                LOG_INFO(&quot;message %s&quot;, msg.c_str());
-                conn-&gt;close();                        
-            }
-            break;
-        default:
-            break;
-    }    
-}
-
-IOLoop loop;
-WsClientPtr_t client = std::make_shared&lt;WsClient&gt;(&amp;loop);    
-client-&gt;connect(&quot;ws://127.0.0.1:80/push/ws&quot;, std::bind(&amp;onWsConnEvent, _1, _2, _3));
-loop.start();
-</code></pre>
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -1240,7 +1216,7 @@ loop.start();
   
     <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
   
-    <li><a href="/categories/go/">go</a><small>29</small></li>
+    <li><a href="/categories/go/">go</a><small>30</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   

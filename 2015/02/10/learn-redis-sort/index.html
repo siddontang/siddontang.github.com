@@ -1,0 +1,279 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>学习redis sort命令 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="学习redis sort命令"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-27956076-1']);
+  
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+      <li><a href="/atom.xml">RSS</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2015-02-10T13:39:57.000Z"><a href="/2015/02/10/learn-redis-sort/">02-10-2015</a></time>
+      
+      
+  
+    <h1 class="title">学习redis sort命令</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p><a href="https://github.com/siddontang/ledisdb" title="A fast NoSQL" target="_blank" rel="external">LedisDB</a>本来是没有sort命令的，而且实际我们也没有使用过该命令，但一位用户给我反应他迫切需要这个功能，我决定首先考察一下redis相关的实现，再看是否提供。</p>
+<p>然后我一看redis的sort命令，真的是震惊了，这可能算得上redis里面最复杂的一个命令了，命令原型如下：</p>
+<pre><code>SORT key [BY pattern] [LIMIT offset count] [GET pattern [GET pattern ...]] [ASC|DESC] [ALPHA] [STORE destination]
+</code></pre><p>如果不仔细看文档，或者看源码，一下子真的不知道这个命令怎么用。首先我们可以去掉LIMIT offset count这个选项，这个很容易理解，就是排好序之后取偏移数据。ASC和DESC这个也比较容易，就是正向和逆向排序。STORE destination这个其实就是将排好序的数据放到destination这个list里面，也比较容易理解。好了，去掉这些，那么sort的原型就是这个样子了:</p>
+<pre><code>SORT key [BY pattern] [GET pattern [GET pattern ...]] [ALPHA]
+</code></pre><p>key里面存储的就是需要排序的东西，所以key只能是list，set或者zset类型，我们以list为例。假设做如下操作：</p>
+<pre><code>redis&gt; lpush a 1 2 3
+redis&gt; lrange a 0 -1
+1) &quot;3&quot;
+2) &quot;2&quot;
+3) &quot;1&quot;
+</code></pre><p>如果使用sort，则排序结果如下:</p>
+<pre><code>redis&gt; sort a
+1) &quot;1&quot;
+2) &quot;2&quot;
+3) &quot;3&quot;
+</code></pre><p>呢么ALPHA是什么意思呢？我们可以做如下操作解释：</p>
+<pre><code>redis&gt; lpush b a1 a2 a3
+redis&gt; sort b
+(error) ERR One or more scores can&#39;t be converted into double
+redis&gt; sort b alpha
+1) &quot;a1&quot;
+2) &quot;a2&quot;
+3) &quot;a3&quot;
+</code></pre><p>我们在b里面压入的是字符串，所以不能直接sort，必须指定alpha方式。所以alpha就是明确告知sort使用字节序排序，不然sort就会尝试将需要排序的数据转成double类型。</p>
+<p>理解了alpha，我们再来看看by的含义，如下例子：</p>
+<pre><code>redis&gt; set w_1 3
+redis&gt; set w_1 30
+redis&gt; set w_2 20
+redis&gt; set w_3 10
+redis&gt; sort a by w_*
+1) &quot;3&quot;
+2) &quot;2&quot;
+3) &quot;1&quot;
+127.0.0.1:6379&gt;
+</code></pre><p>如果有by了，sort就会首先取出对应的数据，也就是1，2，3，然后跟by的pattern进行组合，变成w_1，w_2，w_3，然后以这个作为key去获取对应的值，也就是30，20，10，在按照这些值进行排序。上面这个例子，1对应的by值最大，为30，所以升序排列的时候在最后。</p>
+<p>说完了by，我们再来说说get，get是不参与排序的，只是在拍完序之后，将排好序的值依次跟get的pattern组合，获取对应的数据，进行返回，如下例子：</p>
+<pre><code>redis&gt; set o_1 10
+redis&gt; set o_2 20
+redis&gt; set o_3 30
+redis&gt; sort a get o_*
+1) &quot;10&quot;
+2) &quot;20&quot;
+3) &quot;30&quot;
+</code></pre><p>再来一个多个get的例子：</p>
+<pre><code>redis&gt; set oo_1 100
+redis&gt; set oo_2 200
+redis&gt; set oo_3 300
+redis&gt; sort a get o_* get oo_*
+1) &quot;10&quot;
+2) &quot;100&quot;
+3) &quot;20&quot;
+4) &quot;200&quot;
+5) &quot;30&quot;
+6) &quot;300&quot;
+</code></pre><p>从上面可以看到，如果有多个get，那么sort的做法是对于排好序的一个值，依次通过get获取值，放到结果中，然后在处理下一个值。</p>
+<p>如果有get，我们就能获取到相关的值，但这时候我们还需要返回原有的值怎么办？只需要<code>get #</code>就成了，如下：</p>
+<pre><code>redis&gt; sort a get o_* get #
+1) &quot;10&quot;
+2) &quot;1&quot;
+3) &quot;20&quot;
+4) &quot;2&quot;
+5) &quot;30&quot;
+6) &quot;3&quot;
+</code></pre><p>好了，折腾了这么久，我算是终于理解了sort的原理，然后在看完sort的实现，依葫芦画瓢在<a href="https://github.com/siddontang/ledisdb" title="A fast NoSQL" target="_blank" rel="external">LedisDB</a>里面支持了sort。当然在一些底层细节上面还是稍微跟redis不一样的。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+  
+  <div class="categories">
+    <a href="/categories/go/">go</a>
+  </div>
+
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.com">
+  </form>
+</div>
+
+  <div class="widget tag">
+  <h3 class="title">Github</h3>
+  <ul class="entry">
+  <li><a href="https://github.com/siddontang/ledisdb" target="_blank">LedisDB</a><small>Fast NoSQL</small></li>
+  <li><a href="https://github.com/siddontang/mixer" target="_blank">Mixer</a><small>MySQL Proxy with Go</small></li>
+  <li><a href="https://github.com/siddontang/libtnet" target="_blank">Libtnet</a><small>High Performance EventLoop</small></li>
+  <li><a href="https://github.com/siddontang/moonmq" target="_blank">MoonMQ</a><small>Fast Message Queue</small></li>
+  <li><a href="https://github.com/siddontang" target="_blank">More...</a></li>
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>7</small></li>
+  
+    <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>30</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>4</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>14</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tagcloud">
+  <h3 class="title">标签云</h3>
+  <div class="entry">
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 14.44px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+  </div>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2015 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>
