@@ -68,6 +68,122 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2015-03-06T13:24:18.000Z"><a href="/2015/03/06/build-ha-distributed-kv-service/">03-06-2015</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2015/03/06/build-ha-distributed-kv-service/">构建高可用分布式Key-Value存储服务</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h2 id="前言">前言</h2>
+<p>当我们构建服务端应用的时候，都会面临数据存放的问题。不同的数据类型有不同的存放方式，譬如关系型数据通常使用MySQL来存储，文档型数据则会考虑使用MongoDB，而这里，我们仅仅考虑最简单的kv（key-value）。</p>
+<p>kv的使用场景很多，一个很典型的场景就是用户session的存放，key为用户当前的session id，而value则是用户当前会话需要保存的一些信息。因为kv的场景很多，所以选择一个好的kv服务就很重要了。</p>
+<p>对于笔者来说，一个不错的kv服务可能仅仅需要满足如下几点就够了：</p>
+<ul>
+<li>协议简单</li>
+<li>高性能</li>
+<li>高可用</li>
+<li>易扩容</li>
+</ul>
+<p>市面上已经有很多满足条件kv服务，但笔者秉着no zuo no die的精神，决定使用<a href="https://github.com/siddontang/ledisdb" title="A Fast NoSQL" target="_blank" rel="external">LedisDB</a> + <a href="https://github.com/siddontang/xcodis" title="A distributed Redis/LedisDB proxy" target="_blank" rel="external">xcodis</a> + <a href="https://github.com/siddontang/redis-failover" title="Automatic redis monitoring and failover" target="_blank" rel="external">redis-failover</a>来构建一个高可用分布式kv存储服务。</p>
+<h2 id="现有解决方案">现有解决方案</h2>
+<p>在继续说明之前，笔者想说说曾经考虑使用或者已经使用的一些解决方案。</p>
+<h3 id="MySQL">MySQL</h3>
+<p>好吧，别笑，我真的说的是MySQL。MySQL作为一个关系型数据库，用来存储kv性能真心一点都不差。table的结构很简单，可能如下：</p>
+<pre><code>CREATE TABLE kv (
+    k VARBINARY(256),
+    v BLOB,
+    PRIMARY KEY(k),
+) ENGINE=innodb;
+</code></pre><p>当我还在腾讯互动娱乐部门的时候，一些游戏项目就仅仅将MySQL作为kv来使用，譬如用来存放玩家数据，游戏服务器通过玩家id读取对应的数据，修改，然后更新。鉴于腾讯游戏恐怖的用户量，MySQL能撑住直接就能说明将MySQL作为一个kv来用是可行的。</p>
+<p>不过不知道现在还有多少游戏项目仍然采用这种做法，毕竟笔者觉得，将MySQL作为一个kv服务，有点杀鸡用牛刀的感觉，MySQL还是有点重了。</p>
+<h3 id="Couchbase">Couchbase</h3>
+<p><a href="http://www.couchbase.com/" target="_blank" rel="external">Couchbase</a>是一个高性能的分布式NoSQL，它甚至能支持跨data center的备份。笔者研究了很长一段时间，但最终并没有决定采用，主要笔者没信心去搞定它的代码。</p>
+<h3 id="Redis">Redis</h3>
+<p>Redis是一个高性能NoSQL，它不光支持kv，同时还提供了其他的数据结构如hash，list，set，zset供外部使用。</p>
+<p>笔者在三年前就开始使用Redis，加之Redis的代码简单，很容易就能理解掌控。所以一直到现在，笔者都会优先使用Redis来存储很多非关系型数据。自然对于kv，笔者也是采用Redis来存放的。</p>
+<p>但Redis也有一些不足，最大的莫过于内存限制，Redis存储的总数据大小最好别超过物理内存，不然性能会有问题。同时，笔者觉得Redis的RDB和AOF机制也比较蛋疼，RDB的时候系统可能会出现卡顿，而AOF在rewrite的时候也可能出现类似的问题。</p>
+<p>因为内存的限制，所以Redis不能存储超大量的数据，为了解决这个问题，我们只能采用cluster的方案，但是Redis官方的cluster仍然处于开发阶段，并不能真正在生产环境中使用。所以笔者开发了<a href="https://github.com/siddontang/ledisdb" title="A Fast NoSQL" target="_blank" rel="external">LedisDB</a>。</p>
+<h2 id="LedisDB">LedisDB</h2>
+<p>开发<a href="https://github.com/siddontang/ledisdb" title="A Fast NoSQL" target="_blank" rel="external">LedisDB</a>，主要就是为了解决Redis内存限制问题，它主要有如下特性：</p>
+<ul>
+<li>采用Redis协议，大部分Redis的client都能直接使用。</li>
+<li>提供类似Redis的API，支持kv，hash，list，set，zset。</li>
+<li>底层采用多种db存储实际数据，支持rocksdb（推荐），leveldb，goleveldb，boltdb，lmdb，没有Redis内存限制问题，因为将数据放到硬盘里面了。</li>
+<li>高性能，参考<a href="https://github.com/siddontang/ledisdb/wiki/Benchmark" target="_blank" rel="external">benchmark</a>，虽然比Redis略慢，但完全可用于生产环境。</li>
+</ul>
+<p>一个简单地例子：</p>
+<pre><code>//start ledis server
+ledis-server 
+
+//another shell
+ledis-cli -p 6380
+
+ledis&gt; set a 1
+OK
+ledis&gt; get a
+&quot;1&quot;
+</code></pre><p>可以看到，LedisDB非常类似Redis，所以用户能很方便的从Redis迁移到LedisDB上面。在实际生产环境中，笔者建议底层选择rocksdb作为其存储模块，它不光性能高，同时提供了很多配置方便用户根据特定情况进行调优（当然，理解这一堆配置可是一件很蛋疼的事情）。后续，笔者对于LedisDB的使用说明都会是基于rocksdb的。</p>
+<h2 id="数据安全">数据安全</h2>
+<p>虽然LedisDB能存储大量数据，并且易于使用，但是作为一个数据存储服务，数据的安全性是一个非常需要考虑的问题。</p>
+<ul>
+<li>LedisDB提供了dump和load工具，我们可以很方便的对其备份。在dump的时候，我们仅仅使用的是rocksdb的snapshot机制，非常快速，同时不会阻塞当前服务。这点可能是相对于Redis RDB的优势。虽然Redis的RDB在save的时候也是fork一个子进程进行处理，但如果Redis的数据量巨大，仍然可能造成Redis的卡顿。</li>
+<li>LedisDB提供类似MySQL的binlog支持，任何操作都是写入binlog之后再最终提交到底层db的。如果服务崩溃，我们能通过binlog进行数据恢复。binlog文件有大小限制，当超过阀值之后，LedisDB会写入一个新的binlog中，而不是像Redis的AOF一样进行rewrite处理。</li>
+<li>LedisDB支持同步或者异步replication，同步复制能保证数据的强一致，但是会牺牲系统的性能，而异步复制虽然高效，但可能会面对数据丢失问题。这其实就是一个CAP选择问题，在P（partition tolerance）铁定存在的情况下，选择C（consistency）还是选择A（availability）？通常情况下，笔者会选择A。</li>
+</ul>
+<h2 id="故障转移">故障转移</h2>
+<p>在生产环境中，为了保证数据安全，一个master我们会通常配备一个或者多个slave（笔者喜欢将其称为replication topology），当master当掉的时候，监控系统会选择一个最优的slave（也就是拥有master数据最多的那个），将其提升为新的master，并且将其他slave指向该new master。这套流程也就是我们通常说的failover。</p>
+<p>Redis提供了sentinel机制来实现整个replication topology的failover。但sentinel是跟redis绑定的，所以不能直接在LedisDB上面使用，所以笔者开发了<a href="https://github.com/siddontang/redis-failover" title="Automatic redis monitoring and failover" target="_blank" rel="external">redis-failover</a>，一个能支持redis，或者LedisDB failover的sentinel。</p>
+<p>redis-failover通过定期向master发送<code>role</code>命令来获知当前replication topology，主要是slaves的信息。当master当掉之后，redis-failover就会从先前获取的slaves里面选择一个最优的slave，提升为master，选择最优的算法很简单，通过<code>info</code>命令得到”slave_priority”和”slave_repl_offset”，如果哪个slave的priority最大，就选择那个，如果priority都一样，则选择replication offset最大的那个。</p>
+<p>redis-failover会存在单点问题，所以redis-failover自身需要支持cluster。redis-failover的cluster在内部选举一个leader用来进行实际的monitor以及failover处理，当leader当掉之后，则进行重新选举。</p>
+<p>现阶段，redis-failover可以通过外部的zookeeper进行leader选举，同时也支持内部自身通过raft算法进行leader选举。</p>
+<h2 id="分布式集群">分布式集群</h2>
+<p>随着数据量的持续增大，单台机器最终无法存储所有数据，我们不得不考虑通过cluster的方式来解决，也就是将数据放到不同的机器上面去。</p>
+<p>要构建LedisDB的cluster，笔者考虑了如下三种方案，这里，我们不说啥hash取模或者consistency hash了，如果cluster真能通过这两种技术简单搞定，那还要这么费力干啥。</p>
+<ul>
+<li><p>Redis cluster。</p>
+<p>  redis cluster是redis官方提供的cluster解决方案，性能高，并且能支持resharding。可是直到现在，redis cluster仍处于开发阶段，至少笔者是不敢将其用于生产环境中。另外，笔者觉得它真的很复杂，还是别浪费脑细胞去搞定这套架构了。</p>
+</li>
+<li><p>定制client。</p>
+<p>  通过定制client，我们可以知道不同key的路由规则，自然就能找到实际的数据了。这方面的工作我的一位盆友正在进行，但定制client有一个很严重的问题在于所有的client都必须自己实现，其实不算是一个通用的解决方案。</p>
+</li>
+<li><p>Proxy</p>
+<p>  记得有人说过，计算机科学领域的任何问题, 都可以通过添加一个中间层来解决。而proxy则是用来解决cluster问题的一个中间层。</p>
+<p>  <a href="https://github.com/twitter/twemproxy" target="_blank" rel="external">Twemproxy</a>是一个很不错的选择，但是它不能支持resharding，而且貌似twitter内部也没在使用了，所以笔者并不考虑使用。</p>
+<p>  本来笔者打算自己写一个proxy，但这时候，<a href="https://github.com/wandoulabs/codis" target="_blank" rel="external">codis</a>横空出世，它是一个分布式的proxy，同时支持resharding，并且在豌豆荚的生产环境中得到验证，笔者立刻就决定使用codis了。</p>
+<p>  但codis并不支持LedisDB，同时为了满足他们自身的需求，使用的也是一个修改版的redis，鉴于此，笔者实现了<a href="https://github.com/siddontang/xcodis" title="A distributed Redis/LedisDB proxy" target="_blank" rel="external">xcodis</a>，一个基于codis的，支持LedisDB以及原生redis的proxy。</p>
+</li>
+</ul>
+<h2 id="架构">架构</h2>
+<p>最终的架构如下。</p>
+<p><img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/kv-architecture.png" alt="kv architecture"></p>
+<p>我们通过使用LedisDB来解决了Redis单机数据容量问题，通过replication机制保证数据安全性，通过redis-failover用来进行failover处理，最后通过xcodis进行集群管理。</p>
+<p>当前，这套架构并没有在生产环境中得到验证，但我们一直在内部不断测试，而且国外也有用户在帮助笔者验证这套架构，所以笔者对其还是很有信心的，希望能早日上线。如果有哪位童鞋也对这套架构感兴趣，想吃螃蟹的，笔者非常愿意提供支持。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2015-02-10T13:39:57.000Z"><a href="/2015/02/10/learn-redis-sort/">02-10-2015</a></time>
       
       
@@ -1071,122 +1187,6 @@ set global event_scheduler := 1;
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-10-16T14:39:47.000Z"><a href="/2014/10/16/head-first-web-service/">10-16-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/10/16/head-first-web-service/">深入浅出Web Service</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>应<a href="http://my.oschina.net/javayou" target="_blank" rel="external">红薯</a>的邀约，决定给某大学的童鞋讲讲Web Service相关知识，鉴于是第一次在学校献丑，所以还是老老实实的准备，先把类似逐字稿的东西写出来，然后在准备PPT吧。</p>
-<p>关于Web service，这个话题太广太泛，加之我也只熟悉一些特定的领域，所以准备从两方面入手，1，什么是Web service，就当是概念性的介绍，让大家有个相关认识。2，则是根据一个简单的例子，告诉大家如何构建一个Web service服务。</p>
-<h2 id="什么是Web_service">什么是Web service</h2>
-<p>首先根据Wiki的定义：<strong>A Web Service is a method of communication between two electronic devices over a network.</strong> </p>
-<p>简单来说，Web Service就是基于网络不同设备之间互相通信的一种方式。Web Service是一个软件服务，它提供很多API，而客户端通过Web协议进行调用从而完成相关的功能。</p>
-<p>Web service并不是一个新奇的概念，相反从很早的分布式计算，到网格计算，到现在的云，都或多或少的有着Web service的影子。只不过随着近几年一浪高过一浪的互联网热潮以及Google，Amazon等公司的大力推动，Web service变得愈发流行。</p>
-<p>越来越多的公司开始提供Web service，而同时又有更多的公司基于这些Web service提供了更加上层的Web service。</p>
-<p>Amazon的S3（Simple Storage Service）是一个文件存储服务，用户通过S3将文件存放到Amazon的服务器上面，Amazon负责保证该文件的安全（包括不被别人获取，不丢失等）。而Drew Houston则在S3的基础上，构造了一个令人惊奇的同步网盘：Dropbox，同时，Dropbox又将相关API提供出去，供其他的Application其同步服务。</p>
-<p>可以看到，正是因为有了越来越多的Web services，才让我们现在的互联网生活变得越发精彩。</p>
-<h2 id="实现一个简单的Web_service">实现一个简单的Web service</h2>
-<p>好了，上面扯了这么多，是不是心痒痒想自己开发一个Web service？开发一个Web service并不是那么容易的事情，尤其是涉及到分布式之后。不过我觉得一个小例子没准就能说明很多东西。当然我自认并不是Web service的专家（这年头专家架构师太多，我只能算打酱油的），很多东西难免疏漏，并且一些设计也会带有很强烈的个人色彩，如果大家有啥更好的认识，欢迎跟我讨论（妹子优先！）。</p>
-<p>一个简单的例子：KV Storage Service，后面就叫KV吧。类似于S3，只是我们不是存文件，而是元数据。后面我们就用KV来表明服务的名字吧。</p>
-<p>对于KV来说，它只会涉及到三种操作，如果用代码表示如下：</p>
-<pre><code>//根据指定的key获取对应的value
-Get(key)
-
-//设置key的值为value，如果key本来存在，则更新，否则新建
-Put(key, value)
-
-//删除key
-Delete(key)
-</code></pre><h3 id="交互协议">交互协议</h3>
-<p>既然是Web service，自然选用HTTP来做交互，比起自己实现一套不通用的协议，或者使用Google Protocol Buffers这些的，HTTP具有太多的优势，虽然它的性能稍微有点差，数据量稍微有点臃肿，但几乎所有的浏览器以及数不清的库能直接支持，想想都有点小激动了。</p>
-<p>所以我们唯一要做的，就是设计好我们的API，让外面更方便的使用Web service。</p>
-<h3 id="API">API</h3>
-<p>根据wiki的定义，Web service通常有两种架构方式，RESTful和Arbitrary（RPC，SOAP，etc）。</p>
-<p>REST是Representational state transfer的缩写，而满足REST架构模型的我们通常称之为Restful：</p>
-<ul>
-<li>使用URI来表示资源，譬如<code>http://example.com/user/1</code> 代表ID为1的user。</li>
-<li>使用标准HTTP方法GET，POST，PUT，DELETE等来操作资源，譬如<code>Get http://example.com/user/1</code> 来获取user 1的信息，而使用<code>Delete http://example.com/user/1</code> 来删除user 1。</li>
-<li>支持资源的多种表现形式，譬如上例Get中设置Content-Type为json，让服务端返回json格式的user信息。</li>
-</ul>
-<p>相对于Restful，另一种则是Arbitrary的，我不熟悉SOAP，这里就以RPC为例。</p>
-<p>RPC就是remote procedure call，它通过在HTTP请求中显示的制定需要调用的过程名字以及参数来与服务端进行交互。仍然是上面的例子，如果我们需要得到用户的信息，可能就是这样 <code>Get http://example.com/getuser?userid=1</code>, 如果要删除一个用户，没准是这样<code>Get http://example.com/delUser?userid=1</code>。</p>
-<p>那选择何种架构呢？在这里，我倾向使用Restful架构模型，很大原因在于它理解起来很容易，而且实现简单，而现在越来越多的Web service提供的API采用的是Restful模式，从另一个方面也印证了它的流行。</p>
-<p>所以这个Web service的接口就是这样了：</p>
-<pre><code>GET http://kv.com/key
-DELETE http://kv.com/key
-POST http://kv.com/key -dvalue
-PUT http://kv.com/key -dvalue
-</code></pre><p>上面POST和PUT可以等价，如果key存在，则用value覆盖，不存在则新建。</p>
-<h3 id="架构">架构</h3>
-<p>好了，扯了这么多，我们也要开始搭建我们的Web service了。因为采用的是HTTP协议，所以我们可以直接使用现成的HTTP server来帮我们处理HTTP请求。譬如nginx，apache，不过用go或者python直接写一个也不是特别困难的事情。</p>
-<p>我们还需要一个storage server用来存放key-value，mysql可以，redis也行，或者我的<a href="http://ledisdb.com" target="_blank" rel="external">ledisdb</a>，谁叫红薯说可以打广告的。</p>
-<p>最开始，我们就只有一台机器，启动一个nginx用来处理HTTP请求，然后启动一个ledisdb用来存放数据。然后开始对外happy的提供服务了。</p>
-<p>KV开始工作的很好，突然有一天，我们发现随着用户量的增大，一台机器处理不过来了。好吧，我们在加一台机器，将nginx和ledisdb放到不同的机器上面。</p>
-<p>可是好景不长，用户量越来越多，压力越来越大，我们需要再加机器了，因为nginx是一个无状态的服务，所以我们很容易的将其扩展到多台机器上面去运行，最外层通过DNS或者LVS来做负载均衡。但是对于有状态的服务，譬如上面的ledisdb，可不能这么简单的处理了。好吧，我们终于要开始扯到分布式了。</p>
-<h3 id="CAP">CAP</h3>
-<p>在聊分布式之前，我们需要知道CAP定理，因为在设计分布式系统的时候，CAP都是必须得面对的。</p>
-<ul>
-<li>Consistency，一致性</li>
-<li>Avaliability，可用性</li>
-<li>Partition tolerance，分区容忍性</li>
-</ul>
-<p>CAP的核心就在于在分布式系统中，你不可能同时满足CAP，而只能满足其中两项，但在分布式中，P是铁定存在的，所以我们设计系统的时候就需要在C和A之间权衡。</p>
-<p>譬如，对于MySQL,它最初设计的时候就没考虑分区P，所以很好的满足CA，所以做过MySQL proxy方面工作的童鞋应该都清楚，要MySQL支持分布式是多么的蛋疼。</p>
-<p>而对于一般的NoSQL，则是倾向于采用AP，但并不是说不管C，只是允许短时间的数据不一致，但能达到最终一致。</p>
-<p>而对于需要强一致的系统，则会考虑牺牲A来满足CP，譬如很多系统必须写多份才算成功，</p>
-<h3 id="Replication">Replication</h3>
-<p>对于前面提到的Ledisdb，因为涉及到数据存放，本着不要把鸡蛋放到一个篮子里面的原则，我们也不能将数据放到一台机器上面，不然当机了就happy了。而解决这个的办法就是replication。</p>
-<p>熟悉MySQL或者Redis的童鞋对replication应该都不会陌生，它们的replication都采用的是异步的方式，也就是在一段时间内不满足数据一致性，但铁定能达到最终一致性。</p>
-<p>但如果真想支持同步的replication，怎么办呢？谁叫我们容不得数据半点丢失。通常有几种做法：</p>
-<ul>
-<li>2PC，3PC</li>
-<li>Paxos，Raft</li>
-</ul>
-<p>因为这方面的坑很深，就不在累述，不过我是很推崇Raft的，相比于2PC，3PC，以及Paxos，Raft足够简单，并且很好理解。有机会在说明吧。</p>
-<h3 id="水平扩展">水平扩展</h3>
-<p>好了，通过replication解决了ledisdb数据安全问题，但总有一天，一台机器顶不住了，我们要考虑将ledisdb的数据进行拆分到多台机器。通常做法如下：</p>
-<ul>
-<li>最简单的做法，hash(key) % num，num是机器的数量，但这种做法在添加或者删除机器的时候会造成rehash，导致大量的数据迁移。</li>
-<li>一致性hash，它相对于传统的hash，在添加或者删除节点的时候，它能尽可能的少的进行数据迁移。不过终归还是有数据流动的。</li>
-<li>路由映射表，不同于一致性hash，我们在外部自己负责维护一张路由表，这样添加删除节点的时候只需要更改路由表就可以了，相对于一致性hash，个人感觉更加可控。</li>
-</ul>
-<p>我个人比较喜欢预分配+路由表的方式来进行水平扩展，所谓预分配，就是首先我就将数据切分到n个（譬如1024）shard，开始这些shard可以在一个node里面，随着node的增加，我们只需要迁移相关的shard，同时更新路由表就可以了。这种方式个人感觉灵活性最好，但对程序员要求较高，需要写出能自动处理resharding的健壮代码。</p>
-<p>好了，解决了replication，解决了水平扩展，很长一段时间我们都能happy，当然坑还是挺多的，遇到了慢慢再填吧。</p>
-<h2 id="没有提到的关键点">没有提到的关键点</h2>
-<ul>
-<li>Cache，无论怎样，cache在服务器领域都是一个非常关键的东西，用好了cache，你的服务能处理更多的并发访问。facebook这篇paper <a href="https://www.usenix.org/system/files/conference/nsdi13/nsdi13-final170_update.pdf" target="_blank" rel="external">Scaling Memcache at Facebook</a>专门讲解了相关知识，那是绝对的干货。</li>
-<li>消息队列，当并发量大了之后，光靠同步的API调用已经满足不了整个系统的性能需求，这时候就该MQ上场了，譬如RabbitMQ都是不错的选择。</li>
-<li>很多很多其他的。。。。。。。这里就不列举了。</li>
-</ul>
-<h2 id="总结">总结</h2>
-<p>上面只是我对于Web service一点浅显的见解，如果里面的知识稍微对你有用，那我已经感到非常高兴了。但就像实践才是检验真理的唯一标准一样，理论知道的再多，还不如先弄一个Web service来的实在，反正现在国内阿里云，腾讯云，百度云啥的都不缺，缺的只是跑在上面的好应用。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -1234,7 +1234,7 @@ PUT http://kv.com/key -dvalue
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
-    <li><a href="/categories/program/">program</a><small>14</small></li>
+    <li><a href="/categories/program/">program</a><small>15</small></li>
   
     <li><a href="/categories/python/">python</a><small>6</small></li>
   
@@ -1246,7 +1246,7 @@ PUT http://kv.com/key -dvalue
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 14.44px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.56px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 10.00px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 
