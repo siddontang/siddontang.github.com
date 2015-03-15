@@ -68,6 +68,121 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-12-03T12:49:37.000Z"><a href="/2014/12/03/learn-zookeeper/">12-03-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/12/03/learn-zookeeper/">学习zookeeper</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>最近研究了一下zookeeper（后续以zk简称），对于一个自认为泡在服务器领域多年的老油条来说，现在才开始关注zk这个东西，其实有点晚了，但没办法，以前的工作经历让我压根用不到这个玩意。只是最近因为要考虑做ledisdb的cluster方案，以及重新考虑mixer的协调管理，才让我真正开始尝试去了解zk。</p>
+<h2 id="什么是zookeeper">什么是zookeeper</h2>
+<p>根据官网的介绍，zookeeper是一个分布式协调服务，主要用来处理分布式系统中各系统之间的协作问题的。</p>
+<p>其实这么说有点抽象，初次接触zk，很多人真不知道用它来干啥，你可以将它想成一个总控节点（当然它能用多机实现自身的HA），能对所有服务进行操作。这样就能实现对整个分布式系统的统一管理。</p>
+<p>譬如我现在有n台机器，需要动态更新某一个配置，一些做法可能是通过puppet或者salt将配置先分发到不同机器，然后运行指定的reload命令。zk的做法可能是所有服务都监听一个配置节点，直接更改这个节点的数据，然后各个服务就能收到更新消息，然后同步最新的配置，再自行reload了。</p>
+<p>上面只是一个很简单的例子，其实通过它并不能过多的体现zk的优势（没准salt可能还更简单），但zk不光只能干这些，还能干更awesome的事情。网上有太多关于zk应用场景一览的文章了，这里就不详细说明，后续我只会说一下自己需要用zk解决的棘手问题。</p>
+<h2 id="架构">架构</h2>
+<p>zk使用类paxos算法来保证其HA，每次通过选举得到一个master用来处理client的请求，client可以挂载到任意一台zk server上面，因为paxos这种是强一致同步算法，所以zk能保证每一台server上面数据都是一致的。架构如下：</p>
+<pre><code>                                                                     
+                      +-------------------------------+                         
+                      |                               |                         
+              +----+--++          +----+---+        +-+--+---+                  
+              | server |          | server |        | server |                  
+              |        +----------+ master +--------+        |                  
+              +--^--^--+          +----^---+        +----^---+                  
+                 |  |                  |                 |                      
+                 |  |                  |                 |                      
+                 |  |                  |                 |                      
+           +-----+  +-----+            +------+          +---------+            
+           |              |                   |                    |            
+           |              |                   |                    |            
+      +----+---+        +-+------+         +--+-----+           +--+-----+      
+      | client |        | client |         | client |           | client |      
+      +--------+        +--------+         +--------+           +--------+
+</code></pre><h2 id="Data_Model">Data Model</h2>
+<p>zk内部是按照类似文件系统层级方式进行数据存储的，就像这样：</p>
+<pre><code>                        +---+             
+                        | / |             
+                        +++-+             
+                         ||               
+                         ||               
+          +-------+------++----+-------+  
+          | /app1 |            | /app2 |  
+          +-+--+--+            +---+---+  
+            |  |                   |      
+            |  |                   |      
+            |  |                   |      
++----------++ ++---------+    +----+-----+
+| /app1/p1 |  | /app1/p2 |    | /app2/p1 |
++----------+  +----------+    +----------+
+</code></pre><p>对于任意一个节点，我们称之为znode，znode有很多属性，譬如<code>Zxid</code>（每次更新的事物ID）等，具体可以详见zk的文档。znode有ACL控制，我们可以很方便的设置其读写权限等，但个人感觉对于内网小集群来说意义不怎么大，所以也就没深入研究。</p>
+<p>znode有一种Ephemeral Node，也就是临时节点，它是session有效的，当session结束之后，这个node自动删除，所以我们可以用这种node来实现对服务的监控。譬如一个服务启动之后就向zk挂载一个ephemeral node，如果这个服务崩溃了，那么连接断开，session无效了，这个node就删除了，我们也就知道该服务出了问题。</p>
+<p>znode还有一种Sequence Node，用来实现序列化的唯一节点，我们可以通过这个功能来实现一个简单地leader服务选举，譬如每个服务启动的时候都向zk注册一个sequence node，谁最先注册，zk给的sequence最小，这个最小的就是leader了，如果leader当掉了，那么具有第二小sequence node的节点就成为新的leader。</p>
+<h3 id="Znode_Watch">Znode Watch</h3>
+<p>我们可以watch一个znode，用来监听对应的消息，zk会负责通知，但只会通知一次。所以需要我们再次重新watch这个znode。那么如果再次watch之前，znode又有更新了，client不是收不到了吗？这个就需要client不光要处理watch，同时也需要适当的主动get相关的数据，这样就能保证得到最新的消息了。也就是消息系统里面典型的推拉结合的方式。推只是为了提升性能，快速响应，而拉则为了更好的保证消息不丢失。</p>
+<p>但是，我们需要注意一点，zk并不能保证client收到消息之后同时处理，譬如配置文件更新，zk可能通知了所有client，但client并不能全部在同一个时间同时reload，所以为了处理这样的问题，我们需要额外的机制来保证，这个后续说明。</p>
+<p>watch只能应用于data（通过get，exists函数）以及children（通过getChildren函数）。也就是监控znode数据更新以及znode的子节点的改变。</p>
+<h2 id="API">API</h2>
+<p>zk的API时很简单的，如下：</p>
+<ul>
+<li>create</li>
+<li>delete</li>
+<li>exists</li>
+<li>set data</li>
+<li>get data</li>
+<li>get chilren</li>
+<li>sync</li>
+</ul>
+<p>就跟通常的文件系统操作差不多，就不过多说明了。</p>
+<h2 id="Example">Example</h2>
+<p>总的来说，如果我们不深入zk的内部实现，譬如paxos等，zk还是很好理解的，而且使用起来很简单。通常我们需要考虑的就是用zk来干啥，而不是为了想引入一个牛的新特性而用zk。</p>
+<h3 id="Lock">Lock</h3>
+<p>用zk可以很方便的实现一个分布式lock，记得最开始做企业群组盘的时候，我需要实现一个分布式lock，然后就用redis来弄了一个，其实当时就很担心redis单点当掉的问题，如果那时候我就引入了zk，可能就没这个担心了。</p>
+<p>官方文档已经很详细的给出了lock的实现流程：</p>
+<ol>
+<li>create一个类似path/lock-n的临时序列节点</li>
+<li>getChilren相应的path，注意这里千万不能watch，不然惊群很恐怖的</li>
+<li>如果1中n是最小的，则获取lock</li>
+<li>否则，调用exists watch到上一个比自己小的节点，譬如我现在n是5，我就可能watch node-4</li>
+<li>如果exists失败，表明前一个节点没了，则进入步骤2，否则等待，直到watch触发重新进入步骤2</li>
+</ol>
+<h3 id="Codis">Codis</h3>
+<p>最近在考虑ledisdb的cluster方案，本来也打算用proxy来解决的，然后就在想用zk来处理rebalance的问题，结果这时候codis横空出世，发现不用自己整了，于是就好好的研究了一下codis的数据迁移问题。其实也很简单：</p>
+<ol>
+<li>config发起pre migrate action</li>
+<li>proxy接收到这个action之后，将对应的slot设置为pre migrate状态，同时等待config发起migrate action</li>
+<li>config等待所有的proxy返回pre migrate之后，发起migrate action</li>
+<li>proxy收到migrate action，将对应的slot设置为migrate状态</li>
+</ol>
+<p>上面这些，都是通过zk来完成的，这里需要关注一下为啥要有pre migrate这个状态，如果config直接发起migrate，那么zk并不能保证proxy同一时间全部更新成migrate状态，所以我们必须有一个中间状态，在这个中间状态里面，proxy对于特定的slot不会干任何事情，只能等待config将其设置为migrate。虽然proxy对于相应slot一段时间无法处理外部请求，但这个时间是很短的（不过此时config当掉了就惨了）。config知道所有proxy都变成pre migrate状态之后，就可以很放心的发送migrate action了。因为这时候，proxy只有两种可能，变成migrate状态，能正常工作，仍然还是pre migrate状态，不能工作，也自然不会对数据造成破坏。</p>
+<p>其实上面也就是一个典型的2PC，虽然仍然可能有隐患，譬如config当掉，但并不会对实际数据造成破坏。而且config当掉了我们也能很快知晓并重新启动，所以问题不大。</p>
+<h2 id="总结">总结</h2>
+<p>总的来说，zk的使用还是挺简单的，只要我们知道它到底能用到什么地方，那zk就真的是分布式开发里面一把瑞士军刀了。不过我挺不喜欢装java那套东西，为了zk也没办法，虽然go现在也有etcd这些类zk的东西了，但毕竟还没经受过太多的考验，所以现在还是老老实实的zk吧。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-10-16T14:39:47.000Z"><a href="/2014/10/16/head-first-web-service/">10-16-2014</a></time>
       
       
@@ -510,6 +625,80 @@ gopkg.in/user/pkg.v3 → github.com/user/pkg   (branch/tag v3, v3.N, or v3.N.M)
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/golang-func-vargs/">07-20-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/07/20/golang-func-vargs/">一个Go可变参数问题</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>几天前纠结了一个蛋疼的问题，在go里面函数式支持可变参数的，譬如…T，go会创建一个slice，用来存放传入的可变参数，那么，如果创建一个slice，例如a，然后以a…这种方式传入，go会不会还会新建一个slice，将a的数据全部拷贝一份过去？</p>
+<p>如果a很大，那么将会造成很严重的性能问题，不过后来想想，可能是自己多虑了，于是查看go的文档，发现如下东西：</p>
+<blockquote>
+<p>Passing arguments to … parameters</p>
+<p>If f is variadic with a final parameter p of type …T, then within f the type of p is equivalent to type []T. If f is invoked with no actual arguments for p, the value passed to p is nil. Otherwise, the value passed is a new slice of type []T with a new underlying array whose successive elements are the actual arguments, which all must be assignable to T. The length and capacity of the slice is therefore the number of arguments bound to p and may differ for each call site.</p>
+<p>Given the function and calls</p>
+<pre><code>func Greeting(prefix string, who ...string)
+Greeting(&quot;nobody&quot;)
+Greeting(&quot;hello:&quot;, &quot;Joe&quot;, &quot;Anna&quot;, &quot;Eileen&quot;)
+</code></pre><p>within Greeting, who will have the value nil in the first call, and []string{“Joe”, “Anna”, “Eileen”} in the second.</p>
+<p>If the final argument is assignable to a slice type []T, it may be passed unchanged as the value for a …T parameter if the argument is followed by …. In this case no new slice is created.</p>
+<p>Given the slice s and call</p>
+<pre><code>s := []string{&quot;James&quot;, &quot;Jasmine&quot;}
+Greeting(&quot;goodbye:&quot;, s...)
+</code></pre><p>within Greeting, who will have the same value as s with the same underlying array.</p>
+</blockquote>
+<p>也就是说，如果我们传入的是slice…这种形式的参数，go不会创建新的slice。写了一个简单的例子验证：</p>
+<pre><code>package main
+
+import &quot;fmt&quot;
+
+func t(args ...int) {
+    fmt.Printf(&quot;%p\n&quot;, args)
+}
+
+func main() {
+    a := []int{1,2,3}
+    b := a[1:]
+
+    t(a...)
+    t(b...)
+
+    fmt.Printf(&quot;%p\n&quot;, a)
+    fmt.Printf(&quot;%p\n&quot;, b)
+}
+
+//output
+0x1052e120
+0x1052e124
+0x1052e120
+0x1052e124
+</code></pre><p>可以看到，可变参数args的地址跟实际外部slice的地址一样，用的同一个slice。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/celery-best-practices/">07-20-2014</a></time>
       
       
@@ -583,80 +772,6 @@ def my_task_A():
 <h2 id="最后">最后</h2>
 <p>后面就是我们自己的感触了，上面作者提到的Celery的使用，真的可以算是很好地实践方式，至少现在我们的Celery没出过太大的问题，当然小坑还是有的。至于RabbitMQ，这玩意我们是真没用过，效果怎么样不知道，至少比mysql好用吧。</p>
 <p>最后，附上作者的一个Celery Talk <a href="https://denibertovic.com/talks/celery-best-practices/" target="_blank" rel="external">https://denibertovic.com/talks/celery-best-practices/</a>。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/golang-func-vargs/">07-20-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/07/20/golang-func-vargs/">一个Go可变参数问题</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>几天前纠结了一个蛋疼的问题，在go里面函数式支持可变参数的，譬如…T，go会创建一个slice，用来存放传入的可变参数，那么，如果创建一个slice，例如a，然后以a…这种方式传入，go会不会还会新建一个slice，将a的数据全部拷贝一份过去？</p>
-<p>如果a很大，那么将会造成很严重的性能问题，不过后来想想，可能是自己多虑了，于是查看go的文档，发现如下东西：</p>
-<blockquote>
-<p>Passing arguments to … parameters</p>
-<p>If f is variadic with a final parameter p of type …T, then within f the type of p is equivalent to type []T. If f is invoked with no actual arguments for p, the value passed to p is nil. Otherwise, the value passed is a new slice of type []T with a new underlying array whose successive elements are the actual arguments, which all must be assignable to T. The length and capacity of the slice is therefore the number of arguments bound to p and may differ for each call site.</p>
-<p>Given the function and calls</p>
-<pre><code>func Greeting(prefix string, who ...string)
-Greeting(&quot;nobody&quot;)
-Greeting(&quot;hello:&quot;, &quot;Joe&quot;, &quot;Anna&quot;, &quot;Eileen&quot;)
-</code></pre><p>within Greeting, who will have the value nil in the first call, and []string{“Joe”, “Anna”, “Eileen”} in the second.</p>
-<p>If the final argument is assignable to a slice type []T, it may be passed unchanged as the value for a …T parameter if the argument is followed by …. In this case no new slice is created.</p>
-<p>Given the slice s and call</p>
-<pre><code>s := []string{&quot;James&quot;, &quot;Jasmine&quot;}
-Greeting(&quot;goodbye:&quot;, s...)
-</code></pre><p>within Greeting, who will have the same value as s with the same underlying array.</p>
-</blockquote>
-<p>也就是说，如果我们传入的是slice…这种形式的参数，go不会创建新的slice。写了一个简单的例子验证：</p>
-<pre><code>package main
-
-import &quot;fmt&quot;
-
-func t(args ...int) {
-    fmt.Printf(&quot;%p\n&quot;, args)
-}
-
-func main() {
-    a := []int{1,2,3}
-    b := a[1:]
-
-    t(a...)
-    t(b...)
-
-    fmt.Printf(&quot;%p\n&quot;, a)
-    fmt.Printf(&quot;%p\n&quot;, b)
-}
-
-//output
-0x1052e120
-0x1052e124
-0x1052e120
-0x1052e124
-</code></pre><p>可以看到，可变参数args的地址跟实际外部slice的地址一样，用的同一个slice。</p>
 
       
     </div>
@@ -792,90 +907,6 @@ func main() {
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-06-14T02:47:05.000Z"><a href="/2014/06/14/ledisdb-design-2/">06-14-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/06/14/ledisdb-design-2/">高性能NoSQL LedisDB设计2</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>现在已经支持replication机制，为ledisdb的高可用做出了保障。</p>
-<h2 id="使用">使用</h2>
-<p>假设master的ip为10.20.187.100，端口6380，slave的ip为10.20.187.101，端口为6380.</p>
-<p>首先我们需要master打开binlog支持，在配置文件中指定：</p>
-<pre><code>use_bin_log : true
-</code></pre><p>在slave的机器上面我们可以通过配置文件指定slaveof开启replication，或者通过命令slaveof显示的开启或者关闭。</p>
-<pre><code>slaveof 10.20.187.100 6380
-</code></pre><p>ledisdb的replication机制参考了redis以及mysql的相关实现，下面简单说明。</p>
-<h2 id="redis_replication">redis replication</h2>
-<p>redis的replication机制主要介绍在<a href="http://redis.io/topics/replication" target="_blank" rel="external">这里</a>，已经说明的很详细了。</p>
-<ul>
-<li>slave向master发送sync命令</li>
-<li>master将其当前的数据dump到一个文件，同时在内存中缓存新增的修改命令</li>
-<li>当数据dump完成，master就将其发送给slave</li>
-<li>slave接受完成dump数据之后，将其本机先前的数据清空，然后在导入dump的数据</li>
-<li>master再将先前缓存的命令发送给slave</li>
-</ul>
-<p>在redis2.8之后，为了防止断线导致重新生成dump，redis增加了psync命令，在断线的时候master会记住当前的同步状态，这样下次就能进行断点续传了。</p>
-<h2 id="mysql_replication">mysql replication</h2>
-<p>mysql的replication主要是通过binlog的同步来完成的。在master的任何数据更新，都会写入binlog，至于binlog的格式这里不再累述。</p>
-<p>假设binlog的basename为mysql，index文件名字为mysql-bin.index，该文件记录着当前所有的binlog文件。</p>
-<p>binlog有max file size的配置，当binlog写入的的文件大小超过了该值，mysql就会生成一个新的binlog文件。当mysql服务重启的时候，也会生成一个新的binlog文件。</p>
-<p>在Percona的mysql版本中，binlog还有一个max file num的设置，当binlog的文件数量超过了该值，mysql就会删除最早的binlog。</p>
-<p>slave有一个master.info的文件，用以记录当前同步master的binlog的信息，主要就是当前同步的binlog文件名以及数据偏移位置，这样下次重新同步的时候就能从该位置继续进行。</p>
-<p>slave同步的数据会写入relay log中，同时在后台有另一个线程将relay log的数据存入mysql。</p>
-<p>因为master的binlog可能删除，slave同步的时候可能会出现binlog丢失的情况，mysql通过<a href="http://dev.mysql.com/doc/refman/5.0/en/backup-policy.html" target="_blank" rel="external">dump+binlog</a>的方式解决，其实也就是slave完全的dump master数据，在生成的dump中也同时会记录当前的binlog信息，便于下次继续同步。</p>
-<h2 id="ledisdb_replication">ledisdb replication</h2>
-<p>ledisdb的replication机制参考了redis以及mysql，支持fullsync以及增量sync。</p>
-<p>master没有采用aof机制，而是使用了binlog，通过指定max file size以及max file num用来控制binlog的总体大小，这样我就无需关心aof文件持续增大需要重新rewrite的过程了。</p>
-<p>binlog文件名格式如下：</p>
-<pre><code>ledis-bin.0000001
-ledis-bin.0000002
-</code></pre><p>binlog文件名的后缀采用数字递增，后续我们使用index来表示。</p>
-<p>slave端也有一个master.info文件，因为ledisdb会严格的保证binlog文件后缀的递增，所以我们只需要记录当前同步的binlog文件后缀的index即可。</p>
-<p>整个replication流程如下：</p>
-<ul>
-<li>当首次同步或者记录的binlog信息因为master端binlog删除导致不一致的时候，slave会发送fullsync进行全同步。</li>
-<li>master收到fullsync信息之后，会将当前的数据以及binlog信息dump到文件，并将其发送给slave。</li>
-<li>slave接受完成整个dump文件之后，清空所有数据，同时将dump的数据导入leveldb，并保存当前dump的binlog信息。</li>
-<li><p>slave通过sync命令进行增量同步，sync命令格式如下：</p>
-<pre><code>  sync binlog-index binlog-pos
-</code></pre><p> master通过index定位到指定的binlog文件，并seek至pos位置，将其后面的binlog数据发送给slave。</p>
-</li>
-<li>slave接收到binlog数据，导入leveldb，如果sync没有收到任何新增数据，1s之后再次sync。</li>
-</ul>
-<p>对于最后一点，最主要就是一个问题，即master新增的binlog如何让slave进行同步。对于这点无非就是两种模型，push和pull。</p>
-<p>对于push来说，任何新增的数据都能非常及时的通知slave去获取，而pull模型为了性能考虑，不可能太过于频繁的去轮询，略有延时。</p>
-<p>mysql采用的是push + pull的模式，当binlog有更新的时候，仅仅通知slave有了更新，slave则是通过pull拉取实际的数据。但是为了支持push，master必须得维持slave的一些状态信息，这稍微又增加了一点复杂度。</p>
-<p>ledisdb采用了非常简单的一种方式，定时pull，使用1s的间隔，这样既不会因为轮询太过频繁导致性能开销增大，同时也能最大限度的减少当机数据丢失的风险。</p>
-<h2 id="总结">总结</h2>
-<p>ledisdb的replication机制才刚刚完成，后续还有很多需要完善，但足以使其成为一个高可用的nosql选择了。</p>
-<p>ledisdb的网址在这里<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">https://github.com/siddontang/ledisdb</a>，希望感兴趣的童鞋共同参与。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -925,7 +956,7 @@ ledis-bin.0000002
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
-    <li><a href="/categories/program/">program</a><small>15</small></li>
+    <li><a href="/categories/program/">program</a><small>16</small></li>
   
     <li><a href="/categories/python/">python</a><small>6</small></li>
   
@@ -937,7 +968,7 @@ ledis-bin.0000002
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.56px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 10.00px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 16.67px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.11px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 

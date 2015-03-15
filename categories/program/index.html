@@ -72,6 +72,137 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2015-03-15T00:44:53.000Z"><a href="/2015/03/15/build-ha-distributed-kv-store/">03-15-2015</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2015/03/15/build-ha-distributed-kv-store/">Build up a High Availability Distributed Key-Value Store</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h2 id="Preface">Preface</h2>
+<p>There are many awesome and powerful distributed NoSQL in the world, like Couchbase, MongoDB, Canssandra, etc. but developing a new one is still a challengeable, interesting and attractive thing for me, why?</p>
+<ul>
+<li>It can satisfy our special needs for our cloud services.</li>
+<li>We just need a key-value store, with some simple additional functionalities, we don’t need a complex solution.</li>
+<li>We can control the whole thing, especially for fixing bugs and improvement.</li>
+<li>Inventing the wheel is not good, but I can learn much in the process.</li>
+</ul>
+<p>A key-value store may need below features:</p>
+<ul>
+<li>Simple protocol.</li>
+<li>Simple API.</li>
+<li>High performance.</li>
+<li>High availability.</li>
+<li>Cluster support.</li>
+</ul>
+<p>I knew this would be a hard journey first. But after a long hard work, I develop ledis-cluster, a key-value store based on <a href="https://github.com/siddontang/ledisdb" title="A Fast NoSQL" target="_blank" rel="external">LedisDB</a> + <a href="https://github.com/siddontang/xcodis" title="A distributed Redis/LedisDB proxy" target="_blank" rel="external">xcodis</a> + <a href="https://github.com/siddontang/redis-failover" title="Automatic redis monitoring and failover" target="_blank" rel="external">redis-failover</a>.</p>
+<h2 id="Pre_Solution_Thinking">Pre Solution Thinking</h2>
+<p>Before I develop ledis-cluster, I thought some other solutions which are valuable to be recorded here too.</p>
+<h3 id="MySQL">MySQL</h3>
+<p>Aha, first I just wanted to use MySQL as a key-value store. This thought amazed my colleagues before, and I think now it may surprise many other guys too.</p>
+<p>MySQL is a relational database and can be used as a key-value store easily and sufficiently. We can use a simple table to store key value data like below:</p>
+<pre><code>CREATE TABLE kv (
+    k varbinary(256),
+    v blob,
+    PRIMARY KEY(k),
+) ENGINE=innodb;
+</code></pre><p>When I worked in Tencent game infrastructure department, we used this way to serve many Tencent games and it works well.</p>
+<p>But I don’t want to use MySQL as a key-value store now, MySQL is a little heavy and needs some experienced operations people, this is impossible for our team.</p>
+<h3 id="Redis">Redis</h3>
+<p>Redis is an awesome NoSQL, it has an amazing performance, supports many useful data structures (kv, hash, list, set and zset), supplies a simple protocol for client user.</p>
+<p>I have read the Redis’s code (it is very simple!) many times, used it for about three years in many productions, and I am absolutely confident of maintaining it.</p>
+<p>But Redis has a serious problem: memory limitation. We can not store huge data in one machine. Using redis cluster is a good way to solve memory limitation, and there are many existing solutions, like official redis cluster, twemproxy or codis , but I still think another stuff saving huge data exceeding memory limitation in one machine is needed, so I develop LedisDB.</p>
+<h2 id="LedisDB">LedisDB</h2>
+<p>LedisDB is a fast NoSQL, similar to Redis. It has some good features below:</p>
+<ul>
+<li>Uses Redis protocol, most of the Redis clients can use LedisDB directly.</li>
+<li>Supports multi data structures(kv, hash, list, set, zset).</li>
+<li>Uses rocksdb, leveldb or other fast databases as the backend to store huge data, exceeding memory limitation.</li>
+<li>High performance, see benchmark. Although it is a little slower than Redis, it can still be used in production.</li>
+</ul>
+<p>A simple example:</p>
+<pre><code>//start ledis server
+ledis-server
+//another shell
+ledis-cli -p 6380
+ledis&gt; set a 1
+OK
+ledis&gt; get a
+“1&quot;
+</code></pre><p>As we see, LedisDB is simple, we can switch to it easily if we used Redis before.</p>
+<p>LedisDB now supports rocksdb, leveldb, goleveldb, boltdb and lmdb as the backend storage, we can choose the best one for our actual environment. In our company projects, we use rocksdb which has a awesome performance and many configurations to be tuned, and I will also use it for the following example.</p>
+<h2 id="Data_Security_Guarantee">Data Security Guarantee</h2>
+<p>LedisDB can store huge data in one machine, so the data security needs to be considered cautiously. LedisDB uses below ways to guarantee it.</p>
+<h3 id="Backup">Backup</h3>
+<p>We can back up LedisDB and then restore later. Redis saving RDB may block service for some time, but LedisDB doesn’t have this problem. Thanks to rocksdb fast generating snapshot technology, backing up LedisDB is very fast and easy.</p>
+<h3 id="Binlog">Binlog</h3>
+<p>LedisDB will first log write operations in binlog, then commit changes into backend storage, this is similar to MySQL.</p>
+<p>Redis also has AOF, but the AOF file may grow largely, then rewriting AOF may also block service for some time. LedisDB will rotate binlog and write to the new one when current binlog is larger than maximum size (1GB).</p>
+<h3 id="Replication">Replication</h3>
+<p>An old saying goes like this: “don’t put all your eggs in one basket”. Similarly, don’t put all our data in one machine.</p>
+<p>LedisDB supports asynchronous or semi-synchronous replication. We can not break CAP(Consistency, Availability, Partition tolerance) theorem, for replication, partition tolerance must exist, so we have to choose between consistency and availability.</p>
+<p>If we want to guarantee full data security, we may use semi-synchronous replication, but most of time, asynchronous replication is enough.</p>
+<h2 id="Monitor_and_Failover">Monitor and Failover</h2>
+<p>In the actual production environment, we use a master LedisDB and one or more slaves to construct the topology. We must monitor them in real time because any machine in the topology may be down at any time.</p>
+<p>If a slave is down, we may not care too much, this is not a serious problem. But if the master is down (aha, a terrible accident!), we must resolve it quickly.</p>
+<p>Generally, we can not expect the master to re-work quickly and infallibly, so electing a best new master from current slaves and doing failover is a better way when master is down.</p>
+<p>Redis uses a sentinel feature to monitor the topology and do failover when the master is down. But this sentinel can not be used in LedisDB, so I develop another sentinel: redis-failover, monitoring and doing failover for Redis/LedisDB.</p>
+<p>redis-failover uses <code>ROLE</code> command to check master and get all slaves every second. If the master is down, redis-failover will select the best slave from last <code>ROLE</code> returned slaves. The election algorithm is simple, using <code>INFO</code> command to get “slave_priority” and “slave_repl_offset” value, if a slave has a higher priority or a larger repliction offset with same priority, the slave will be elected as the new master.</p>
+<p>redis-failover may have single point problem too, I use zookeeper or raft to support redis-failover cluster. Zookeeper or raft will elect a leader and let it monitor and do failover, if the leader is down, a new leader will be elected quickly.</p>
+<h2 id="Cluster">Cluster</h2>
+<p>Although LedisDB can store huge data, the growing data may still exceed the capability of the system in the near future.</p>
+<p>Splitting data and storing them into multi machines may be the only feasible way(We don’t have money to buy a mainframe), but how to split the data? and how to find the data by a key? I think an easy solution is to define a key routing rule (mapping key to the actual machine).</p>
+<p>For example, we have two machines, n0 and n1, and the key routing rule is simple hash like <code>crc32(key) % 2</code>. For key “abc”, the calculation result is 0, so we know that the corresponding data is in n0.</p>
+<p>The above solution is easy, but we can not use it in production. If we add another machine, the machine number is 3, all the old data mapping relationship will be broken, and we have to relocate huge amount of data.</p>
+<p>Using consistency hash may be better, but I prefer using hash + routing table. We don’t map a key to a machine directly, but to a virtual node named slot, then define a routing table mapping slot to the actual machine.</p>
+<p>Continuing with the example, assume we use 1024 slots and 2 machines, the slot and machine mapping is [slot0 — slot511] -&gt; n0, [slot512 — slot1023] -&gt; n1. For a key, first using <code>crc32(key) % 1024</code> to get a slot index, then we can find the machine with this slot from the routing table.</p>
+<p>This solution may be complex but have a big advantage for re-sharding. If we add another machine n2, change the routing table that mapping slot0 to n2, and we only need to migrate all slot0 data from n0 to n2. The bigger for slot number, the smaller for split data in a slot, and we only migrate little data for one slot.</p>
+<p>xcodis uses above way to support LedisDB cluster. Now the slot number is 256, which is a little small that may increase the probability of mapping some busy keys into a slot.</p>
+<p>Because of origin LedisDB db index implementation limitation, xcodis can not use bigger slot number than 256, so a better way is to support customizing a routing table for a busy key later. For example, for a key, xcodis should first try to find the associated slot in the routing table, if not found, then use hash.</p>
+<p>Another radical choice is to change LedisDB code and upgrade all data saved before. This is may be a huge work, so I will not consider it unless I have no idea to resolve above problems.</p>
+<p>xcodis is a proxy supporting redis/LedisDB cluster, the benefit of proxy is that we can hide all cluster information from client users and users can use it easily like using a single server.</p>
+<p>In addition to proxy, there are also some other ways to support cluster too:</p>
+<p>Official Redis cluster, but it is still in development and should not be used in production now, and it can not be used in LedisDB.<br>Customizing client SDK, the SDK can know whole cluster information and do the right key routing for the user. But this way is not universal and we must write many SDKs for different languages (c, java, php, go, etc.), a hard work!</p>
+<h2 id="Final_Architecture">Final Architecture</h2>
+<p>At last, the final architecture may look below:</p>
+<p><img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/kv-architecture.png" alt="kv architecture"></p>
+<ul>
+<li>Use LedisDB to save huge data in one machine.</li>
+<li>Use Master/slave to guarantee data security.</li>
+<li>Use redis-failover to monitor the system and do failover.</li>
+<li>Use xcodis to support cluster.</li>
+</ul>
+<p>This architecture may be not perfect, but is simple and enough for us. Now we have only use LedisDB and xcodis in our projects, not the whole architecture, but we have been testing and will try to deploy it in production in the near future.</p>
+<h2 id="Summary">Summary</h2>
+<p>Building up a key-value store is not a easy work, and I don’t think what I do above can beat other existing awesome NoSQLs, but it’s a valuable attempt, I have learned much and meet many new friends in the progress.</p>
+<p>Now, I’am the only person to develop the whole thing and need help, if you have interested in what I do, please contact me, maybe we really can build up an awesome NoSQL. :-)</p>
+<p>Mail: <a href="&#x6d;&#x61;&#x69;&#108;&#116;&#x6f;&#58;&#115;&#105;&#100;&#100;&#x6f;&#110;&#x74;&#97;&#x6e;&#103;&#64;&#103;&#x6d;&#x61;&#105;&#x6c;&#46;&#99;&#111;&#x6d;">&#115;&#105;&#100;&#100;&#x6f;&#110;&#x74;&#97;&#x6e;&#103;&#64;&#103;&#x6d;&#x61;&#105;&#x6c;&#46;&#99;&#111;&#x6d;</a></p>
+<p>Github: <a href="https://github.com/siddontang" target="_blank" rel="external">github.com/siddontang</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2015-03-06T13:24:18.000Z"><a href="/2015/03/06/build-ha-distributed-kv-service/">03-06-2015</a></time>
       
       
@@ -848,147 +979,6 @@ location @fetch {
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2013-05-05T13:23:20.000Z"><a href="/2013/05/05/think-for-web-server-architecture/">05-05-2013</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2013/05/05/think-for-web-server-architecture/">关于web服务器架构的思考</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>笔者最近一年都在从事企业私有云存储的开发，主导并推动了服务器架构的重构。在架构演化的过程中，有了很多的心得体会，这里记录一下，算是对自己架构成长的一个总结。 </p>
-<h2 id="原则">原则</h2>
-<p>对于笔者来说，设计一个web服务器架构方案，最先考虑的就是简单以及可扩展性。而这两个也是笔者设计架构的首要原则。</p>
-<h3 id="简单">简单</h3>
-<p>对于一个企业级web产品来说，它其实是由非常多的基础服务来组合起来的。以私有云产品来说，如果想实现一个简单的文件共享功能，至少需要共享服务，文件服务，账号服务三个服务来共同实现。</p>
-<ul>
-<li>共享服务，用来管理文件共享关系，如用户A给用户B共享了一个文件abc.txt</li>
-<li>文件服务，用来提供共享文件下载，如用户B需要在哪里以及如何下载abc.txt这个文件</li>
-<li>账号服务，用来提供共享人员的相关信息，如用户A和B的账号，姓名等信息</li>
-</ul>
-<p>上面三个服务，缺少了任何一个都不能实现共享功能。但是为了实现一个功能就要与3个服务进行交互，有些童鞋就觉得非常麻烦，简单起见，他们将其糅合在一起，这样就能很好的进行代码编写了。但是这样做的弊端也非常明显，可维护性非常的差，因为功能都是耦合在一起了，如果这时候我们想用另一套企业自己的账号数据，那么完全无法实现。</p>
-<p>上面说的只是笔者列举的一个例子，实际项目中，共享功能还是很好的进行了切分，但是仍然有很多功能过于耦合，以至于笔者的团队在很长的一段时间里面都在为以前的某些童鞋的错误设计买单。</p>
-<p>鉴于有了上面的经验教训，笔者在考虑架构方案的时候最先想的就是<strong>简单</strong>。 </p>
-<p>所谓简单，其实很好理解，就是一个服务就干一件事情，不同的功能逻辑别糅在一个服务里面实现。更上层的服务是通过集成底层的服务来实现。其实这个就跟程序设计里面模块化的思想一样，只不过这里的模块就是单个服务。</p>
-<p>一个服务一个模块，好处是很多的，但也不可能100%的完美，仍然很多问题需要考虑，譬如：</p>
-<ul>
-<li>服务的可用性问题，如何判断一个服务是否可用，以及当机服务的恢复。</li>
-<li>服务的运维管理问题，系统可能随着功能的增多而有了太多的服务，对这些服务的监控管理就是一个很难的问题，毕竟每个人都不希望凌晨因为服务当掉了这些问题被电话叫醒。</li>
-</ul>
-<p>上面的这些问题，笔者认为已经涉及到服务的高可用问题了，与是否采用简单服务方案无关。而对于服务的高可用，分布式这些问题，笔者反而认为在简单这个原则下面，反而能更好的处理解决。</p>
-<h3 id="可扩展性">可扩展性</h3>
-<p>对于大规模web系统来说，随时可能面临着突然大并发量访问而造成系统负载撑不住的问题。对于这种情况，我们就需要扩展我们的系统使其能够处理过载的情况。</p>
-<p>对于web系统的扩展，通常采用横向扩展的方式，当某一个服务出现性能瓶颈，我们只需要动态增加该服务就能减轻过载问题。因为服务是可以动态进行横向扩展的，所以服务提供的功能都应该是<strong>状态无关</strong>的。所谓无状态性，就是每一次服务器的请求都应该是独立的，如果服务是有状态的，为了维护调用的状态，我们会做非常多的事情，这非常不利于扩展，同时也增加了系统的复杂性。</p>
-<h2 id="stars">stars</h2>
-<p>stars是私有云项目开始的时候葱头写的一套web服务器框架。</p>
-<p>在项目开始的时候，大部分的开发同学都没有web服务器开发的经验，为了解决这个问题，葱头设计了stars，使得大家能够非常的使用python进行web服务器的开发。stars有很多设计巧妙以及值得学习的地方。虽然现在看来有些设计无法满足现有的需求。但是笔者一直认为<strong>没有最好的架构，只有合适的架构</strong>，作为一个架构师，即使你考虑了很多后续扩展的问题，但是仍然有一些需求变化是你考虑不到的。</p>
-<h3 id="rpc">rpc</h3>
-<p>stars最大的特点，就在于封装了复杂的http调用，使得开发的同学不需要关注底层http知识。而做到这一点，就是将http的调用封装变成了大家熟悉的函数调用RPC。譬如我们有如下的一个http请求：</p>
-<pre><code>http://domain.com/file/getFileInfo?fileId=1
-</code></pre><p>该HTTP请求获取一个fileId为1的文件相关信息，在stars里面，我们可以这样写：</p>
-<pre><code>remote = RPC(&quot;domain.com&quot;)
-remote.file.getFileInfo(fileId = 1)
-</code></pre><p>而stars不光封装了http调用，同时为了方便大家的开发，也定义了一套API规范，只要大家写的API满足一定规则，就自动能够被注册到stars里面，这样外面就能使用RPC来调用。</p>
-<p>对于web服务API的模式，笔者认为，通常有RPC以及Restful等几种方式：</p>
-<pre><code>RPC Pattern:
-GET http://domain.com/file/getFileInfo?fileId=1
-GET http://domain.com/file/deleteFile?fileId=1
-
-Restful Pattern:
-GET http://domain.com/file/1
-DELETE http://domain.com/file/1
-</code></pre><p>stars采用的是RPC Pattern，对于这种模式，它对于开发同学很好理解，因为它就跟普通的函数调用一样，使用起来则比较自然。反而Restful Pattern则对于开发同学不怎么好理解。只是随着现今系统规模的扩大，笔者越发觉得stars遇到了问题：</p>
-<ul>
-<li>每实现一个功能，就新增一个API，导致API越来越多，管理越来越复杂。</li>
-<li>第三方开发者难于对接。API过多，开发者不知道如何使用哪些API。</li>
-</ul>
-<p>对于这种情况，可能Restful是一个很好的解决方案，如果有机会，笔者可能会在后续的新的项目中考虑实施。</p>
-<h3 id="stub">stub</h3>
-<p>对于web服务来说，如何信任客户端的HTTP请求？如何高效的与客户端进行交互？这些都是需要考虑的问题。stars采用了stub方式，在高效交互的情况下也能保证不错的安全性。</p>
-<ul>
-<li>客户端首先通过username + password的方式登陆系统，使用https协议保证其安全性。</li>
-<li>登陆成功之后，服务器会下发一个stub作为后续客户端与服务器交互的凭证。</li>
-<li>客户端的任何HTTP请求都需要带上stub。</li>
-<li>stub不会一直有效，一段时间之后过期，客户端需要重新请求申请新的stub。</li>
-</ul>
-<p>因为使用了stub，客户端与服务器能高效的交互，但是stub有如下问题：</p>
-<ul>
-<li>因为每次请求都会带上stub，只要该stub被外部截获，那么就可能伪装成该用户进行访问了。所以stub在很短的一段时间之后就会过期，但即使过期也仍然有风险。</li>
-<li>stub是放到url的请求参数上面传递给服务器的，即使采用HTTPS方式，该stub也能在浏览器上面看到，无法保证安全。</li>
-<li>stub放置在web服务一个总控服务的内存中，无持久化策略，只要该服务重启，先前所有的stub都会失效。</li>
-<li>每个服务一个stub，随着服务的增多，客户需要关注过多的stub管理。</li>
-<li>对于服务的任何HTTP请求，都需要在该服务对应的总控服务中进行stub验证，造成单点问题。</li>
-</ul>
-<p>可以看到，stub虽然提供了很好的与web服务交互的方式，但是在web系统规模扩大之后，不利于后续的扩展，安全性也有漏洞。</p>
-<h3 id="信任链">信任链</h3>
-<p>stars另一个设计巧妙的地方在于其信任链机制。实际会遇到如下情况，假设现在客户端已经生成了一个服务的stub，可以与该服务交互，但这时候客户端需要访问另一个服务的某个API，可是这时候没有该服务的stub，那如何处理呢？</p>
-<p>信任链机制其实就是这样一种情况，服务相互之间是可信任的，因为这些服务都是我们部署的，同时我们也可以通过很多其他方法保证可信任。</p>
-<p>当客户端与服务A建立信任之后，如果客户端想访问服务B，客户端可以通过A向B申请一个stub，这样就可以通过该stub访问服务B。</p>
-<h2 id="resty">resty</h2>
-<p>通过上面可以看到，stars架构是项目初期为了解决服务器快速开发等问题而提出的一套实现方案，当web系统越来越复杂的时候，stars就有了一些局限性，这时候就需要有另一套架构来满足现有的情况。</p>
-<p>对于新架构的选择，笔者决定从如下几个方面考虑：</p>
-<ul>
-<li>吸收stars精华，以其为基础演化，而不是完全重来。架构可能跟进化论一样，是不断进化的。而推倒重来，就如同突然基因突变一样，你自认为变好了，没准可能更差。</li>
-<li>平滑升级，系统已经部署到很多企业里面，如何保证升级的平稳，以及升级数据的完整性，都是我们需要面临的问题。</li>
-<li>简单，参考业界最通用的解决方案，不需要引入复杂的自造轮子。</li>
-</ul>
-<h3 id="签名">签名</h3>
-<p>为了解决stars stub相关问题，笔者认为可以采用最通用的HTTP签名机制。</p>
-<ul>
-<li>客户端使用username + password登陆成功之后，服务器下发一对id和key，因为登陆采用HTTPS方式，所以id和key不会被外部截获。</li>
-<li>客户端发送HTTP请求，使用key对其签名，并带上id一起发送给服务器。</li>
-<li>任何外部的HTTP请求，首先会通过验证服务器对其验证，如果验证通过，则证明是一个合法的url。</li>
-<li>验证通过之后，系统将会把HTTP请求路由到实际处理的服务上处理。</li>
-</ul>
-<p>url签名可以算是一种非常通过的安全交互模式，amazon s3，阿里云等云存储服务都使用了该方式。虽然引入验证服务器，增加了处理HTTP请求的时间，但是将验证与逻辑分离解耦，笔者认为更好，同时，后续我们可以通过很多方法优化验证服务。</p>
-<h3 id="原子api">原子api</h3>
-<p>前面说了，stars的RPC模式会导致API越来越多，以至于开发者为了实现一个功能，可能会与多个API进行交互，这明显提升了第三方开发的复杂性。所以笔者提出了原子API的概念，其实就是在服务器级别整合API，使得开发者只需要通过调用简单的API就能实现相应的功能。</p>
-<p>对于如何提供原子级别的API，笔者觉得可以使用如下方法：</p>
-<ul>
-<li>如果某一个功能需要多个API顺序执行，每个API的执行结果都可能影响该功能的最终结果，这样的功能我们就需要提供一个原子API来整合。</li>
-<li>如果某一个功能只是需要调用多个API查询相关数据，那么我们只需要提供批量查询的API即可，不需要提供原子API整合。</li>
-</ul>
-<p>既然引入了原子级别的API，那么在哪里进行整合呢？譬如有一个功能，需要服务A和服务B的API，我们不可能写一个服务C来特意的整合这个功能，这样会导致服务越来越多。所以笔者决定在nginx这一层提供原子API功能的整合。使用nginx的好处在于只需要增多一个location，该location里面进行API的整合。</p>
-<p>不过，为nginx开发一个module去处理这一个location其实也是一件非常困难的事情，虽然nginx的module开发看起来很简单，但是实际做起来会发现非常的复杂。幸运的是，我们有openresty，直接可以使用lua进行nginx的开发。现在我们已经大量在使用openresty，这也是为什么笔者将这次的架构命名为resty的原因。</p>
-<h3 id="统一入口">统一入口</h3>
-<p>stars有一个比较严重的问题，在于各个服务之间都是互相知道地址的，这样就有几个问题：</p>
-<ul>
-<li>对外暴漏的入口地址太多，客户端知道太多的服务地址。</li>
-<li>不利于动态部署，服务之间地址固定，重启某一个服务，相关服务都需要重启。</li>
-</ul>
-<p>为了解决这个问题，笔者决定在nginx这一层做统一入口，所有的服务地址由nginx这边进行管理，这样有如下几个好处：</p>
-<ul>
-<li>地址解耦，配置统一，只有nginx知道所有服务的地址，便于集中管理 </li>
-<li>隔离，服务与服务之间，服务与客户端之间完全隔离 </li>
-<li>动态部署，任何服务的动态变更，只需要nginx处理，该服务的相关服务完全不用重启。</li>
-</ul>
-<h2 id="总结">总结</h2>
-<p>以上只是简单的记录进来服务的架构演化，虽然现有的架构能满足系统的需求，但是没准一段时间之后就又会出现局限性。笔者一直认为，没有最好的架构，只有合适的架构。但是无论怎样，保持简单就可以了。</p>
-<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1037,7 +1027,7 @@ DELETE http://domain.com/file/1
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
-    <li><a href="/categories/program/">program</a><small>15</small></li>
+    <li><a href="/categories/program/">program</a><small>16</small></li>
   
     <li><a href="/categories/python/">python</a><small>6</small></li>
   
@@ -1049,7 +1039,7 @@ DELETE http://domain.com/file/1
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.56px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 10.00px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 16.67px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.11px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 

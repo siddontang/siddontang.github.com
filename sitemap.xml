@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>http://siddontang.com/2015/03/15/build-ha-distributed-kv-store/</loc>
+    <lastmod>2015-03-15T00:46:48.000Z</lastmod>
+  </url>
+  
+  <url>
     <loc>http://siddontang.com/2015/03/06/build-ha-distributed-kv-service/</loc>
     <lastmod>2015-03-06T13:25:43.000Z</lastmod>
   </url>

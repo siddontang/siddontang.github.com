@@ -72,6 +72,76 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-01-01T05:03:54.000Z"><a href="/2014/01/01/my-2013/">01-01-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/01/01/my-2013/">我的2013</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="前言">前言</h1>
+<p>每年到这个时候，总需要回顾过去，展望未来。2013这一年学到了很多东西，收货了很多，也成长了很多。主要在技术和生活上面，让自己有了记录一下的冲动。</p>
+<h1 id="技术">技术</h1>
+<p>在技术上面，这一年接触了很多新的东西，让自己眼界开阔不少，同时也开始自我提升，疯狂的在github上面玩<a href="https://github.com/siddontang" target="_blank" rel="external">开源</a>，只是很多都惨不忍睹。</p>
+<h2 id="Openresty">Openresty</h2>
+<p>今年最开始接触的新东西就是<a href="http://openresty.org/" target="_blank" rel="external">openresty</a>，一个集成nginx的web应用开发框架。</p>
+<p>最开始，我们项目的架构采用的是前端nginx做proxy，然后将请求反向代理到后端python tornado的方式实现的。但是随着压力的增加以及一些新功能的上线，这套架构开始显现其局限性，首当其冲的在于慢，虽然可以通过增加tornado进程的方式来进行负载均衡处理，但我总觉得不是长久之计。</p>
+<p>同时，随着业务逻辑的复杂，一些操作需要多个service协同完成，然后在返回给用户，而在什么地方组织多个service的数据以及逻辑也成了我们的一个难题。</p>
+<p>鉴于上述几个原因，我开始研究openresty，因为之前有3年多lua开发的经验，所以非常容易上手。同时，通过研读openresty的一整套源码，真正的了解了nginx以及之上的openresty的运行机制。可以这么说，这段时间我从一个连nginx配置都不会写的小白程序员一跃成为了名义上精通nginx开发的屌丝程序员。</p>
+<p>自然，我开始在项目中推广openresty，这也得到了大家的支持，现在虽然我们很多代码仍然是使用python在编写，但是对于很多高性能模块我们已经逐步转向了openresty。</p>
+<p>在使用openresty的时候，还提交了几个bug，这点颇为自豪，同时也写了一些东西，譬如 <a href="http://siddontang.github.io/introduction-to-nginx/" target="_blank" rel="external">Introduction To Nginx</a></p>
+<h2 id="Go">Go</h2>
+<p>接触go纯属偶然，在上半年终于完结了一个持续时间特长的项目之后，整个组的童鞋都陷于一个无事可干的真空期，也就是在这段时间，第一次学习了go，立刻就被它的简单强大所吸引，尤其是在服务器并发编程方面，那可是非常的强悍。</p>
+<p>于是，我带着两个完全不懂go的童鞋开始了我们推送服务器的编程之旅。最开始的时候，因为两位童鞋只会python，为了尽快的出功能，一些后台的服务采用tornado搭建，而我用go写了挂载大量长连接的comet服务。</p>
+<p>这里不得不说go开发服务的快捷，在goroutine以及channel的机制下面，没有了层层的callback，没有了死锁，我只用了3天就弄出了comet，而且能持续稳定运行。</p>
+<p>鉴于用go成功开发了comet，我让另外两个童鞋也开始用go重构先前写的python逻辑，进展也很顺利。</p>
+<p>不过对于我来说，go现在最大的一个问题在于内存占用，go现在默认的stack大小为8k，对于需要挂载百万连接的comet来说，内存开销实在太大，虽然现在机器的配置完全不需要我担心，但总觉得有点不爽。不过如果优化，也是后续的事情了。</p>
+<p>今年，对于我来说，竟然吃了两次螃蟹，第一个就是openresty，而第二个就是go，而且很幸运的是都能在项目中实施。</p>
+<h2 id="Libtnet">Libtnet</h2>
+<p>今年，我真正的开始了一个算是比较大的开源项目：<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>，它是一个参考tornado的c++高性能网络库。之所以写libtnet，主要是为了后续能用到comet上面，同时也让我自己对多年的网络编程做一个总结。</p>
+<p>以前总说自己精通网络编程啥啥的，其实心里面也知道是用来忽悠的，毕竟精通这个词没多少年的沉淀是不可能的。但是通过写libtnet，不说精通，至少让我又对很多网络编程的东西了解了。</p>
+<p>不过libtnet的问题在于使用c++进行开发，同时大量采用function + bind的开发模式，对于组内的童鞋来说理解上面还比较困难，如果在项目中实施很有可能面临只有我一个人维护的窘境。</p>
+<h2 id="移动开发">移动开发</h2>
+<p>今年没事的时候也涉猎了一些移动开发的方面，包括android以及ios。在android上面开发了一些小应用，只是都是自娱自乐。在ios上面使用cocos2d-x开发了一个小游戏demon，也当是消遣了。</p>
+<p>不过在明年准备好好的尝试一下该领域的开发。尤其是ios上面，毕竟老婆都有了土豪金了，为了展示老公的程序员风采，再怎么也得弄一个出来。</p>
+<h1 id="工作">工作</h1>
+<p>今年在公司，我开始尝试站着上班，不得不说这对我工作效率的提升有很大的帮助，站着上班，不光减肥，还能让我专心工作，因为任何的聊天浏览网页都是一件很耗费力气的事情。这里也不得不佩服自己的毅力，每天竟然都能坚持站7，8个小时。</p>
+<h1 id="生活">生活</h1>
+<p>生活上面今年最主要就是几件事情：</p>
+<ul>
+<li>举办了婚礼</li>
+<li>老婆怀了孩子</li>
+<li>拿到驾照</li>
+<li>买了小车</li>
+</ul>
+<p>可能对于我来说，明年在生活上面最大的事情就是要照顾孩子了。</p>
+<h1 id="总结">总结</h1>
+<p>总之，2013过的很快，但也过的很充实，希望自己在2014里面越来越好，能有更大的突破。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-01-01T01:32:56.000Z"><a href="/2014/01/01/learn-tornado-base/">01-01-2014</a></time>
       
       
@@ -1084,61 +1154,6 @@ tornado.ioloop.IOLoop.instance().start()
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2013-12-28T08:21:04.000Z"><a href="/2013/12/28/bin-packer/">12-28-2013</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2013/12/28/bin-packer/">bin packer制作</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="起因">起因</h1>
-<p>一年前接触texture packer的时候，就一直有做一个类似工具的想法，当时想了一下，可以从以下几个方面入手：</p>
-<ul>
-<li>界面与功能分离，也就是提供命令行功能，界面直接通过命令行调用实现相关功能。界面可以考虑使用qt或者wxwidget。</li>
-<li>实现一个高效的packer算法</li>
-<li>图像处理问题，读入不同格式的文件，输出设定格式的文件，这个可以使用GraphicsMagick来处理。</li>
-</ul>
-<p>那么首要实现的其实就是一个好的packer算法。而对于图像处理，以及界面展示，这些我觉得都可以在后期考虑。</p>
-<p>虽然当时很有想做一个的冲动，但因为很多原因，停滞了下来。不过心里总有一个坎，直到现在又重新接触了cocos2d-x，立马觉得要实现这个packer了。</p>
-<h1 id="bin_packing_problem">bin packing problem</h1>
-<p>我们需要实现的功能就是把一批小的texture合并到一张大的texture上面，而这个就是bin packing problem需要解决的问题。</p>
-<p>参考了很多资料，譬如<a href="http://codeincomplete.com/posts/2011/5/7/bin_packing/" target="_blank" rel="external">这个</a>，<a href="http://www.codeproject.com/Articles/210979/Fast-optimizing-rectangle-packing-algorithm-for-bu" target="_blank" rel="external">这个</a>，还有<a href="http://www.blackpawn.com/texts/lightmaps/default.html" target="_blank" rel="external">这个</a>。</p>
-<p>理解了基本算法之后，自己也实现了很简单的<a href="https://gist.github.com/4168873" target="_blank" rel="external">packer</a>。大概原理也很简单:</p>
-<ul>
-<li>将所有texture从大到小排序，可以按照maxsize，area，width，height等。</li>
-<li>取出第一个texture，初始化root bin的大小为该texture大小。</li>
-<li>取出第二个texutre，通过root查找是否有bin能将其放下，如果能放下，则放入，并将该bin切分。</li>
-<li>如果没有可以放下的bin，则扩容root bin，并将原先root bin作为扩大bin之后的子节点，扩容bin设为root bin</li>
-<li>重复执行上述3，4，直到所有的texture都放入</li>
-</ul>
-<p>具体流程可以参考代码。</p>
-<h1 id="总结">总结</h1>
-<p>总的来说，实现一个简单的bin packer是比较简单的，当然还有很多复杂的实现，只是对于一般应用来说，足够了。这里还需要赞一下python，快速开发原型实在是太方便了。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1189,7 +1204,7 @@ tornado.ioloop.IOLoop.instance().start()
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
-    <li><a href="/categories/program/">program</a><small>15</small></li>
+    <li><a href="/categories/program/">program</a><small>16</small></li>
   
     <li><a href="/categories/python/">python</a><small>6</small></li>
   
@@ -1201,7 +1216,7 @@ tornado.ioloop.IOLoop.instance().start()
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.56px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 10.00px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 16.67px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.11px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 

@@ -68,6 +68,137 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2015-03-15T00:44:53.000Z"><a href="/2015/03/15/build-ha-distributed-kv-store/">03-15-2015</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2015/03/15/build-ha-distributed-kv-store/">Build up a High Availability Distributed Key-Value Store</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h2 id="Preface">Preface</h2>
+<p>There are many awesome and powerful distributed NoSQL in the world, like Couchbase, MongoDB, Canssandra, etc. but developing a new one is still a challengeable, interesting and attractive thing for me, why?</p>
+<ul>
+<li>It can satisfy our special needs for our cloud services.</li>
+<li>We just need a key-value store, with some simple additional functionalities, we don’t need a complex solution.</li>
+<li>We can control the whole thing, especially for fixing bugs and improvement.</li>
+<li>Inventing the wheel is not good, but I can learn much in the process.</li>
+</ul>
+<p>A key-value store may need below features:</p>
+<ul>
+<li>Simple protocol.</li>
+<li>Simple API.</li>
+<li>High performance.</li>
+<li>High availability.</li>
+<li>Cluster support.</li>
+</ul>
+<p>I knew this would be a hard journey first. But after a long hard work, I develop ledis-cluster, a key-value store based on <a href="https://github.com/siddontang/ledisdb" title="A Fast NoSQL" target="_blank" rel="external">LedisDB</a> + <a href="https://github.com/siddontang/xcodis" title="A distributed Redis/LedisDB proxy" target="_blank" rel="external">xcodis</a> + <a href="https://github.com/siddontang/redis-failover" title="Automatic redis monitoring and failover" target="_blank" rel="external">redis-failover</a>.</p>
+<h2 id="Pre_Solution_Thinking">Pre Solution Thinking</h2>
+<p>Before I develop ledis-cluster, I thought some other solutions which are valuable to be recorded here too.</p>
+<h3 id="MySQL">MySQL</h3>
+<p>Aha, first I just wanted to use MySQL as a key-value store. This thought amazed my colleagues before, and I think now it may surprise many other guys too.</p>
+<p>MySQL is a relational database and can be used as a key-value store easily and sufficiently. We can use a simple table to store key value data like below:</p>
+<pre><code>CREATE TABLE kv (
+    k varbinary(256),
+    v blob,
+    PRIMARY KEY(k),
+) ENGINE=innodb;
+</code></pre><p>When I worked in Tencent game infrastructure department, we used this way to serve many Tencent games and it works well.</p>
+<p>But I don’t want to use MySQL as a key-value store now, MySQL is a little heavy and needs some experienced operations people, this is impossible for our team.</p>
+<h3 id="Redis">Redis</h3>
+<p>Redis is an awesome NoSQL, it has an amazing performance, supports many useful data structures (kv, hash, list, set and zset), supplies a simple protocol for client user.</p>
+<p>I have read the Redis’s code (it is very simple!) many times, used it for about three years in many productions, and I am absolutely confident of maintaining it.</p>
+<p>But Redis has a serious problem: memory limitation. We can not store huge data in one machine. Using redis cluster is a good way to solve memory limitation, and there are many existing solutions, like official redis cluster, twemproxy or codis , but I still think another stuff saving huge data exceeding memory limitation in one machine is needed, so I develop LedisDB.</p>
+<h2 id="LedisDB">LedisDB</h2>
+<p>LedisDB is a fast NoSQL, similar to Redis. It has some good features below:</p>
+<ul>
+<li>Uses Redis protocol, most of the Redis clients can use LedisDB directly.</li>
+<li>Supports multi data structures(kv, hash, list, set, zset).</li>
+<li>Uses rocksdb, leveldb or other fast databases as the backend to store huge data, exceeding memory limitation.</li>
+<li>High performance, see benchmark. Although it is a little slower than Redis, it can still be used in production.</li>
+</ul>
+<p>A simple example:</p>
+<pre><code>//start ledis server
+ledis-server
+//another shell
+ledis-cli -p 6380
+ledis&gt; set a 1
+OK
+ledis&gt; get a
+“1&quot;
+</code></pre><p>As we see, LedisDB is simple, we can switch to it easily if we used Redis before.</p>
+<p>LedisDB now supports rocksdb, leveldb, goleveldb, boltdb and lmdb as the backend storage, we can choose the best one for our actual environment. In our company projects, we use rocksdb which has a awesome performance and many configurations to be tuned, and I will also use it for the following example.</p>
+<h2 id="Data_Security_Guarantee">Data Security Guarantee</h2>
+<p>LedisDB can store huge data in one machine, so the data security needs to be considered cautiously. LedisDB uses below ways to guarantee it.</p>
+<h3 id="Backup">Backup</h3>
+<p>We can back up LedisDB and then restore later. Redis saving RDB may block service for some time, but LedisDB doesn’t have this problem. Thanks to rocksdb fast generating snapshot technology, backing up LedisDB is very fast and easy.</p>
+<h3 id="Binlog">Binlog</h3>
+<p>LedisDB will first log write operations in binlog, then commit changes into backend storage, this is similar to MySQL.</p>
+<p>Redis also has AOF, but the AOF file may grow largely, then rewriting AOF may also block service for some time. LedisDB will rotate binlog and write to the new one when current binlog is larger than maximum size (1GB).</p>
+<h3 id="Replication">Replication</h3>
+<p>An old saying goes like this: “don’t put all your eggs in one basket”. Similarly, don’t put all our data in one machine.</p>
+<p>LedisDB supports asynchronous or semi-synchronous replication. We can not break CAP(Consistency, Availability, Partition tolerance) theorem, for replication, partition tolerance must exist, so we have to choose between consistency and availability.</p>
+<p>If we want to guarantee full data security, we may use semi-synchronous replication, but most of time, asynchronous replication is enough.</p>
+<h2 id="Monitor_and_Failover">Monitor and Failover</h2>
+<p>In the actual production environment, we use a master LedisDB and one or more slaves to construct the topology. We must monitor them in real time because any machine in the topology may be down at any time.</p>
+<p>If a slave is down, we may not care too much, this is not a serious problem. But if the master is down (aha, a terrible accident!), we must resolve it quickly.</p>
+<p>Generally, we can not expect the master to re-work quickly and infallibly, so electing a best new master from current slaves and doing failover is a better way when master is down.</p>
+<p>Redis uses a sentinel feature to monitor the topology and do failover when the master is down. But this sentinel can not be used in LedisDB, so I develop another sentinel: redis-failover, monitoring and doing failover for Redis/LedisDB.</p>
+<p>redis-failover uses <code>ROLE</code> command to check master and get all slaves every second. If the master is down, redis-failover will select the best slave from last <code>ROLE</code> returned slaves. The election algorithm is simple, using <code>INFO</code> command to get “slave_priority” and “slave_repl_offset” value, if a slave has a higher priority or a larger repliction offset with same priority, the slave will be elected as the new master.</p>
+<p>redis-failover may have single point problem too, I use zookeeper or raft to support redis-failover cluster. Zookeeper or raft will elect a leader and let it monitor and do failover, if the leader is down, a new leader will be elected quickly.</p>
+<h2 id="Cluster">Cluster</h2>
+<p>Although LedisDB can store huge data, the growing data may still exceed the capability of the system in the near future.</p>
+<p>Splitting data and storing them into multi machines may be the only feasible way(We don’t have money to buy a mainframe), but how to split the data? and how to find the data by a key? I think an easy solution is to define a key routing rule (mapping key to the actual machine).</p>
+<p>For example, we have two machines, n0 and n1, and the key routing rule is simple hash like <code>crc32(key) % 2</code>. For key “abc”, the calculation result is 0, so we know that the corresponding data is in n0.</p>
+<p>The above solution is easy, but we can not use it in production. If we add another machine, the machine number is 3, all the old data mapping relationship will be broken, and we have to relocate huge amount of data.</p>
+<p>Using consistency hash may be better, but I prefer using hash + routing table. We don’t map a key to a machine directly, but to a virtual node named slot, then define a routing table mapping slot to the actual machine.</p>
+<p>Continuing with the example, assume we use 1024 slots and 2 machines, the slot and machine mapping is [slot0 — slot511] -&gt; n0, [slot512 — slot1023] -&gt; n1. For a key, first using <code>crc32(key) % 1024</code> to get a slot index, then we can find the machine with this slot from the routing table.</p>
+<p>This solution may be complex but have a big advantage for re-sharding. If we add another machine n2, change the routing table that mapping slot0 to n2, and we only need to migrate all slot0 data from n0 to n2. The bigger for slot number, the smaller for split data in a slot, and we only migrate little data for one slot.</p>
+<p>xcodis uses above way to support LedisDB cluster. Now the slot number is 256, which is a little small that may increase the probability of mapping some busy keys into a slot.</p>
+<p>Because of origin LedisDB db index implementation limitation, xcodis can not use bigger slot number than 256, so a better way is to support customizing a routing table for a busy key later. For example, for a key, xcodis should first try to find the associated slot in the routing table, if not found, then use hash.</p>
+<p>Another radical choice is to change LedisDB code and upgrade all data saved before. This is may be a huge work, so I will not consider it unless I have no idea to resolve above problems.</p>
+<p>xcodis is a proxy supporting redis/LedisDB cluster, the benefit of proxy is that we can hide all cluster information from client users and users can use it easily like using a single server.</p>
+<p>In addition to proxy, there are also some other ways to support cluster too:</p>
+<p>Official Redis cluster, but it is still in development and should not be used in production now, and it can not be used in LedisDB.<br>Customizing client SDK, the SDK can know whole cluster information and do the right key routing for the user. But this way is not universal and we must write many SDKs for different languages (c, java, php, go, etc.), a hard work!</p>
+<h2 id="Final_Architecture">Final Architecture</h2>
+<p>At last, the final architecture may look below:</p>
+<p><img src="https://raw.githubusercontent.com/siddontang/blog/master/asserts/kv-architecture.png" alt="kv architecture"></p>
+<ul>
+<li>Use LedisDB to save huge data in one machine.</li>
+<li>Use Master/slave to guarantee data security.</li>
+<li>Use redis-failover to monitor the system and do failover.</li>
+<li>Use xcodis to support cluster.</li>
+</ul>
+<p>This architecture may be not perfect, but is simple and enough for us. Now we have only use LedisDB and xcodis in our projects, not the whole architecture, but we have been testing and will try to deploy it in production in the near future.</p>
+<h2 id="Summary">Summary</h2>
+<p>Building up a key-value store is not a easy work, and I don’t think what I do above can beat other existing awesome NoSQLs, but it’s a valuable attempt, I have learned much and meet many new friends in the progress.</p>
+<p>Now, I’am the only person to develop the whole thing and need help, if you have interested in what I do, please contact me, maybe we really can build up an awesome NoSQL. :-)</p>
+<p>Mail: <a href="&#x6d;&#x61;&#x69;&#108;&#116;&#x6f;&#58;&#115;&#105;&#100;&#100;&#x6f;&#110;&#x74;&#97;&#x6e;&#103;&#64;&#103;&#x6d;&#x61;&#105;&#x6c;&#46;&#99;&#111;&#x6d;">&#115;&#105;&#100;&#100;&#x6f;&#110;&#x74;&#97;&#x6e;&#103;&#64;&#103;&#x6d;&#x61;&#105;&#x6c;&#46;&#99;&#111;&#x6d;</a></p>
+<p>Github: <a href="https://github.com/siddontang" target="_blank" rel="external">github.com/siddontang</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2015-03-06T13:24:18.000Z"><a href="/2015/03/06/build-ha-distributed-kv-service/">03-06-2015</a></time>
       
       
@@ -1072,121 +1203,6 @@ set global event_scheduler := 1;
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-12-03T12:49:37.000Z"><a href="/2014/12/03/learn-zookeeper/">12-03-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/12/03/learn-zookeeper/">学习zookeeper</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>最近研究了一下zookeeper（后续以zk简称），对于一个自认为泡在服务器领域多年的老油条来说，现在才开始关注zk这个东西，其实有点晚了，但没办法，以前的工作经历让我压根用不到这个玩意。只是最近因为要考虑做ledisdb的cluster方案，以及重新考虑mixer的协调管理，才让我真正开始尝试去了解zk。</p>
-<h2 id="什么是zookeeper">什么是zookeeper</h2>
-<p>根据官网的介绍，zookeeper是一个分布式协调服务，主要用来处理分布式系统中各系统之间的协作问题的。</p>
-<p>其实这么说有点抽象，初次接触zk，很多人真不知道用它来干啥，你可以将它想成一个总控节点（当然它能用多机实现自身的HA），能对所有服务进行操作。这样就能实现对整个分布式系统的统一管理。</p>
-<p>譬如我现在有n台机器，需要动态更新某一个配置，一些做法可能是通过puppet或者salt将配置先分发到不同机器，然后运行指定的reload命令。zk的做法可能是所有服务都监听一个配置节点，直接更改这个节点的数据，然后各个服务就能收到更新消息，然后同步最新的配置，再自行reload了。</p>
-<p>上面只是一个很简单的例子，其实通过它并不能过多的体现zk的优势（没准salt可能还更简单），但zk不光只能干这些，还能干更awesome的事情。网上有太多关于zk应用场景一览的文章了，这里就不详细说明，后续我只会说一下自己需要用zk解决的棘手问题。</p>
-<h2 id="架构">架构</h2>
-<p>zk使用类paxos算法来保证其HA，每次通过选举得到一个master用来处理client的请求，client可以挂载到任意一台zk server上面，因为paxos这种是强一致同步算法，所以zk能保证每一台server上面数据都是一致的。架构如下：</p>
-<pre><code>                                                                     
-                      +-------------------------------+                         
-                      |                               |                         
-              +----+--++          +----+---+        +-+--+---+                  
-              | server |          | server |        | server |                  
-              |        +----------+ master +--------+        |                  
-              +--^--^--+          +----^---+        +----^---+                  
-                 |  |                  |                 |                      
-                 |  |                  |                 |                      
-                 |  |                  |                 |                      
-           +-----+  +-----+            +------+          +---------+            
-           |              |                   |                    |            
-           |              |                   |                    |            
-      +----+---+        +-+------+         +--+-----+           +--+-----+      
-      | client |        | client |         | client |           | client |      
-      +--------+        +--------+         +--------+           +--------+
-</code></pre><h2 id="Data_Model">Data Model</h2>
-<p>zk内部是按照类似文件系统层级方式进行数据存储的，就像这样：</p>
-<pre><code>                        +---+             
-                        | / |             
-                        +++-+             
-                         ||               
-                         ||               
-          +-------+------++----+-------+  
-          | /app1 |            | /app2 |  
-          +-+--+--+            +---+---+  
-            |  |                   |      
-            |  |                   |      
-            |  |                   |      
-+----------++ ++---------+    +----+-----+
-| /app1/p1 |  | /app1/p2 |    | /app2/p1 |
-+----------+  +----------+    +----------+
-</code></pre><p>对于任意一个节点，我们称之为znode，znode有很多属性，譬如<code>Zxid</code>（每次更新的事物ID）等，具体可以详见zk的文档。znode有ACL控制，我们可以很方便的设置其读写权限等，但个人感觉对于内网小集群来说意义不怎么大，所以也就没深入研究。</p>
-<p>znode有一种Ephemeral Node，也就是临时节点，它是session有效的，当session结束之后，这个node自动删除，所以我们可以用这种node来实现对服务的监控。譬如一个服务启动之后就向zk挂载一个ephemeral node，如果这个服务崩溃了，那么连接断开，session无效了，这个node就删除了，我们也就知道该服务出了问题。</p>
-<p>znode还有一种Sequence Node，用来实现序列化的唯一节点，我们可以通过这个功能来实现一个简单地leader服务选举，譬如每个服务启动的时候都向zk注册一个sequence node，谁最先注册，zk给的sequence最小，这个最小的就是leader了，如果leader当掉了，那么具有第二小sequence node的节点就成为新的leader。</p>
-<h3 id="Znode_Watch">Znode Watch</h3>
-<p>我们可以watch一个znode，用来监听对应的消息，zk会负责通知，但只会通知一次。所以需要我们再次重新watch这个znode。那么如果再次watch之前，znode又有更新了，client不是收不到了吗？这个就需要client不光要处理watch，同时也需要适当的主动get相关的数据，这样就能保证得到最新的消息了。也就是消息系统里面典型的推拉结合的方式。推只是为了提升性能，快速响应，而拉则为了更好的保证消息不丢失。</p>
-<p>但是，我们需要注意一点，zk并不能保证client收到消息之后同时处理，譬如配置文件更新，zk可能通知了所有client，但client并不能全部在同一个时间同时reload，所以为了处理这样的问题，我们需要额外的机制来保证，这个后续说明。</p>
-<p>watch只能应用于data（通过get，exists函数）以及children（通过getChildren函数）。也就是监控znode数据更新以及znode的子节点的改变。</p>
-<h2 id="API">API</h2>
-<p>zk的API时很简单的，如下：</p>
-<ul>
-<li>create</li>
-<li>delete</li>
-<li>exists</li>
-<li>set data</li>
-<li>get data</li>
-<li>get chilren</li>
-<li>sync</li>
-</ul>
-<p>就跟通常的文件系统操作差不多，就不过多说明了。</p>
-<h2 id="Example">Example</h2>
-<p>总的来说，如果我们不深入zk的内部实现，譬如paxos等，zk还是很好理解的，而且使用起来很简单。通常我们需要考虑的就是用zk来干啥，而不是为了想引入一个牛的新特性而用zk。</p>
-<h3 id="Lock">Lock</h3>
-<p>用zk可以很方便的实现一个分布式lock，记得最开始做企业群组盘的时候，我需要实现一个分布式lock，然后就用redis来弄了一个，其实当时就很担心redis单点当掉的问题，如果那时候我就引入了zk，可能就没这个担心了。</p>
-<p>官方文档已经很详细的给出了lock的实现流程：</p>
-<ol>
-<li>create一个类似path/lock-n的临时序列节点</li>
-<li>getChilren相应的path，注意这里千万不能watch，不然惊群很恐怖的</li>
-<li>如果1中n是最小的，则获取lock</li>
-<li>否则，调用exists watch到上一个比自己小的节点，譬如我现在n是5，我就可能watch node-4</li>
-<li>如果exists失败，表明前一个节点没了，则进入步骤2，否则等待，直到watch触发重新进入步骤2</li>
-</ol>
-<h3 id="Codis">Codis</h3>
-<p>最近在考虑ledisdb的cluster方案，本来也打算用proxy来解决的，然后就在想用zk来处理rebalance的问题，结果这时候codis横空出世，发现不用自己整了，于是就好好的研究了一下codis的数据迁移问题。其实也很简单：</p>
-<ol>
-<li>config发起pre migrate action</li>
-<li>proxy接收到这个action之后，将对应的slot设置为pre migrate状态，同时等待config发起migrate action</li>
-<li>config等待所有的proxy返回pre migrate之后，发起migrate action</li>
-<li>proxy收到migrate action，将对应的slot设置为migrate状态</li>
-</ol>
-<p>上面这些，都是通过zk来完成的，这里需要关注一下为啥要有pre migrate这个状态，如果config直接发起migrate，那么zk并不能保证proxy同一时间全部更新成migrate状态，所以我们必须有一个中间状态，在这个中间状态里面，proxy对于特定的slot不会干任何事情，只能等待config将其设置为migrate。虽然proxy对于相应slot一段时间无法处理外部请求，但这个时间是很短的（不过此时config当掉了就惨了）。config知道所有proxy都变成pre migrate状态之后，就可以很放心的发送migrate action了。因为这时候，proxy只有两种可能，变成migrate状态，能正常工作，仍然还是pre migrate状态，不能工作，也自然不会对数据造成破坏。</p>
-<p>其实上面也就是一个典型的2PC，虽然仍然可能有隐患，譬如config当掉，但并不会对实际数据造成破坏。而且config当掉了我们也能很快知晓并重新启动，所以问题不大。</p>
-<h2 id="总结">总结</h2>
-<p>总的来说，zk的使用还是挺简单的，只要我们知道它到底能用到什么地方，那zk就真的是分布式开发里面一把瑞士军刀了。不过我挺不喜欢装java那套东西，为了zk也没办法，虽然go现在也有etcd这些类zk的东西了，但毕竟还没经受过太多的考验，所以现在还是老老实实的zk吧。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -1234,7 +1250,7 @@ set global event_scheduler := 1;
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
-    <li><a href="/categories/program/">program</a><small>15</small></li>
+    <li><a href="/categories/program/">program</a><small>16</small></li>
   
     <li><a href="/categories/python/">python</a><small>6</small></li>
   
@@ -1246,7 +1262,7 @@ set global event_scheduler := 1;
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 15.56px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 10.00px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 16.67px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.11px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 
