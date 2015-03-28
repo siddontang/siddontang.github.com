@@ -4,7 +4,7 @@
   <subtitle><![CDATA[My thought for program]]></subtitle>
   <link href="/atom.xml" rel="self"/>
   <link href="http://siddontang.com/"/>
-  <updated>2015-03-15T00:46:52.003Z</updated>
+  <updated>2015-03-28T08:49:25.204Z</updated>
   <id>http://siddontang.com/</id>
   
   <author>
@@ -13,6 +13,167 @@
   </author>
   
   <generator uri="http://zespia.tw/hexo/">Hexo</generator>
+  
+  <entry>
+    <title><![CDATA[Dive into MySQL Replication]]></title>
+    <link href="http://siddontang.com/2015/03/28/dive-into-mysql-replication/"/>
+    <id>http://siddontang.com/2015/03/28/dive-into-mysql-replication/</id>
+    <published>2015-03-28T08:48:35.000Z</published>
+    <updated>2015-03-28T08:49:15.000Z</updated>
+    <content type="html"><![CDATA[<h1 id="Dive_into_MySQL_replication_protocol">Dive into MySQL replication protocol</h1>
+<h2 id="Preface">Preface</h2>
+<p>Let’s consider following scenario, we store huge data in MySQL and want to know data changes immediately(data inserted, deleted or updated), then do something for these changes like updating associated cache data.</p>
+<p>Using MySQL trigger + UDF may be a feasible way, but I have not used it and would not recommend this. If we have many tables, maintaining so many triggers is horrible. At the same time, UDF may fail so that we will lost some changes, and even worse, a bad UDF implementation may block service or even crash MySQL.</p>
+<p>We need a better solution, and this is binlog. MySQL records every changes into binlog, so if we can sync the binlog, we will know the data changes immediately, then do something. </p>
+<p>Using rsync may be a good way, but I prefer another: acting as a slave and using MySQL replication protocol to sync.</p>
+<h2 id="MySQL_Packet">MySQL Packet</h2>
+<p>First, we must know how to send or receive data with MySQL, and this is packet:</p>
+<p>Split the data into packets of size 16MB.<br>Prepend to each chunk a packet header.  </p>
+<p>A packet header has 3 bytes for following payload data length and 1 byte for sequence ID. </p>
+<p>The sequence ID is incremented with each packet between client and server communication, it starts at 0 and is reset to 0 when a new command begins, e.g, we send a packet, the sequence ID is 0, and the response packet sequence ID must be 1, if not, some error happens between the communication. </p>
+<p>So a packet looks like below:</p>
+<pre><code>3              payload length
+1              Sequence ID
+string[len]    payload
+</code></pre><p>As you see, sending data with packet is very easy, I have implemented a base library in <a href="https://github.com/siddontang/go-mysql" title="A MySQL toolset" target="_blank" rel="external">go-mysql</a> packet pkg.</p>
+<h2 id="Connection_phase">Connection phase</h2>
+<p>When we first connect to MySQL server, we must do a handshake to let server authorizing us to communicate with it later, this is called connection phase. </p>
+<p>Let’s consider  a popular common connection phase.</p>
+<ul>
+<li>Client connects server using socket connect API.</li>
+<li>Server sends a initial handshake packet which contains server’s capabilities and a 20 bytes random salt.</li>
+<li>Client answers with a handshake response packet, telling server its capabilities and a  20 bytes scrambled password.</li>
+<li>Server response ok packet or err packet. </li>
+</ul>
+<p>Although MySQL supports many authentication method, I only use username + password, you can see codes in <a href="https://github.com/siddontang/go-mysql" title="A MySQL toolset" target="_blank" rel="external">go-mysql</a> client and server pkg.</p>
+<p>Now we know how to send/receive data, how to establish the connection, and it’s time to move on for syncing binlog. :-)</p>
+<h2 id="Register_a_Slave">Register a Slave</h2>
+<p>When we want to sync binlog, we must register a slave at master first, that is acting as a pseudo slave. </p>
+<p>We only need to send COM_REGISTER_SLAVE command, the payload is:</p>
+<pre><code>1              COM_REGISTER_SLAVE
+4              server-id
+1              slaves hostname length
+string[$len]   slaves hostname
+1              slaves user len
+string[$len]   slaves user
+1              slaves password len
+string[$len]   slaves password
+2              slaves mysql-port
+4              replication rank
+4              master-id
+</code></pre><p>We must use an unique server id for our pseudo slave, I prefer using a ID bigger than 1000 which is different from our real MySQL servers. </p>
+<h2 id="Dump_BinLog_from_master">Dump BinLog from master</h2>
+<p>After register, we should send COM_BINLOG_DUMP command, it is very easy too, payload is:</p>
+<pre><code>1              COM_BINLOG_DUMP
+4              binlog-pos
+2              flags
+4              server-id
+string[EOF]    binlog-filename
+</code></pre><p>If the binlog filename is empty, server will use the first known binlog. </p>
+<p>You can set flags to 1 to tell server to reply a EOF packet instead of blocking connection if there is no more binlog event. But I prefer blocking so that if there is any new event, server can send to us immediately. </p>
+<p>Although MySQL supports COM_BINLOG_DUMP_GTID commands, I still prefer using command binlog filename + position, because it is very easy and for our pseudo slave, we only need to sync binlog, save it in a place and let other applications like MHA use it. </p>
+<p>After we send COM_BINLOG_DUMP command, server will response a binlog network stream which contains many binlog events. </p>
+<h2 id="BinLog_Event">BinLog Event</h2>
+<p>A MySQL binlog event has many versions, but we only care version 4(MySQL 5.0+) and don’t support earlier versions.</p>
+<p>A binlog event contains three parts, header, post header and payload, but I like parsing post header and payload at same time. </p>
+<p>A event header looks below:</p>
+<pre><code>4              timestamp
+1              event type
+4              server-id
+4              event-size
+4              log pos
+2              flags
+</code></pre><p>You can see all binlog event types here. The log pos is position of the next event, we can save this position for resuming syncing later. </p>
+<p>The first binlog event in the binlog file is FORMAT_DESCRIPTION_EVENT, this event is very important, we use it to determine table ID size for row based event, and check the last 5 bytes to see whether CRC32 is enabled or not for the following events, etc…</p>
+<p>Another event we should care is ROTATE_EVENT, it tells us a new binlog coming. </p>
+<p>Parsing a binlog event is very easy, we only need to refer the document and parse it one by one, except row based replication event. </p>
+<h2 id="Row_Based_Replication">Row Based Replication</h2>
+<p>Parsing row based replication event is very hard if we want to know the real data changes for a column in one row. </p>
+<p>First, we must parse TABLE_MAP_EVENT, payload is:</p>
+<pre><code>post-header:
+    if post_header_len == 6 {
+  4              table id
+    } else {
+  6              table id
+    }
+  2              flags
+
+payload:
+  1              schema name length
+  string         schema name
+  1              [00]
+  1              table name length
+  string         table name
+  1              [00]
+  lenenc-int     column-count
+  string.var_len [length=$column-count] column-def
+  lenenc-str     column-meta-def
+  n              NULL-bitmask, length: (column-count + 8) / 7
+</code></pre><p>The post_header_len is saved in FORMAT_DESCRIPTION_EVENT, column count and def tells us how many columns in one row and their data types, like tiny int, short int, float, set, etc. column meta def is tricky, but we must use it to parse following ROWS_EVENT.</p>
+<p>A ROWS_EVENT contains WRITE_ROWS_EVENT(insert), DELETE_ROWS_EVENT(delete) and UPDATE_ROWS_EVENT(update), every event contains v0, v1 and v2 three versions, most of time, we only need to care v1 and v2. </p>
+<p>A ROWS_EVENT looks below:</p>
+<pre><code>header:
+  if post_header_len == 6 {
+4                    table id
+  } else {
+6                    table id
+  }
+2                    flags
+  if version == 2 {
+2                    extra-data-length
+string.var_len       extra-data
+  }
+
+body:
+lenenc_int           number of columns
+string.var_len       columns-present-bitmap1, length: (num of columns+7)/8
+  if UPDATE_ROWS_EVENTv1 or v2 {
+string.var_len       columns-present-bitmap2, length: (num of columns+7)/8
+  }
+
+rows:
+string.var_len       nul-bitmap, length (bits set in &#39;columns-present-bitmap1&#39;+7)/8
+string.var_len       value of each field as defined in table-map
+  if UPDATE_ROWS_EVENTv1 or v2 {
+string.var_len       nul-bitmap, length (bits set in &#39;columns-present-bitmap2&#39;+7)/8
+string.var_len       value of each field as defined in table-map
+  }
+  ... repeat rows until event-end
+</code></pre><p>I promise that if you don’t dive into the MySQL source, you can not understand how to parse it at all. </p>
+<p>First, let’s see columns-present-bitmap, for a column, it will not be saved in the row data if the associated bit in columns-present-bitmap is 0, and we will skip this column when parsing. </p>
+<p>For every row data, first we should calculate the null-bitmap, a big pitfall here,  we calculate columns-present-bitmap using (num of columns+7)/8, but we must use (bits set in ‘columns-present-bitmap’+7)/8 for null-bitmap. (You should google bits set if you don’t understand it).</p>
+<p>From MySQL 5.6, it supports another two binlog row images: minimal and noblob. For minimal row image update, if we have 16 columns and only the first column data changed, if we use (num of columns+7)/8, we should use 2 bytes to store null bitmap, but if we use (bits set in ‘columns-present-bitmap’+7)/8, we will only use 1 bytes to store null bitmap, saving 1 byte(is it really necessary?). By the way, I sent a pull request for python-mysql-replication to handle minimal and noblob row image paring.</p>
+<p>Now we get column-present-bitmap and null-bitmap, for a column, if it’s not set in column-present-bitmap or set in null-bitmap, we will know that this column is null for the current row data.</p>
+<p>Then we will parse the rest of none null columns. For some special  columns, like MYSQL_TYPE_LONG or MYSQL_TYPE_FLOAT, we can know the data length directly, e.g, MYSQL_TYPE_LONG is 4 bytes and MYSQL_TYPE_TINY_INT is 1 byte.</p>
+<p>But for other columns, we should use column meta in TABLE_MAP_EVENT to help us determine the data length. For example, a MYSQL_TYPE_BLOB column, if meta is 1, the data is tiny blob and the first 1 byte in data is the length for payload, if meta is 2, the data is short blob and the first 2 bytes is the lenght for payload. </p>
+<p>Paring the real data is very hard and I can not illustrate here fully and clearly. I hope you can see the source in MySQL or <a href="https://github.com/siddontang/go-mysql" title="A MySQL toolset" target="_blank" rel="external">go-mysql</a> replication pkg if you have some interest. </p>
+<h2 id="Semi_Sync_Replication">Semi Sync Replication</h2>
+<p>At first, I didn’t support semi sync replication in <a href="https://github.com/siddontang/go-mysql" title="A MySQL toolset" target="_blank" rel="external">go-mysql</a>, but after I develop <a href="https://github.com/siddontang/go-mysql-elasticsearch" title="Sync MySQL into Elasticsearch" target="_blank" rel="external">go-mysql-elasticsearch</a>, I realize that if I want to sync MySQL changes into elasticsearch more quickly and immediately, supporting semi sync replication is a good choice and it’s easy to do like below: </p>
+<ul>
+<li>Check whether master supports semi sync or not, using “SHOW VARIABLES LIKE ‘rpl_semi_sync_master_enabled’”.</li>
+<li>Tell master we support semi sync using “SET @rpl_semi_sync_slave = 1”.</li>
+</ul>
+<p>If all is ok, server will prepend two byte before every binlog event. The first byte is 0xef indicating semi sync and the second byte is semi sync ACK flag, if 1, we must reply a semi sync ACK packet.</p>
+<p>It now seems that this is a wise decision. In facebook, they even develop a semi sync binlog, you can see more here. I develop a similar go-mysqlbinlog supporting semi sync too, but it still needs improvement for production environment. </p>
+<h2 id="Summary">Summary</h2>
+<p>Learning mysql protocol is a hard but happy journey for me, and I have done some interesting things too, like mixer, a MySQL proxy which the modified version(cm) has been used in production in wandoujia company. <a href="https://github.com/siddontang/mixer" title="A MySQL Proxy" target="_blank" rel="external">go-mysql-elasticsearch</a>, a tool to sync MySQL data into elasticsearch immediately. </p>
+<p>Now I have been developing go-mysql, a powerful MySQL toolset. I would be very glad if some people find it can help them for their own MySQL development too.</p>
+<p>Later I will also try to use go-mysqlbinlog + MHA to build our own MySQL HA solution, I don’t know perl, but luckily, I can understand MHA code.</p>
+<p>Below is my contact, any advice and feedback is very welcome.</p>
+<ul>
+<li><p>Email: siddontang@gmail.com</p>
+</li>
+<li><p>Skype: live:siddontang_1</p>
+</li>
+</ul>
+]]></content>
+    
+    
+      <category term="mysql" scheme="http://siddontang.com/tags/mysql/"/>
+    
+      <category term="mysql" scheme="http://siddontang.com/categories/mysql/"/>
+    
+  </entry>
   
   <entry>
     <title><![CDATA[Build up a High Availability Distributed Key-Value Store]]></title>
@@ -1428,61 +1589,6 @@ gopkg.in/user/pkg.v3 → github.com/user/pkg   (branch/tag v3, v3.N, or v3.N.M)
   </entry>
   
   <entry>
-    <title><![CDATA[一个Go可变参数问题]]></title>
-    <link href="http://siddontang.com/2014/07/20/golang-func-vargs/"/>
-    <id>http://siddontang.com/2014/07/20/golang-func-vargs/</id>
-    <published>2014-07-20T11:03:19.000Z</published>
-    <updated>2014-08-08T15:58:02.000Z</updated>
-    <content type="html"><![CDATA[<p>几天前纠结了一个蛋疼的问题，在go里面函数式支持可变参数的，譬如…T，go会创建一个slice，用来存放传入的可变参数，那么，如果创建一个slice，例如a，然后以a…这种方式传入，go会不会还会新建一个slice，将a的数据全部拷贝一份过去？</p>
-<p>如果a很大，那么将会造成很严重的性能问题，不过后来想想，可能是自己多虑了，于是查看go的文档，发现如下东西：</p>
-<blockquote>
-<p>Passing arguments to … parameters</p>
-<p>If f is variadic with a final parameter p of type …T, then within f the type of p is equivalent to type []T. If f is invoked with no actual arguments for p, the value passed to p is nil. Otherwise, the value passed is a new slice of type []T with a new underlying array whose successive elements are the actual arguments, which all must be assignable to T. The length and capacity of the slice is therefore the number of arguments bound to p and may differ for each call site.</p>
-<p>Given the function and calls</p>
-<pre><code>func Greeting(prefix string, who ...string)
-Greeting(&quot;nobody&quot;)
-Greeting(&quot;hello:&quot;, &quot;Joe&quot;, &quot;Anna&quot;, &quot;Eileen&quot;)
-</code></pre><p>within Greeting, who will have the value nil in the first call, and []string{“Joe”, “Anna”, “Eileen”} in the second.</p>
-<p>If the final argument is assignable to a slice type []T, it may be passed unchanged as the value for a …T parameter if the argument is followed by …. In this case no new slice is created.</p>
-<p>Given the slice s and call</p>
-<pre><code>s := []string{&quot;James&quot;, &quot;Jasmine&quot;}
-Greeting(&quot;goodbye:&quot;, s...)
-</code></pre><p>within Greeting, who will have the same value as s with the same underlying array.</p>
-</blockquote>
-<p>也就是说，如果我们传入的是slice…这种形式的参数，go不会创建新的slice。写了一个简单的例子验证：</p>
-<pre><code>package main
-
-import &quot;fmt&quot;
-
-func t(args ...int) {
-    fmt.Printf(&quot;%p\n&quot;, args)
-}
-
-func main() {
-    a := []int{1,2,3}
-    b := a[1:]
-
-    t(a...)
-    t(b...)
-
-    fmt.Printf(&quot;%p\n&quot;, a)
-    fmt.Printf(&quot;%p\n&quot;, b)
-}
-
-//output
-0x1052e120
-0x1052e124
-0x1052e120
-0x1052e124
-</code></pre><p>可以看到，可变参数args的地址跟实际外部slice的地址一样，用的同一个slice。</p>
-]]></content>
-    
-    
-      <category term="go" scheme="http://siddontang.com/categories/go/"/>
-    
-  </entry>
-  
-  <entry>
     <title><![CDATA[celery最佳实践]]></title>
     <link href="http://siddontang.com/2014/07/20/celery-best-practices/"/>
     <id>http://siddontang.com/2014/07/20/celery-best-practices/</id>
@@ -1563,110 +1669,57 @@ def my_task_A():
   </entry>
   
   <entry>
-    <title><![CDATA[我的编程语言经历]]></title>
-    <link href="http://siddontang.com/2014/06/22/program-lang-experience/"/>
-    <id>http://siddontang.com/2014/06/22/program-lang-experience/</id>
-    <published>2014-06-22T13:29:26.000Z</published>
-    <updated>2014-08-09T07:15:37.000Z</updated>
-    <content type="html"><![CDATA[<p>Alan Perlis 说过：“一种不改变你编程的思维方式的语言，不值得去学。”，虽然写了这么多年程序，用了这么多的语言，但我自认还没悟道编程语言如何改变我的思维方式。</p>
-<p>几天前，我需要用python来为<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>写一个客户端，我突然发现，对于c++，go这种语言，我如果需要实现一个功能，首先想到的是问题是代码应该怎么写。但是当我使用python的时候，我首先考虑的问题是在哪里去找一个库用来解决我的问题。可能这就是使用不同语言带给我的不同思考方式吧。</p>
-<p>我的编程语言经历没有那么复杂，没用过很多，但是其实也够我受的了，尤其是在不同语言语法糖之间切换的时候，有种让人崩溃的感觉。没准我应该升级一下我的大脑cpu，使其能够更快速的进行中断处理。</p>
-<h2 id="c">c</h2>
-<p>我是从大学才开始学习编程的，相比现在的小朋友来说，可以叫做输在了起跑线上面。谁叫以前生活在山区，没机会接触电脑这玩意。</p>
-<p>我的第一门编程语言是c，不同于很多童鞋使用的谭浩强神书，我用的是周纯杰的&lt;<c语言程序设计>&gt;，不知道每年有多少同学受到过它的摧残，当然还有那哥们蹩脚的普通话。</c语言程序设计></p>
-<p>在大学里面，很多同学的c的毕业设计都是我帮其完成，但我始终觉得自己仍然是个半吊子，除了c的基础稍微强一点之外，很多方面譬如操作系统，算法等完全不会。（现在随着工作年限的增加让我越发后悔，当初怎么就不稍微学点这些知识，尤其是编译原理。）</p>
-<p>我几乎没怎么用c开发过项目，只在tencent可怜的维护过别人的c项目，但至少能看懂c代码，这就够了。</p>
-<p>因为大多数时候，我用的是c++，而不是c来解决我的问题。</p>
-<h2 id="c++">c++</h2>
-<p>c++是我工作使用的第一门语言，也是我使用时间最长的一门语言，都七年之痒了，不过还是有点不离不弃的。</p>
-<p>以前上学的时候有一句口头禅，叫学好c++，走遍天下都不怕。但是有几个人能把它学好的？所以千万别说自己精通c++，那会被人鄙视的。</p>
-<p>我使用c++可以分为三个阶段：</p>
-<h3 id="类c阶段">类c阶段</h3>
-<p>这个阶段主要是我第一份工作的时候，那时候才毕业，c的烙印很深，面向对象除了有个概念，真正是啥完全不知道。所以最喜欢的方式还是写着一堆函数来解决问题，当初VIA身边那帮c++的牛人竟然能忍受我这样的代码，真佩服他们。</p>
-<h3 id="面向对象阶段">面向对象阶段</h3>
-<p>后来去了第二家公司linekong，开始做游戏，才开始真正意义上的用c++写代码了。</p>
-<p>记得最开始去第一家公司面试的时候，被问了啥是面向对象，当时不假思索的答了继承，多态和封装。</p>
-<p>啥叫封装？整一个class，把该包的都包了，一个同事曾告诉我，他见过有几万行代码的class，看来我这个几千行的太小儿科了。</p>
-<p>啥叫继承？先来一个父类，干脆叫bird，有一个fly方法，再来一个子类，叫duck吧，继承了bird，不过duck会fly吗？一个父类不够，再来一个，搞个多重继承，什么？出现了菱形继承，那干脆在来一个virtual继承得了。</p>
-<p>啥叫多态？不就是virtual function，然后父类指针能在运行时根据实际情况调用相应的子类实现。那c++的多态是怎么实现的？看看&lt;&lt;深度探索c++对象模型&gt;&gt;不就行了。</p>
-<p>这段时间，可以算是我写c++代码最多的时候，都快写到吐了，尤其还要忍受那龟速的编译。我们竟然都实现了直接通过汇编改c++的虚表，使其调用自己的函数这种变态的东西。在那时候我就得出结论，如果不想早死，尽量别用这个东西写代码。可是到如今我都在不停的慢性自杀。</p>
-<h3 id="现代C++阶段">现代C++阶段</h3>
-<p>不知道从什么时候开始，我突然觉得我应该来点modern c++的编写方式了，c++0x都出了，还不玩一下就晚了。当然新特性那么多，不可能全部都拿来用的，Bjarne Stroustrup貌似都说过，c++0x应该算是另一门语言了。</p>
-<p>于是哥就走上了伪modern c++之路，class还是需要的，不然数据怎么封装。继承吗，比重减轻吧，最好采用面向接口的编程方式。而多态，能不用就不用吧，反而觉得bing + function的方式实现的delegate模型反而更方便，没准也更酷哟。</p>
-<p>shared_ptr，weak_ptr是需要用的了，c++没有gc，所以一套好的内存管理方式是必不可少的，每次new之后还要记得delete也比较烦，最严重的是可能忘记那就内存泄露了。</p>
-<p>于是，我就自认为我进化了，最典型的例子就是我写的高性能网络库<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>，感觉很modern了。</p>
-<h2 id="lua">lua</h2>
-<p>最开始知道lua，是云风那本编程感悟的书，当时可是菊花一紧，觉得这东西是啥，为什么能跟c结合到一起使用？</p>
-<p>后来自己开发游戏了，才发现lua真的是一门很强大的语言，短小精悍，嵌入简单，性能超强，完全是作为游戏脚本语言开发的不二人选。不过我最开始使用lua的经历不怎么happy，最开始就是接手了一个c++与lua的粘合层库，关于这个库的传说，见这里<a href="http://blog.codingnow.com/2008/08/lua_is_not_c_plus_plus.html" target="_blank" rel="external">Lua 不是 C++</a>。后来，在踩了无数个坑，填了无数个坑之后，我终于弄得相对稳定了。貌似现在我以前的同事还在使用，不过正如我在<a href="http://blog.csdn.net/siddontang/article/details/18727645" target="_blank" rel="external">lua c函数注册器</a>中说明的那样，对于语言的交互，简单一点才好。现在以前做的游戏已经开源，见<a href="https://xp-dev.com/svn/YBTX_Public/" target="_blank" rel="external">这里</a>，那个传说中的蛋疼粘合层也见了世面。当然，我可不会告诉你们好多搓代码是我写的。</p>
-<p>后来，在现在的公司，因为项目的需要，我们急需解决python的很多性能大坑问题，于是我开始推广使用openresty，一个用lua包裹的nginx，用了之后，腰不痛了，腿不痛了，性能妥妥的。</p>
-<p>因为lua，我第一次尝到了在代码里面直接写配置的便捷，用一个table搞定，相比起来，c++处理ini，json这些的弱爆了。另外，动态语言的热更新机制使其代码升级异常方便，不过你得非常小心lua的闭包，没准你重新加载了代码运行还是老样子。</p>
-<p>lua是一个动态语言，所以不用我们管内存释放问题，但是仍然可能会有引用泄露，在开发游戏的时候，为了解决我们程序lua内存泄露的问题，我曾经干过直接从_G递归遍历，扫描整个lua数据的事情。相比在c++使用valgrind这些程序的工具，lua配套的东西还是太小儿科了。</p>
-<p>lua的调试也是一个大头问题，我曾今写过几个lua的调试器，例如<a href="https://github.com/siddontang/luahelper" target="_blank" rel="external">这个</a>，甚至都支持了类似gdb那样ctrl+c之后动态的设置断点，可是仍然没觉得比gdb方便，所以多数时候，我都是写log为主。</p>
-<h2 id="python">python</h2>
-<p>虽然小时候吃过很多蛇，但是蟒蛇可是从来没吃过的，现在看来python味道还不错。</p>
-<p>我是来了kingsoft之后才开始正式使用python的。对于为啥使用python，我曾跟拉我进来的技术老大讨论过，他直接就说，开发快速，上手容易。</p>
-<p>python开发的快速很大程度是建立在丰富的第三方库上面的，我们也使用了很多库，譬如tornado，gevent，django等，但是正如我最开始说的，因为我们有太多的选择，面对一个问题的时候，往往考虑的是如何选择一个库，而不是自己如何实现，这其实在某种程度上面使得很多童鞋知其然而不知其所以然。这点，lua可能是另一个极端，lua的定位在于嵌入式和高性能，所以自然地，你得自己动手造轮子（当然，现在也有很多好的第三方库了），虽然有时候写起来很不方便，但是至少自己很清楚程序怎么跑的。</p>
-<p>当然，我绝对没有贬低python的意思，我很喜欢这门语言，用它来开发了很多东西，同时也知道很多公司使用python构建了很多大型稳定的系统（我们的产品应该也算吧）。</p>
-<p>只是现在我越发觉得，看起来简单的语言，如果没有扎实的基本功底，写出来的东西也很烂，而python，恰恰给人放了一个很大的烟雾弹，你以为它有多容易，其实它是在玩你。</p>
-<h2 id="go">go</h2>
-<p>好了，终于开始说go了，let’s go！！！</p>
-<p>我使用go的历史不长，可能也就一年多，但是它现在完全成了我最爱的语言，go具有了python开发的迅速，同时也有着c运行的性能。（当然，还是有差距的！）</p>
-<p>网上有太多的语言之争，包括go，有人恨，有人爱。但萝卜白菜，各有所爱，对于我来说，能帮我解决问题，让我用着舒服的语言就是好语言。</p>
-<p>go非常适用于服务端程序开发，比起用c++开发，我陡然觉得有一种很幸福的感觉，譬如对于网络编程，在c++里面，我需要自己写epoll的事件处理，而且这种异步的机制完全切分了整个逻辑，使得代码不怎么好写，我在开发<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">libtnet</a>的时候感触尤其深刻。但是在go里面，因为天生coroutine的支持，使得异步代码同步化了，非常利于代码的编写。</p>
-<p>现在我的主要在项目中推动go的使用，我们已经用go搭建了一个高性能的推送服务器，后续还有几个系统会上线，而且开发的进度并不比使用python差，另外也很稳定，这让我对go的未来充满了期待。</p>
-<p>我也用go写了很多的开源程序，也算是拿的出手了，譬如：</p>
-<ul>
-<li><a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">ledisdb</a>：一个基于leveldb的提供类似redis高级数据结果的高性能NoSQL，真挺绕口的，简单点就是一个高性能NoSQL。</li>
-<li><a href="https://github.com/siddontang/mixer" target="_blank" rel="external">Mixer</a>：一个mysql-proxy，现在支持通用的mysql命令代理，读写分离，以及自动主备切换。后续将要参考vitess支持分区，为此一直在恶补编译原理的知识。</li>
-<li><a href="https://github.com/siddontang/go-log" target="_blank" rel="external">go-log</a>：一个类似python log模块的东西，支持多种handler，以及不同的log级别。</li>
-</ul>
-<p>还有一些，可以参考我的<a href="https://github.com/siddontang" target="_blank" rel="external">github</a>，譬如<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">moonmq</a>（一个高性能push模型的消息服务器），<a href="https://github.com/siddontang/polaris" target="_blank" rel="external">polaris</a>（一个类似tornado的restful web框架），因为go，我开始热衷于开源了，并且认识了很多的好基友，这算得上一个很大的收获吧。</p>
-<h2 id="其它">其它</h2>
-<p>好了，说完了上面我的长时间使用语言（至少一年以上），我也用了很多其他的语言，现在虽然使用时间比较短，但不排除后续会长久使用。</p>
-<h3 id="Objective-C">Objective-C</h3>
-<p>因为我家终于有了苹果三件套，所以决定开发app了，首要的任务就是得学会使用Objective-C。我承认这真是一门奇葩的语言，如果没有xcode的自动补齐，我真不知道写起来是神马样的感觉。</p>
-<p>而且第一次见到了一门推荐写函数名，变量名就像写文章的语言，至少我写c++，go这些的一个函数名字不会写成一个句子。</p>
-<p>我现在在自学iOS的开发，慢慢在整出点东西，毕竟答应给老婆的iphone做点啥的。后续干脆就写一个《小白学iOS》系列blog吧（如果我有精力！），反正对于iOS，我真是一个小白。</p>
-<h3 id="java">java</h3>
-<p>好吧，我也在android上面写过程序，build到我的S3上面去过，对于java，我的兴趣真不大，貌似自己还买过两本《java编程思想》，那时候脑袋铁定秀逗了。</p>
-<p>但是不得不承认，java在服务器领域具有非常强的优势，很多很多的大企业采用java作为其服务器的编程语言。典型的就是淘宝，据传杭州的很多软件公司都不用java的，你用java就等于给淘宝培养人才了。（不过我发现他们很多基础组件譬如TFS这些的可是c++的哟！）</p>
-<p>java是门好语言，只是我个人不怎么喜欢，可能我就是太小众了，只对c语言体系的感兴趣。所以很多公司我去不了，哈哈！</p>
-<h3 id="erlang">erlang</h3>
-<p>受《计算机程序的构造与解释》影像，我一直想学一门函数式编程语言，最开始玩的是elisp，谁叫以前我是个深度的emacser（后来竟然变成了一个vimer，再后来就是sublimer，这世界真神奇）。</p>
-<p>后来还是决定好好学习一下erlang，也第一次领略到了函数式编程的魅力。自己唯一用erlang开发过的东西就是bt下载的客户端，不过后来发现用处不大就没继续进行下去了。（好吧，我承认当时想下岛国的东西）</p>
-<p>学习erlang之后最大的优势在于现在能看懂很多优秀的erlang项目，譬如我在做<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">moonmq</a>以及公司的推送服务的时候，研究了rabbitmq，这玩意可是用erlang写的，而我竟然还能看懂，太佩服我了。</p>
-<h3 id="还有么？">还有么？</h3>
-<p>想想自己还学了哪些语言？貌似没了，不知道awk算不算一门。看来我会得语言真不多。</p>
-<h2 id="后续可能会学的">后续可能会学的</h2>
-<p>逆水行舟，不进则退，计算机发展这么迅速，我也需要不断提升自己，其中学习一门新的语言可能是一个很好的提升途径，至少能为我打开一扇门。譬如，如果掌握了日文，就能更好的理解岛国片的精髓。我不会日文，所以还是个门外汉。</p>
-<h3 id="ruby">ruby</h3>
-<p>ruby是一门很优雅的语言，很多大神级别的人物推荐，github貌似也是ruby的幕后推手。</p>
-<p>因为ROR的兴起，使得ruby更加流行。看来，一个好的框架库对于语言的推广帮助真挺大的。相比而言，python有django，tornado等，光选择适合自己的就得费点时间。</p>
-<p>ruby可以算是一门完全面向对象的语言，连number这种的都是对象，而且看了几本Matz的书，觉得这哥们挺不错的，对技术的感悟很深，所以更让我有兴趣去了解ruby了。</p>
-<h3 id="javascript">javascript</h3>
-<p>作为一个技术人员，没一个自己的个人网站怎么行，我的阿里云都是包年买的（明年还是买国外的vps吧），自己的个人站点还无影无踪。</p>
-<p>好吧，我完全不会javscript，看着css就头疼，没准我从一开始想自己写代码搭建个人站点这个步子就迈的太大，扯着蛋了。如果先用一个开源的框架搭建起来，再自己调整完善，可能会更好。但无论怎样，javascript这门语言还是要学习了解的，尤其是以后随着html5的流行，加之node.js疯狂流行，这门语言也会愈发的发光发热。</p>
-<h3 id="C_Sharp">C Sharp</h3>
-<p>其实本来不准备跟ms的东西扯上关系的，虽然vs是一个很强大的开发工具，但是我自从换成mac之后就不准备再迁回windows。</p>
-<p>只是c#我可能是必须要学会的，因为那个坑爹的unity3d，虽然unity3d也提供了其它语言的支持（譬如伪javascript），但是大量的开发者还是选用了c#，至少在中国我问过很多朋友，都妥妥的用c#，既然这样，我也只能考虑学习使用了。</p>
-<p>至于我为啥蛋疼的想玩unity3d，毕竟干了很多年游戏开发，一直有自己弄一个简单小游戏的梦想，还是妥妥的unity3d吧。</p>
-<h3 id="自己造一个？">自己造一个？</h3>
-<p>语言千千万，我不可能全部学会的，而且以后没准因为业务的需要，没准都会自己造一门语言，也就是DSL。不过这个貌似还离我比较遥远，编译原理的东西太差了（说多了都是泪呀）。自己写词法分析还成，后面就菜了。这也是<a href="https://github.com/siddontang/mixer" target="_blank" rel="external">Mixer</a>一直没啥进展的原因。不过已经买了龙书，在学习屠龙秘籍，希望成为顶尖高手吧。</p>
-<h2 id="后记">后记</h2>
-<p>写了这么多，看来随着年岁的增加，越来越啰嗦了。不是有一句古话：吾生也有涯，而知也无涯 。以有涯随无涯，殆已。不过不停地追逐不也是乐趣一件？</p>
-<p>只是，现在我首先要做的就是向我老婆申请资金升级电脑了吧！</p>
+    <title><![CDATA[一个Go可变参数问题]]></title>
+    <link href="http://siddontang.com/2014/07/20/golang-func-vargs/"/>
+    <id>http://siddontang.com/2014/07/20/golang-func-vargs/</id>
+    <published>2014-07-20T11:03:19.000Z</published>
+    <updated>2014-08-08T15:58:02.000Z</updated>
+    <content type="html"><![CDATA[<p>几天前纠结了一个蛋疼的问题，在go里面函数式支持可变参数的，譬如…T，go会创建一个slice，用来存放传入的可变参数，那么，如果创建一个slice，例如a，然后以a…这种方式传入，go会不会还会新建一个slice，将a的数据全部拷贝一份过去？</p>
+<p>如果a很大，那么将会造成很严重的性能问题，不过后来想想，可能是自己多虑了，于是查看go的文档，发现如下东西：</p>
+<blockquote>
+<p>Passing arguments to … parameters</p>
+<p>If f is variadic with a final parameter p of type …T, then within f the type of p is equivalent to type []T. If f is invoked with no actual arguments for p, the value passed to p is nil. Otherwise, the value passed is a new slice of type []T with a new underlying array whose successive elements are the actual arguments, which all must be assignable to T. The length and capacity of the slice is therefore the number of arguments bound to p and may differ for each call site.</p>
+<p>Given the function and calls</p>
+<pre><code>func Greeting(prefix string, who ...string)
+Greeting(&quot;nobody&quot;)
+Greeting(&quot;hello:&quot;, &quot;Joe&quot;, &quot;Anna&quot;, &quot;Eileen&quot;)
+</code></pre><p>within Greeting, who will have the value nil in the first call, and []string{“Joe”, “Anna”, “Eileen”} in the second.</p>
+<p>If the final argument is assignable to a slice type []T, it may be passed unchanged as the value for a …T parameter if the argument is followed by …. In this case no new slice is created.</p>
+<p>Given the slice s and call</p>
+<pre><code>s := []string{&quot;James&quot;, &quot;Jasmine&quot;}
+Greeting(&quot;goodbye:&quot;, s...)
+</code></pre><p>within Greeting, who will have the same value as s with the same underlying array.</p>
+</blockquote>
+<p>也就是说，如果我们传入的是slice…这种形式的参数，go不会创建新的slice。写了一个简单的例子验证：</p>
+<pre><code>package main
+
+import &quot;fmt&quot;
+
+func t(args ...int) {
+    fmt.Printf(&quot;%p\n&quot;, args)
+}
+
+func main() {
+    a := []int{1,2,3}
+    b := a[1:]
+
+    t(a...)
+    t(b...)
+
+    fmt.Printf(&quot;%p\n&quot;, a)
+    fmt.Printf(&quot;%p\n&quot;, b)
+}
+
+//output
+0x1052e120
+0x1052e124
+0x1052e120
+0x1052e124
+</code></pre><p>可以看到，可变参数args的地址跟实际外部slice的地址一样，用的同一个slice。</p>
 ]]></content>
     
     
-      <category term="c++" scheme="http://siddontang.com/tags/c++/"/>
-    
-      <category term="lua" scheme="http://siddontang.com/tags/lua/"/>
-    
-      <category term="python" scheme="http://siddontang.com/tags/python/"/>
-    
-      <category term="go" scheme="http://siddontang.com/tags/go/"/>
-    
-      <category term="program" scheme="http://siddontang.com/categories/program/"/>
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
     
   </entry>
   

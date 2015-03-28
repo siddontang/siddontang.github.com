@@ -696,80 +696,6 @@ gopkg.in/user/pkg.v3 → github.com/user/pkg   (branch/tag v3, v3.N, or v3.N.M)
     <header>
       
         <div class="icon"></div>
-        <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/golang-func-vargs/">07-20-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/07/20/golang-func-vargs/">一个Go可变参数问题</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>几天前纠结了一个蛋疼的问题，在go里面函数式支持可变参数的，譬如…T，go会创建一个slice，用来存放传入的可变参数，那么，如果创建一个slice，例如a，然后以a…这种方式传入，go会不会还会新建一个slice，将a的数据全部拷贝一份过去？</p>
-<p>如果a很大，那么将会造成很严重的性能问题，不过后来想想，可能是自己多虑了，于是查看go的文档，发现如下东西：</p>
-<blockquote>
-<p>Passing arguments to … parameters</p>
-<p>If f is variadic with a final parameter p of type …T, then within f the type of p is equivalent to type []T. If f is invoked with no actual arguments for p, the value passed to p is nil. Otherwise, the value passed is a new slice of type []T with a new underlying array whose successive elements are the actual arguments, which all must be assignable to T. The length and capacity of the slice is therefore the number of arguments bound to p and may differ for each call site.</p>
-<p>Given the function and calls</p>
-<pre><code>func Greeting(prefix string, who ...string)
-Greeting(&quot;nobody&quot;)
-Greeting(&quot;hello:&quot;, &quot;Joe&quot;, &quot;Anna&quot;, &quot;Eileen&quot;)
-</code></pre><p>within Greeting, who will have the value nil in the first call, and []string{“Joe”, “Anna”, “Eileen”} in the second.</p>
-<p>If the final argument is assignable to a slice type []T, it may be passed unchanged as the value for a …T parameter if the argument is followed by …. In this case no new slice is created.</p>
-<p>Given the slice s and call</p>
-<pre><code>s := []string{&quot;James&quot;, &quot;Jasmine&quot;}
-Greeting(&quot;goodbye:&quot;, s...)
-</code></pre><p>within Greeting, who will have the same value as s with the same underlying array.</p>
-</blockquote>
-<p>也就是说，如果我们传入的是slice…这种形式的参数，go不会创建新的slice。写了一个简单的例子验证：</p>
-<pre><code>package main
-
-import &quot;fmt&quot;
-
-func t(args ...int) {
-    fmt.Printf(&quot;%p\n&quot;, args)
-}
-
-func main() {
-    a := []int{1,2,3}
-    b := a[1:]
-
-    t(a...)
-    t(b...)
-
-    fmt.Printf(&quot;%p\n&quot;, a)
-    fmt.Printf(&quot;%p\n&quot;, b)
-}
-
-//output
-0x1052e120
-0x1052e124
-0x1052e120
-0x1052e124
-</code></pre><p>可以看到，可变参数args的地址跟实际外部slice的地址一样，用的同一个slice。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
         <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/celery-best-practices/">07-20-2014</a></time>
       
       
@@ -859,6 +785,80 @@ def my_task_A():
 
 
   
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2014-07-20T11:03:19.000Z"><a href="/2014/07/20/golang-func-vargs/">07-20-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/07/20/golang-func-vargs/">一个Go可变参数问题</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>几天前纠结了一个蛋疼的问题，在go里面函数式支持可变参数的，譬如…T，go会创建一个slice，用来存放传入的可变参数，那么，如果创建一个slice，例如a，然后以a…这种方式传入，go会不会还会新建一个slice，将a的数据全部拷贝一份过去？</p>
+<p>如果a很大，那么将会造成很严重的性能问题，不过后来想想，可能是自己多虑了，于是查看go的文档，发现如下东西：</p>
+<blockquote>
+<p>Passing arguments to … parameters</p>
+<p>If f is variadic with a final parameter p of type …T, then within f the type of p is equivalent to type []T. If f is invoked with no actual arguments for p, the value passed to p is nil. Otherwise, the value passed is a new slice of type []T with a new underlying array whose successive elements are the actual arguments, which all must be assignable to T. The length and capacity of the slice is therefore the number of arguments bound to p and may differ for each call site.</p>
+<p>Given the function and calls</p>
+<pre><code>func Greeting(prefix string, who ...string)
+Greeting(&quot;nobody&quot;)
+Greeting(&quot;hello:&quot;, &quot;Joe&quot;, &quot;Anna&quot;, &quot;Eileen&quot;)
+</code></pre><p>within Greeting, who will have the value nil in the first call, and []string{“Joe”, “Anna”, “Eileen”} in the second.</p>
+<p>If the final argument is assignable to a slice type []T, it may be passed unchanged as the value for a …T parameter if the argument is followed by …. In this case no new slice is created.</p>
+<p>Given the slice s and call</p>
+<pre><code>s := []string{&quot;James&quot;, &quot;Jasmine&quot;}
+Greeting(&quot;goodbye:&quot;, s...)
+</code></pre><p>within Greeting, who will have the same value as s with the same underlying array.</p>
+</blockquote>
+<p>也就是说，如果我们传入的是slice…这种形式的参数，go不会创建新的slice。写了一个简单的例子验证：</p>
+<pre><code>package main
+
+import &quot;fmt&quot;
+
+func t(args ...int) {
+    fmt.Printf(&quot;%p\n&quot;, args)
+}
+
+func main() {
+    a := []int{1,2,3}
+    b := a[1:]
+
+    t(a...)
+    t(b...)
+
+    fmt.Printf(&quot;%p\n&quot;, a)
+    fmt.Printf(&quot;%p\n&quot;, b)
+}
+
+//output
+0x1052e120
+0x1052e124
+0x1052e120
+0x1052e124
+</code></pre><p>可以看到，可变参数args的地址跟实际外部slice的地址一样，用的同一个slice。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
 
   <nav id="pagination">
   
@@ -903,7 +903,7 @@ def my_task_A():
   
     <li><a href="/categories/lua/">lua</a><small>2</small></li>
   
-    <li><a href="/categories/mysql/">mysql</a><small>4</small></li>
+    <li><a href="/categories/mysql/">mysql</a><small>5</small></li>
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
@@ -919,7 +919,7 @@ def my_task_A():
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 16.67px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.11px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 17.50px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 18.75px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.25px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 

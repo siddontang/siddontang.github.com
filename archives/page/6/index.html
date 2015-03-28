@@ -72,6 +72,128 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-01-01T06:04:17.000Z"><a href="/2014/01/01/libtnet-comettest/">01-01-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/01/01/libtnet-comettest/">Libtnet 百万连接测试</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>最近在用go语言做一个挂载大量长连接的推送服务器，虽然已经完成，但是内存占用情况让我不怎么满意，于是考虑使用libtnet来重新实现一个。后续我会使用comet来表明推送服务器。</p>
+<p>对于comet来说，单机能支撑大量的并发连接，是最优先考虑的事项。虽然现在业界已经有了很多数据，说单机支撑200w，300w，但我还是先把目标定在100w上面，主要的原因在于实际运行中，comet还会有少量逻辑功能，我得保证在单机挂载100w的基础上，完全能无压力的处理这些逻辑。</p>
+<h1 id="CometServer_Test">CometServer Test</h1>
+<p>首先我用libtnet简单写了一个comet server。它接受http请求，并将其挂起，过一段随机时间之后在返回200。</p>
+<pre><code>void onTimeout(const TimingWheelPtr_t&amp; wheel, const WeakHttpConnectionPtr_t&amp; conn)
+{
+    HttpConnectionPtr_t c = conn.lock();
+    if(c)
+    {
+        c-&gt;send(200);
+    } 
+}
+
+void onHandler(const HttpConnectionPtr_t&amp; conn, const HttpRequest&amp; request)
+{
+    int timeout = random() % 60 + 30;
+    comet.wheel-&gt;add(std::bind(&amp;onTimeout, _1, WeakHttpConnectionPtr_t(conn)), timeout * 1000);
+}
+
+int main()
+{
+    TcpServer s;        
+    s.setRunCallback(std::bind(&amp;onServerRun, _1));
+    HttpServer httpd(&amp;s);
+    httpd.setHttpCallback(&quot;/&quot;, std::bind(&amp;onHandler, _1, _2));
+    httpd.listen(Address(11181));
+    s.start(8);
+    return 0; 
+}
+</code></pre><p>可以看到comet server只是负责了挂载长连接的事情，而没有消息的推送。在实际项目中，我已经将挂载连接和推送消息分开到两个服务去完成。所以这里comet仅仅是挂载连接测试。</p>
+<h1 id="测试机器准备">测试机器准备</h1>
+<p>因为linux系统上面一个网卡tcp连接端口数量是有限制的，我们调整ip_local_port_range使其能支撑60000个tcp连接：</p>
+<pre><code>net.ipv4.ip_local_port_range = 1024 65535
+</code></pre><p>对于100w连接来说，我们至少需要16台机器，但实际我只有可怜的3台4G内存的虚拟机。所以就要运维的童鞋在每台机器上面装了6块网卡。这样我就能建立100w的连接了。</p>
+<p>测试客户端也非常简单，每秒向服务器请求1000个连接，但是需要注意的是，因为一台机器上面有多块网卡，所以在创建socket之后，我们需要将socket绑定到某一块网卡上面。</p>
+<p>实际测试中，因为内存问题，每台机器顶多能支撑34w左右的tcp连接，对我来说已经足够，所以也懒得去调优了。</p>
+<h1 id="CometServer_Linux调优">CometServer Linux调优</h1>
+<p>首先我们需要调整最大打开文件数，在我的机器上面，nr_open最大的值为1048576，对我来说已经足够，所以我将最大文件描述符数量调整为1040000。</p>
+<pre><code>fs.file-max = 1040000
+</code></pre><p>然后就是对tcp一些系统参数的调优：</p>
+<pre><code>net.core.somaxconn = 60000
+net.core.rmem_default = 4096
+net.core.wmem_default = 4096
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 4096 16777216
+net.ipv4.tcp_wmem = 4096 4096 16777216
+net.ipv4.tcp_mem = 786432 2097152 3145728
+net.core.netdev_max_backlog = 60000
+net.ipv4.tcp_fin_timeout = 15
+net.ipv4.tcp_max_syn_backlog = 60000
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_tw_recycle = 1
+net.ipv4.tcp_max_orphans = 131072
+net.ipv4.tcp_keepalive_time = 1200
+net.ipv4.tcp_max_tw_buckets = 60000
+net.netfilter.nf_conntrack_max = 1000000
+net.netfilter.nf_conntrack_tcp_timeout_established = 1200
+</code></pre><p>对于如何调节这些值，网上都是各有各的说法，建议直接man 7 tcp。我在实践中也会通过查看dmesg输出的tcp错误来动态调节。这里单独需要说明的是tcp buffer的设置，我最小和默认都是4k，这主要是考虑到推送服务器不需要太多太频繁的数据交互，所以需要尽可能的减少tcp的内存消耗。</p>
+<h1 id="测试结果">测试结果</h1>
+<p>实际的测试比较让我满意。</p>
+<p>cometserver test8个进程cpu消耗都比较低，因为有轮训timing wheel然后再发送200的逻辑，所以铁定有cpu消耗，如果只是挂载，cpu应该会更低。</p>
+<pre><code>PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND                                                                                                       
+ 4685 root      20   0  187m 171m  652 S 19.9  1.1   2:19.20 cometserver_test                                                                                                
+ 4691 root      20   0  191m 175m  656 S 16.6  1.1   2:17.80 cometserver_test                                                                                                
+ 4686 root      20   0  170m 155m  652 S 16.3  1.0   2:09.54 cometserver_test                                                                                                
+ 4690 root      20   0  183m 167m  652 S 16.3  1.1   2:11.44 cometserver_test                                                                                                
+ 4692 root      20   0  167m 152m  652 S 16.3  1.0   2:11.29 cometserver_test                                                                                                
+ 4689 root      20   0  167m 152m  652 S 15.3  1.0   2:03.08 cometserver_test                                                                                                
+ 4687 root      20   0  173m 158m  652 S 14.3  1.0   2:07.34 cometserver_test                                                                                                
+ 4688 root      20   0  129m 114m  652 S 12.3  0.7   1:35.77 cometserver_test
+</code></pre><p>socket的统计情况：</p>
+<pre><code>[root@localhost ~]# cat /proc/net/sockstat
+sockets: used 1017305
+TCP: inuse 1017147 orphan 0 tw 0 alloc 1017167 mem 404824
+UDP: inuse 0 mem 0
+UDPLITE: inuse 0
+RAW: inuse 0
+FRAG: inuse 0 memory 0
+</code></pre><p>可以看到，总共有1017147个tcp链接，同时占用了将近4G（1017167是页数，需要乘以4096）的内存。</p>
+<p>系统内存的情况：</p>
+<pre><code>[root@localhost ~]# free
+             total       used       free     shared    buffers     cached
+Mem:      16334412   11210224    5124188          0     179424    1609300
+-/+ buffers/cache:    9421500    6912912
+Swap:      4194296          0    4194296
+</code></pre><p>系统有16G内存，还有5G可用，所以不出意外单机应该还能承载更多的tcp连接。</p>
+<h1 id="总结">总结</h1>
+<p>使用libtnet开发的一个简单的comet server支撑了百万级的连接，加深了我对其应用的信心。</p>
+<p>libnet地址<a href="https://github.com/siddontang/libtnet" target="_blank" rel="external">https://github.com/siddontang/libtnet</a>，欢迎围观。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-01-01T05:03:54.000Z"><a href="/2014/01/01/my-2013/">01-01-2014</a></time>
       
       
@@ -1070,90 +1192,6 @@ tornado.ioloop.IOLoop.instance().start()
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2013-12-28T08:21:20.000Z"><a href="/2013/12/28/lua-debuger/">12-28-2013</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2013/12/28/lua-debuger/">Lua Debugger开发</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="introduction">introduction</h1>
-<p>工欲善其事，必先利其器。lua作为一门动态语言，虽然我已经习惯了使用print来进行代码调试，但是还是有很多童鞋觉得一款好用的调试器能更好的进行lua代码编写。所以在接手游戏的lua结合层之后，自然就需要提供一个debuger工具了。</p>
-<p>我们只需要的是一个能快速进行lua代码调试的工具，所以不需要gdb那种额外复杂的功能，只需要提供几种简单的功能就行了，如下：</p>
-<ul>
-<li>c/continue   继续执行</li>
-<li>bt/backtrace 列出当前堆栈</li>
-<li>f/frame n    跳转到frame n</li>
-<li>l/list b e   列出源代码，b为起始行，e为结束行</li>
-<li>p/print v    打印v的值</li>
-<li>n/next       执行，跳过下一行，包括跳过子函数</li>
-<li>s/step       执行，直到碰到不同的一行</li>
-<li>return       执行，直到该函数结束</li>
-</ul>
-<p>虽然调试器实现的功能很简单，但是对于大多数应用来说，已经完全足够使用。</p>
-<h1 id="lua_debug_library">lua debug library</h1>
-<p>lua提供了一个debug library，我们就通过这个库来实现一个调试器。<br>首先，我们需要注册一个lua debug hook，并且绑定LUA_MASKLINE，LUA_MASKRET，LUA_MASKCALL事件，这样当lua代码执行的时候如果碰到相应的事件，则会调用我们注册的debug hook。</p>
-<p>当debug hook调用的时候，程序就进入debug模式，这时候就可以输入对应的命令进行执行。</p>
-<h1 id="db">db</h1>
-<p>只要注册了debug hook，那么每次lua代码执行的时候碰到对应的事件就会调用注册hook，如果每次调用都进入debug模式，那是很影响程序运行的，所以我们需要一种机制，只在需要的时候进入debug模式。</p>
-<p>在gdb里面，我们通过设置断点来进入可调式模式，虽然在lua里面也可以这么做，但这里我们采用了一种更简单的方法。我们给lua注册一个db函数，当lua执行到db函数的时候，程序才会进入debug模式。因为lua是动态语言，如果我们需要在另一个地方也进行调试，只需要再次加入db函数，重启程序即可。</p>
-<p>所以这里我们debug hook函数内部实现是一个状态机，当没有进入db的时候，虽然lua也会进行调用该hook，但该hook内部不作任何处理。只有当执行db函数进入debug模式，hook内部才会有相应处理。</p>
-<p>我们在debug hook里面提供了多种状态，包括none hook，step hook，next hook和return hook。</p>
-<ul>
-<li>none hook，没有进入debug模式，该hook不做任何处理</li>
-<li>step hook，进入debug的step模式，当lua代码执行到新的一行代码时候做处理</li>
-<li>next hook，进入debug的next模式，当lua代码跳过下一行时候做处理</li>
-<li>return hook，进入debug的return模式，当lua执行到当前函数退出时候做处理</li>
-</ul>
-<h1 id="continue">continue</h1>
-<p>continue会让程序继续执行。该命令会让hook切入none hook状态，直到下次lua执行db函数进入debug模式。</p>
-<h1 id="step">step</h1>
-<p>step会让hook切入step hook状态，该hook会监听LUA_MASKLINE事件，当该事件发生时候，step hook进行处理，打印当前代码，并再次进入debug模式，供下次命令输入。</p>
-<h1 id="next">next</h1>
-<p>next会让hook切入next hook状态，该hook也会监听LUA_MASKLINE事件，但是next跟step最大的区别在于next是跳过一行，也就是说如果执行的lua代码下一行是一个函数调用，step会进入函数内部，而next则会执行该函数，并跳过该函数这一行直到下一行。</p>
-<p>所以next需要进行判断LUA_MASKLINE是否进入了一个新的函数，这里我们通过函数堆栈深度来进行，当lua代码执行到一个新的函数的时候，它的函数堆栈深度会加1，所以我们只需要记录当前的堆栈深度a，next执行到下一次LUA_MASKLINE时候，获取堆栈深度b，如果a小于b，那么表明进入了一个新的函数，所以我们不需要处理，直到再次获取的堆栈深度等于a。</p>
-<h1 id="return">return</h1>
-<p>return会让hook切入return hook状态，该hook会监听LUA_MASKRET事件，当该事件发生，return hook进行处理。这里我们仍然需要进入是否进入新函数调用的判断，因为我们只想监听的是当前函数的LUA_MASKRET事件，所以我们仍需要像next那样进行堆栈深度的判断。</p>
-<h1 id="backtrace/frame/list">backtrace/frame/list</h1>
-<p>backtrace，frame，list这几个命令这里列在一起，是因为他们都跟lua_getstack，lua_getinfo这两个函数有关系。我们通过lua_getstack初始化指定栈帧的lua_Debug结构，然后在通过调用lua_getinfo获取相关栈帧信息。</p>
-<h1 id="print_value">print value</h1>
-<p>print value命令可能算是最复杂的一个命令，因为有多个逻辑处理。当我们通过frame定位到某一层栈帧之后，就可以通过print打印相关的对象数据，供调试使用。</p>
-<p>当print value的时候，首先我们查找value是否在当前函数里面local变量里面，如果没有则查找该函数的upvalue，如果仍然没有，则查找global，如果都没找到，则输出nil。</p>
-<h1 id="code">code</h1>
-<p>代码在<a href="https://github.com/siddontang/luahelper" target="_blank" rel="external">luahelper</a>的debughelper，只是一个简单的实现，还有一些问题需要考虑。</p>
-<p>因为lua的debug hook注册的时候只能提供一个hook，所以为了简单起见，我对DebugHelper使用了单例模式，但是最好是一个lua实例对应一个debuger。要做到这样，自己想到了两种可能方法:</p>
-<ul>
-<li>使用LUAI_EXTRASPACE，并通过luai_userstateopen，luai_userstateclose将debuger绑定到lua实例上面，并通过luai_userstatethread进行debuger在coroutine的迁移。这种方法需要重新编译lua代码，适合集成lua源码的项目。</li>
-<li>debuger内部使用一个map来进行对应，但是在lua里面需要替换coroutine的创建，因为创建的coroutine也需要对应到同一个debuger上面。</li>
-</ul>
-<p>两种方法都懒得弄了，以后有机会去尝试一下。</p>
-<h1 id="end">end</h1>
-<p>这里只是简单的实现了一个lua debuger，但是功能我觉得足以可以在实际项目中应用了。只是越来觉得，对于动态语言，print和log才是我最喜欢的代码调试方式，因为简单而且强迫你去思考整个程序的运行流程。不过把debuger放在这里，也算是对自己以前游戏开发的一个总结吧。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1200,7 +1238,7 @@ tornado.ioloop.IOLoop.instance().start()
   
     <li><a href="/categories/lua/">lua</a><small>2</small></li>
   
-    <li><a href="/categories/mysql/">mysql</a><small>4</small></li>
+    <li><a href="/categories/mysql/">mysql</a><small>5</small></li>
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
@@ -1216,7 +1254,7 @@ tornado.ioloop.IOLoop.instance().start()
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 16.67px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.11px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 17.50px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 18.75px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.25px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 

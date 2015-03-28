@@ -72,6 +72,184 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2015-03-28T08:48:35.000Z"><a href="/2015/03/28/dive-into-mysql-replication/">03-28-2015</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2015/03/28/dive-into-mysql-replication/">Dive into MySQL Replication</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="Dive_into_MySQL_replication_protocol">Dive into MySQL replication protocol</h1>
+<h2 id="Preface">Preface</h2>
+<p>Let’s consider following scenario, we store huge data in MySQL and want to know data changes immediately(data inserted, deleted or updated), then do something for these changes like updating associated cache data.</p>
+<p>Using MySQL trigger + UDF may be a feasible way, but I have not used it and would not recommend this. If we have many tables, maintaining so many triggers is horrible. At the same time, UDF may fail so that we will lost some changes, and even worse, a bad UDF implementation may block service or even crash MySQL.</p>
+<p>We need a better solution, and this is binlog. MySQL records every changes into binlog, so if we can sync the binlog, we will know the data changes immediately, then do something. </p>
+<p>Using rsync may be a good way, but I prefer another: acting as a slave and using MySQL replication protocol to sync.</p>
+<h2 id="MySQL_Packet">MySQL Packet</h2>
+<p>First, we must know how to send or receive data with MySQL, and this is packet:</p>
+<p>Split the data into packets of size 16MB.<br>Prepend to each chunk a packet header.  </p>
+<p>A packet header has 3 bytes for following payload data length and 1 byte for sequence ID. </p>
+<p>The sequence ID is incremented with each packet between client and server communication, it starts at 0 and is reset to 0 when a new command begins, e.g, we send a packet, the sequence ID is 0, and the response packet sequence ID must be 1, if not, some error happens between the communication. </p>
+<p>So a packet looks like below:</p>
+<pre><code>3              payload length
+1              Sequence ID
+string[len]    payload
+</code></pre><p>As you see, sending data with packet is very easy, I have implemented a base library in <a href="https://github.com/siddontang/go-mysql" title="A MySQL toolset" target="_blank" rel="external">go-mysql</a> packet pkg.</p>
+<h2 id="Connection_phase">Connection phase</h2>
+<p>When we first connect to MySQL server, we must do a handshake to let server authorizing us to communicate with it later, this is called connection phase. </p>
+<p>Let’s consider  a popular common connection phase.</p>
+<ul>
+<li>Client connects server using socket connect API.</li>
+<li>Server sends a initial handshake packet which contains server’s capabilities and a 20 bytes random salt.</li>
+<li>Client answers with a handshake response packet, telling server its capabilities and a  20 bytes scrambled password.</li>
+<li>Server response ok packet or err packet. </li>
+</ul>
+<p>Although MySQL supports many authentication method, I only use username + password, you can see codes in <a href="https://github.com/siddontang/go-mysql" title="A MySQL toolset" target="_blank" rel="external">go-mysql</a> client and server pkg.</p>
+<p>Now we know how to send/receive data, how to establish the connection, and it’s time to move on for syncing binlog. :-)</p>
+<h2 id="Register_a_Slave">Register a Slave</h2>
+<p>When we want to sync binlog, we must register a slave at master first, that is acting as a pseudo slave. </p>
+<p>We only need to send COM_REGISTER_SLAVE command, the payload is:</p>
+<pre><code>1              COM_REGISTER_SLAVE
+4              server-id
+1              slaves hostname length
+string[$len]   slaves hostname
+1              slaves user len
+string[$len]   slaves user
+1              slaves password len
+string[$len]   slaves password
+2              slaves mysql-port
+4              replication rank
+4              master-id
+</code></pre><p>We must use an unique server id for our pseudo slave, I prefer using a ID bigger than 1000 which is different from our real MySQL servers. </p>
+<h2 id="Dump_BinLog_from_master">Dump BinLog from master</h2>
+<p>After register, we should send COM_BINLOG_DUMP command, it is very easy too, payload is:</p>
+<pre><code>1              COM_BINLOG_DUMP
+4              binlog-pos
+2              flags
+4              server-id
+string[EOF]    binlog-filename
+</code></pre><p>If the binlog filename is empty, server will use the first known binlog. </p>
+<p>You can set flags to 1 to tell server to reply a EOF packet instead of blocking connection if there is no more binlog event. But I prefer blocking so that if there is any new event, server can send to us immediately. </p>
+<p>Although MySQL supports COM_BINLOG_DUMP_GTID commands, I still prefer using command binlog filename + position, because it is very easy and for our pseudo slave, we only need to sync binlog, save it in a place and let other applications like MHA use it. </p>
+<p>After we send COM_BINLOG_DUMP command, server will response a binlog network stream which contains many binlog events. </p>
+<h2 id="BinLog_Event">BinLog Event</h2>
+<p>A MySQL binlog event has many versions, but we only care version 4(MySQL 5.0+) and don’t support earlier versions.</p>
+<p>A binlog event contains three parts, header, post header and payload, but I like parsing post header and payload at same time. </p>
+<p>A event header looks below:</p>
+<pre><code>4              timestamp
+1              event type
+4              server-id
+4              event-size
+4              log pos
+2              flags
+</code></pre><p>You can see all binlog event types here. The log pos is position of the next event, we can save this position for resuming syncing later. </p>
+<p>The first binlog event in the binlog file is FORMAT_DESCRIPTION_EVENT, this event is very important, we use it to determine table ID size for row based event, and check the last 5 bytes to see whether CRC32 is enabled or not for the following events, etc…</p>
+<p>Another event we should care is ROTATE_EVENT, it tells us a new binlog coming. </p>
+<p>Parsing a binlog event is very easy, we only need to refer the document and parse it one by one, except row based replication event. </p>
+<h2 id="Row_Based_Replication">Row Based Replication</h2>
+<p>Parsing row based replication event is very hard if we want to know the real data changes for a column in one row. </p>
+<p>First, we must parse TABLE_MAP_EVENT, payload is:</p>
+<pre><code>post-header:
+    if post_header_len == 6 {
+  4              table id
+    } else {
+  6              table id
+    }
+  2              flags
+
+payload:
+  1              schema name length
+  string         schema name
+  1              [00]
+  1              table name length
+  string         table name
+  1              [00]
+  lenenc-int     column-count
+  string.var_len [length=$column-count] column-def
+  lenenc-str     column-meta-def
+  n              NULL-bitmask, length: (column-count + 8) / 7
+</code></pre><p>The post_header_len is saved in FORMAT_DESCRIPTION_EVENT, column count and def tells us how many columns in one row and their data types, like tiny int, short int, float, set, etc. column meta def is tricky, but we must use it to parse following ROWS_EVENT.</p>
+<p>A ROWS_EVENT contains WRITE_ROWS_EVENT(insert), DELETE_ROWS_EVENT(delete) and UPDATE_ROWS_EVENT(update), every event contains v0, v1 and v2 three versions, most of time, we only need to care v1 and v2. </p>
+<p>A ROWS_EVENT looks below:</p>
+<pre><code>header:
+  if post_header_len == 6 {
+4                    table id
+  } else {
+6                    table id
+  }
+2                    flags
+  if version == 2 {
+2                    extra-data-length
+string.var_len       extra-data
+  }
+
+body:
+lenenc_int           number of columns
+string.var_len       columns-present-bitmap1, length: (num of columns+7)/8
+  if UPDATE_ROWS_EVENTv1 or v2 {
+string.var_len       columns-present-bitmap2, length: (num of columns+7)/8
+  }
+
+rows:
+string.var_len       nul-bitmap, length (bits set in &#39;columns-present-bitmap1&#39;+7)/8
+string.var_len       value of each field as defined in table-map
+  if UPDATE_ROWS_EVENTv1 or v2 {
+string.var_len       nul-bitmap, length (bits set in &#39;columns-present-bitmap2&#39;+7)/8
+string.var_len       value of each field as defined in table-map
+  }
+  ... repeat rows until event-end
+</code></pre><p>I promise that if you don’t dive into the MySQL source, you can not understand how to parse it at all. </p>
+<p>First, let’s see columns-present-bitmap, for a column, it will not be saved in the row data if the associated bit in columns-present-bitmap is 0, and we will skip this column when parsing. </p>
+<p>For every row data, first we should calculate the null-bitmap, a big pitfall here,  we calculate columns-present-bitmap using (num of columns+7)/8, but we must use (bits set in ‘columns-present-bitmap’+7)/8 for null-bitmap. (You should google bits set if you don’t understand it).</p>
+<p>From MySQL 5.6, it supports another two binlog row images: minimal and noblob. For minimal row image update, if we have 16 columns and only the first column data changed, if we use (num of columns+7)/8, we should use 2 bytes to store null bitmap, but if we use (bits set in ‘columns-present-bitmap’+7)/8, we will only use 1 bytes to store null bitmap, saving 1 byte(is it really necessary?). By the way, I sent a pull request for python-mysql-replication to handle minimal and noblob row image paring.</p>
+<p>Now we get column-present-bitmap and null-bitmap, for a column, if it’s not set in column-present-bitmap or set in null-bitmap, we will know that this column is null for the current row data.</p>
+<p>Then we will parse the rest of none null columns. For some special  columns, like MYSQL_TYPE_LONG or MYSQL_TYPE_FLOAT, we can know the data length directly, e.g, MYSQL_TYPE_LONG is 4 bytes and MYSQL_TYPE_TINY_INT is 1 byte.</p>
+<p>But for other columns, we should use column meta in TABLE_MAP_EVENT to help us determine the data length. For example, a MYSQL_TYPE_BLOB column, if meta is 1, the data is tiny blob and the first 1 byte in data is the length for payload, if meta is 2, the data is short blob and the first 2 bytes is the lenght for payload. </p>
+<p>Paring the real data is very hard and I can not illustrate here fully and clearly. I hope you can see the source in MySQL or <a href="https://github.com/siddontang/go-mysql" title="A MySQL toolset" target="_blank" rel="external">go-mysql</a> replication pkg if you have some interest. </p>
+<h2 id="Semi_Sync_Replication">Semi Sync Replication</h2>
+<p>At first, I didn’t support semi sync replication in <a href="https://github.com/siddontang/go-mysql" title="A MySQL toolset" target="_blank" rel="external">go-mysql</a>, but after I develop <a href="https://github.com/siddontang/go-mysql-elasticsearch" title="Sync MySQL into Elasticsearch" target="_blank" rel="external">go-mysql-elasticsearch</a>, I realize that if I want to sync MySQL changes into elasticsearch more quickly and immediately, supporting semi sync replication is a good choice and it’s easy to do like below: </p>
+<ul>
+<li>Check whether master supports semi sync or not, using “SHOW VARIABLES LIKE ‘rpl_semi_sync_master_enabled’”.</li>
+<li>Tell master we support semi sync using “SET @rpl_semi_sync_slave = 1”.</li>
+</ul>
+<p>If all is ok, server will prepend two byte before every binlog event. The first byte is 0xef indicating semi sync and the second byte is semi sync ACK flag, if 1, we must reply a semi sync ACK packet.</p>
+<p>It now seems that this is a wise decision. In facebook, they even develop a semi sync binlog, you can see more here. I develop a similar go-mysqlbinlog supporting semi sync too, but it still needs improvement for production environment. </p>
+<h2 id="Summary">Summary</h2>
+<p>Learning mysql protocol is a hard but happy journey for me, and I have done some interesting things too, like mixer, a MySQL proxy which the modified version(cm) has been used in production in wandoujia company. <a href="https://github.com/siddontang/mixer" title="A MySQL Proxy" target="_blank" rel="external">go-mysql-elasticsearch</a>, a tool to sync MySQL data into elasticsearch immediately. </p>
+<p>Now I have been developing go-mysql, a powerful MySQL toolset. I would be very glad if some people find it can help them for their own MySQL development too.</p>
+<p>Later I will also try to use go-mysqlbinlog + MHA to build our own MySQL HA solution, I don’t know perl, but luckily, I can understand MHA code.</p>
+<p>Below is my contact, any advice and feedback is very welcome.</p>
+<ul>
+<li><p>Email: siddontang@gmail.com</p>
+</li>
+<li><p>Skype: live:siddontang_1</p>
+</li>
+</ul>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2015-03-15T00:44:53.000Z"><a href="/2015/03/15/build-ha-distributed-kv-store/">03-15-2015</a></time>
       
       
@@ -1182,7 +1360,7 @@ set global event_scheduler := 1;
   
     <li><a href="/categories/lua/">lua</a><small>2</small></li>
   
-    <li><a href="/categories/mysql/">mysql</a><small>4</small></li>
+    <li><a href="/categories/mysql/">mysql</a><small>5</small></li>
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
@@ -1198,7 +1376,7 @@ set global event_scheduler := 1;
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 16.67px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.11px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 17.50px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 18.75px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.25px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 

@@ -72,6 +72,90 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2013-12-28T08:21:20.000Z"><a href="/2013/12/28/lua-debuger/">12-28-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/12/28/lua-debuger/">Lua Debugger开发</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="introduction">introduction</h1>
+<p>工欲善其事，必先利其器。lua作为一门动态语言，虽然我已经习惯了使用print来进行代码调试，但是还是有很多童鞋觉得一款好用的调试器能更好的进行lua代码编写。所以在接手游戏的lua结合层之后，自然就需要提供一个debuger工具了。</p>
+<p>我们只需要的是一个能快速进行lua代码调试的工具，所以不需要gdb那种额外复杂的功能，只需要提供几种简单的功能就行了，如下：</p>
+<ul>
+<li>c/continue   继续执行</li>
+<li>bt/backtrace 列出当前堆栈</li>
+<li>f/frame n    跳转到frame n</li>
+<li>l/list b e   列出源代码，b为起始行，e为结束行</li>
+<li>p/print v    打印v的值</li>
+<li>n/next       执行，跳过下一行，包括跳过子函数</li>
+<li>s/step       执行，直到碰到不同的一行</li>
+<li>return       执行，直到该函数结束</li>
+</ul>
+<p>虽然调试器实现的功能很简单，但是对于大多数应用来说，已经完全足够使用。</p>
+<h1 id="lua_debug_library">lua debug library</h1>
+<p>lua提供了一个debug library，我们就通过这个库来实现一个调试器。<br>首先，我们需要注册一个lua debug hook，并且绑定LUA_MASKLINE，LUA_MASKRET，LUA_MASKCALL事件，这样当lua代码执行的时候如果碰到相应的事件，则会调用我们注册的debug hook。</p>
+<p>当debug hook调用的时候，程序就进入debug模式，这时候就可以输入对应的命令进行执行。</p>
+<h1 id="db">db</h1>
+<p>只要注册了debug hook，那么每次lua代码执行的时候碰到对应的事件就会调用注册hook，如果每次调用都进入debug模式，那是很影响程序运行的，所以我们需要一种机制，只在需要的时候进入debug模式。</p>
+<p>在gdb里面，我们通过设置断点来进入可调式模式，虽然在lua里面也可以这么做，但这里我们采用了一种更简单的方法。我们给lua注册一个db函数，当lua执行到db函数的时候，程序才会进入debug模式。因为lua是动态语言，如果我们需要在另一个地方也进行调试，只需要再次加入db函数，重启程序即可。</p>
+<p>所以这里我们debug hook函数内部实现是一个状态机，当没有进入db的时候，虽然lua也会进行调用该hook，但该hook内部不作任何处理。只有当执行db函数进入debug模式，hook内部才会有相应处理。</p>
+<p>我们在debug hook里面提供了多种状态，包括none hook，step hook，next hook和return hook。</p>
+<ul>
+<li>none hook，没有进入debug模式，该hook不做任何处理</li>
+<li>step hook，进入debug的step模式，当lua代码执行到新的一行代码时候做处理</li>
+<li>next hook，进入debug的next模式，当lua代码跳过下一行时候做处理</li>
+<li>return hook，进入debug的return模式，当lua执行到当前函数退出时候做处理</li>
+</ul>
+<h1 id="continue">continue</h1>
+<p>continue会让程序继续执行。该命令会让hook切入none hook状态，直到下次lua执行db函数进入debug模式。</p>
+<h1 id="step">step</h1>
+<p>step会让hook切入step hook状态，该hook会监听LUA_MASKLINE事件，当该事件发生时候，step hook进行处理，打印当前代码，并再次进入debug模式，供下次命令输入。</p>
+<h1 id="next">next</h1>
+<p>next会让hook切入next hook状态，该hook也会监听LUA_MASKLINE事件，但是next跟step最大的区别在于next是跳过一行，也就是说如果执行的lua代码下一行是一个函数调用，step会进入函数内部，而next则会执行该函数，并跳过该函数这一行直到下一行。</p>
+<p>所以next需要进行判断LUA_MASKLINE是否进入了一个新的函数，这里我们通过函数堆栈深度来进行，当lua代码执行到一个新的函数的时候，它的函数堆栈深度会加1，所以我们只需要记录当前的堆栈深度a，next执行到下一次LUA_MASKLINE时候，获取堆栈深度b，如果a小于b，那么表明进入了一个新的函数，所以我们不需要处理，直到再次获取的堆栈深度等于a。</p>
+<h1 id="return">return</h1>
+<p>return会让hook切入return hook状态，该hook会监听LUA_MASKRET事件，当该事件发生，return hook进行处理。这里我们仍然需要进入是否进入新函数调用的判断，因为我们只想监听的是当前函数的LUA_MASKRET事件，所以我们仍需要像next那样进行堆栈深度的判断。</p>
+<h1 id="backtrace/frame/list">backtrace/frame/list</h1>
+<p>backtrace，frame，list这几个命令这里列在一起，是因为他们都跟lua_getstack，lua_getinfo这两个函数有关系。我们通过lua_getstack初始化指定栈帧的lua_Debug结构，然后在通过调用lua_getinfo获取相关栈帧信息。</p>
+<h1 id="print_value">print value</h1>
+<p>print value命令可能算是最复杂的一个命令，因为有多个逻辑处理。当我们通过frame定位到某一层栈帧之后，就可以通过print打印相关的对象数据，供调试使用。</p>
+<p>当print value的时候，首先我们查找value是否在当前函数里面local变量里面，如果没有则查找该函数的upvalue，如果仍然没有，则查找global，如果都没找到，则输出nil。</p>
+<h1 id="code">code</h1>
+<p>代码在<a href="https://github.com/siddontang/luahelper" target="_blank" rel="external">luahelper</a>的debughelper，只是一个简单的实现，还有一些问题需要考虑。</p>
+<p>因为lua的debug hook注册的时候只能提供一个hook，所以为了简单起见，我对DebugHelper使用了单例模式，但是最好是一个lua实例对应一个debuger。要做到这样，自己想到了两种可能方法:</p>
+<ul>
+<li>使用LUAI_EXTRASPACE，并通过luai_userstateopen，luai_userstateclose将debuger绑定到lua实例上面，并通过luai_userstatethread进行debuger在coroutine的迁移。这种方法需要重新编译lua代码，适合集成lua源码的项目。</li>
+<li>debuger内部使用一个map来进行对应，但是在lua里面需要替换coroutine的创建，因为创建的coroutine也需要对应到同一个debuger上面。</li>
+</ul>
+<p>两种方法都懒得弄了，以后有机会去尝试一下。</p>
+<h1 id="end">end</h1>
+<p>这里只是简单的实现了一个lua debuger，但是功能我觉得足以可以在实际项目中应用了。只是越来觉得，对于动态语言，print和log才是我最喜欢的代码调试方式，因为简单而且强迫你去思考整个程序的运行流程。不过把debuger放在这里，也算是对自己以前游戏开发的一个总结吧。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2013-12-28T08:21:04.000Z"><a href="/2013/12/28/bin-packer/">12-28-2013</a></time>
       
       
@@ -898,76 +982,6 @@ DELETE http://domain.com/file/1
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2013-01-13T10:00:00.000Z"><a href="/2013/01/13/re-think-server-architecture/">01-13-2013</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2013/01/13/re-think-server-architecture/">最近关于服务器架构的一点思考</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="介绍">介绍</h1>
-<p>几个月前，思索了一套安全的服务器交互模型，随着几个月的不停的思索，又有很多新的心得体会。抽象来说，我认为，对于一个好的服务器架构，简单，可扩展性强，是必不可少的。</p>
-<ul>
-<li><p>简单，其实很好理解，一个服务就干一件事情，不同的功能逻辑别糅在一个服务里面实现。短期来看，一个服务器实现一堆功能逻辑，编码容易简单，但是弊端也能立马显现，可维护性差，单点故障等。我们的项目就出现了这样的问题，一个童鞋当初为了方便，将本来几个服务，组织架构服务，登陆验证服务，账号管理服务等几个服务的代码糅合在一个服务里面，编码是简单了，但是后续一堆问题出来了。举个最简单的例子，我们想使用外部的一个登陆验证模块，使用外部的组织架构数据，现在我们完全无法实现。就因为这个，我们又准备将这几个服务进行拆分。所以，无论怎样，保证服务的简单，是为了更好的为了后续的扩展</p>
-</li>
-<li><p>扩展性强，一是服务功能可扩展强，因为一个服务一个功能，当我们需要实现另一个功能的时候就增加一个服务，每个服务通过标准的通信协议（一般就是http）进行通信就行。另一个就是服务本身的可扩展性强，单个服务里面实现的功能都应该是状态无关的，也就是说服务的api提供不能有时序关系。就因为无时序状态，所以每个服务的个数可以动态扩展</p>
-</li>
-</ul>
-<h1 id="安全交互">安全交互</h1>
-<p>在一套安全的服务器交互模型中，我提出使用key + stub的方式进行高效安全的交互，这套机制虽然没有问题，但是我现在觉得是对第三方开发不友好的方式。如果不光我们提供服务，客户端也由我们编写，那无所谓，但是如果另一个客户端想对接我们的服务，就会面临一个很郁闷的问题，必须保存每一个服务的stub，这个随着服务的增多会越来越来管理。所以思索了很久，还是采用业界比较通用的签名方法，这个足够高效，也足够安全。</p>
-<ul>
-<li>部署一个访问验证服务器，用于管理access id和security key</li>
-<li>当用户安全的登陆之后，我们会给访问客户端一个用于访问我们所有服务的access id和security key。因为登陆一般采用的是https，所以id和key不会被网络窃听获取到，所以是安全的</li>
-<li>客户端收到该id和key之后，对于后续任何的http请求，使用key对url签名，然后将id与签名放置在http header里面一同发送给server</li>
-<li>server收到http请求之后，首先通过header里面的id在访问验证server里面找到对应的key，在使用同样的方式对url进行签名，如果两次签名一样，表明这是一个合法的url，如果不一样，可能其他人篡改了该url，我们拒绝这次http请求</li>
-<li>当用户注销登出，id和key就无效了。如果为了安全性，客户端也可以强制的每隔一段时间进行id和key的更换</li>
-</ul>
-<p>签名机制足够的简单高效，但也必须得注意几个问题：</p>
-<ul>
-<li>每次对url进行签名最好带上一个随机数，譬如当前时间，这样不容易被窃听之后暴力破解得到key</li>
-<li>为了更好的保证安全性，这套机制还是应该在https上面使用</li>
-</ul>
-<h1 id="访问验证服务器">访问验证服务器</h1>
-<p>这里我引入访问验证服务器，也是我认为架构简单性的考量，每个服务干自己的事情，所以需要验证了就提供一个验证服务器。</p>
-<p>但这里又有一个问题，当服务器收到http请求之后，在什么时候进行url的验证？为了保证简单性，各个服务提供api是不会出现任何验证逻辑，那这套验证逻辑放置在什么地方呢？我觉得可以在两个地方处理：</p>
-<ul>
-<li>服务框架的统一http入口处理里面，铁定我们会写一套框架代码，各个服务在这套框架之上运行。譬如我们采用tornado wsgi的方式搭建服务器，他对于任何http请求都是有一个统一的入口的，我们只要在这个入口里面首先进行访问权限的判断，然后在继续进行后续操作就行</li>
-<li>在引入一个总控服务器，该服务器收到http请求之后首先进行访问验证，然后在进行后续操作</li>
-</ul>
-<p>这两种方式，第一种是我们项目现在使用stub采用的，而第二种则是我现在推荐的方式。第一种方式有一个不好的地方在于，验证逻辑跟框架代码耦合了，虽然我们可以通过很多方式让框架跟验证逻辑进行解耦，但是我仍然觉得有点别扭。现今我们stub为什么可以这么是因为验证控制这套逻辑本来就是由底层框架提供，而不是外部服务提供。</p>
-<p>而采用第二种方式，则需要引入一个总控服务器，可以使用openresty解决，因为我们所有的http都要经过nginx，所以直接在nginx里面做就可以了。因为nginx性能很高，同时在openresty里面使用lua做到非常容易开发，而且我们实现的只是简单的流程控制，所以通过nginx绰绰有余。</p>
-<h1 id="原子级别的api服务">原子级别的api服务</h1>
-<p>因为我们的功能都是由不同的服务器提供，这里就有一个比较郁闷的问题，一个功能如果需要不同服务器协同，怎么处理。譬如我现在想实现一个功能，我需要a，b，c三个服务以此进行处理，只有都处理成功了这个功能才算完成。如果只有我们自己写客户端，那没问题，但是如果有一个第三方需要对接实现这个功能，那么他们就会很困惑，为啥我要这么麻烦来实现这个功能？并且还不能保证他们能理解正确，写出正确的功能代码。</p>
-<p>这个问题现在已经比较严重了，导致了我们有时候不得不花上很多时间来给其他开发人员解释api如何使用。所以每一个功能有一个原子级别的api来提供，是一个不错的办法。怎么说呢，因为引入了openresty，所以我们完全可以在nginx这层就写好该功能需要访问的服务。这个其实跟上面的访问验证类似，就是由openresty做总控，来进行流程的控制。</p>
-<h1 id="总控nginx">总控nginx</h1>
-<p>既然我们使用openresty来进行服务的总控控制，就需要注意一个最重要的问题：openresty负责的功能只能是简单的流程控制，它不负责其他任何的功能逻辑，这样才能保证足够的简单。我们不希望在nginx里面有太多重型的逻辑。</p>
-<h1 id="总结">总结</h1>
-<p>这些算是近端时间以来对服务架构的一些理解，还有一些，后续慢慢补充。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1014,7 +1028,7 @@ DELETE http://domain.com/file/1
   
     <li><a href="/categories/lua/">lua</a><small>2</small></li>
   
-    <li><a href="/categories/mysql/">mysql</a><small>4</small></li>
+    <li><a href="/categories/mysql/">mysql</a><small>5</small></li>
   
     <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
   
@@ -1030,7 +1044,7 @@ DELETE http://domain.com/file/1
 <div class="widget tagcloud">
   <h3 class="title">标签云</h3>
   <div class="entry">
-    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.89px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 16.67px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 15.56px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.33px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.22px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.11px;">moonmq</a><a href="/tags/mysql/" style="font-size: 17.78px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.11px;">nginx</a><a href="/tags/nosql/" style="font-size: 14.44px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.11px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 16.67px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.11px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.22px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.11px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 17.50px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 18.75px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.25px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
   </div>
 </div>
 
