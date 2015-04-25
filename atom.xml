@@ -4,7 +4,7 @@
   <subtitle><![CDATA[My thought for program]]></subtitle>
   <link href="/atom.xml" rel="self"/>
   <link href="http://siddontang.com/"/>
-  <updated>2015-03-28T08:49:25.204Z</updated>
+  <updated>2015-04-25T08:36:00.326Z</updated>
   <id>http://siddontang.com/</id>
   
   <author>
@@ -13,6 +13,68 @@
   </author>
   
   <generator uri="http://zespia.tw/hexo/">Hexo</generator>
+  
+  <entry>
+    <title><![CDATA[构建一个简易的中心化锁服务]]></title>
+    <link href="http://siddontang.com/2015/04/25/build-up-a-tiny-lock-service/"/>
+    <id>http://siddontang.com/2015/04/25/build-up-a-tiny-lock-service/</id>
+    <published>2015-04-25T08:35:15.000Z</published>
+    <updated>2015-04-25T08:35:54.000Z</updated>
+    <content type="html"><![CDATA[<h2 id="为什么需要锁服务？">为什么需要锁服务？</h2>
+<p>有时候，在分布式系统中，不同的服务实例需要操作同一份资源，所以我们需要一套机制保证对该资源并发操作的数据一致性。</p>
+<p>最通常的做法，就是lock。各个服务在操作资源之前，首先lock住该资源，处理完成之后在释放lock。也就是说，我们通过lock使得并行操作串行化，保证了资源的数据一致性。</p>
+<h2 id="为什么要实现重新实现一个？">为什么要实现重新实现一个？</h2>
+<p>虽然现在有很多不错的锁服务实现，譬如基于Zookeeper，Etcd，甚至Redis，但这里我仍然想自己实现一个简易的lock服务，主要有以下几点原因：</p>
+<h3 id="Multi_Lock">Multi Lock</h3>
+<p>同时获取多个lock，有时候我们想同时对多个资源进行操作，所以需要多把lock，但是无论是Zookeeper还是Redis，我们都需要对其进行多次调用，影响整体性能。</p>
+<h3 id="Hierarchical_Lock">Hierarchical Lock</h3>
+<p>支持hierarchical lock，我称之为path lock，我们的系统是有类似文件夹的概念的，假设现在我们需要往文件夹a/b/c下面增加一个文件，我们就必须得保证另一个进程不会同时操作该文件夹以及其祖先和后继（譬如删除a，或者a/b，或者也往a/b/c下面增加文件），但是允许操作其兄弟（譬如在a/b/d下面增加文件）。</p>
+<p>仍然是上面那个例子，假设我们需要操作a/b/c，首先我们需要对a加read lock，然后对a/b加read lock，最后在对a/b/c加write lock，如果这个通过Zookeeper来实现，真心很麻烦，而且性能存疑。</p>
+<h2 id="TLock">TLock</h2>
+<p>tlock是一个简单的中心化lock service，现阶段为了性能没有High Availability支持，所以如果当掉了后果还是有点严重的。:-)</p>
+<p>tlock支持两种模式，key和path，key就是最通常的对某个资源进行操作，而path则是我上面说的Hierarchical Lock。同时tlock支持Multi Lock。</p>
+<p>tlock提供Restful API以及RESP(Redis Serialization Protocol) API，所以你可以通过任意HTTP客户端或者Redis客户端使用。</p>
+<p>一个简单的HTTP例子：</p>
+<pre><code>// shell1
+
+// 同时lock a，b，c三个资源，如果30s之后仍没lock成功，返回超时错误
+// 返回lockid供后续unlock使用
+POST http://localhost/lock?names=a,b,c&amp;type=key&amp;timeout=30
+
+// Unlock
+DELETE http://localhost/lock?id=lockid
+
+// shell2
+POST http://localhost/lock?names=a,b,c&amp;type=key&amp;timeout=30
+
+DELETE http://localhost/lock?id=lockid
+</code></pre><p>一个简单的RESP例子：</p>
+<pre><code># shell1 redis-cli
+redis&gt;LOCK abc TYPE key TIMEOUT 10
+redis&gt;lockid
+redis&gt;UNLOCK lockid
+redis&gt;OK
+
+# shell2 redis-cli 
+redis&gt;LOCK abc TYPE key TIMEOUT 10
+// 一直挂起直到shell1 unlock 
+redis&gt;lockid
+redis&gt;UNLOCK lockid
+redis&gt;OK
+</code></pre><p>tlock同时提供了RESP的客户端：</p>
+<pre><code>import &quot;github.com/siddontang/tlock&quot;
+
+client := NewRESPClient(addr)
+locker, _ := client.GetLocker(&quot;key&quot;, &quot;abc&quot;)
+locker.Lock()
+locker.Unlock()
+</code></pre><h2 id="Todo">Todo</h2>
+<p>可以看到，tlock是一个非常简单的服务，虽然是一个单点并且没有HA支持，但是已经能满足我们项目的需求，毕竟我们只是需要一个简单的锁服务。</p>
+<p>后续，我可能会基于Zookeeper尝试实现path lock，虽然这样HA能够保证，但是性能怎样，到时候压测了再说吧。</p>
+]]></content>
+    
+    
+  </entry>
   
   <entry>
     <title><![CDATA[Dive into MySQL Replication]]></title>
@@ -1585,86 +1647,6 @@ gopkg.in/user/pkg.v3 → github.com/user/pkg   (branch/tag v3, v3.N, or v3.N.M)
       <category term="algorithm" scheme="http://siddontang.com/tags/algorithm/"/>
     
       <category term="leetcode" scheme="http://siddontang.com/categories/leetcode/"/>
-    
-  </entry>
-  
-  <entry>
-    <title><![CDATA[celery最佳实践]]></title>
-    <link href="http://siddontang.com/2014/07/20/celery-best-practices/"/>
-    <id>http://siddontang.com/2014/07/20/celery-best-practices/</id>
-    <published>2014-07-20T11:03:19.000Z</published>
-    <updated>2014-08-09T07:12:29.000Z</updated>
-    <content type="html"><![CDATA[<p>作为一个Celery使用重度用户，看到<a href="https://denibertovic.com/posts/celery-best-practices/" target="_blank" rel="external">Celery Best Practices</a>这篇文章，不由得菊花一紧。干脆翻译出来，同时也会加入我们项目中celery的实战经验。</p>
-<p>通常在使用Django的时候，你可能需要执行一些长时间的后台任务，没准你可能需要使用一些能排序的任务队列，那么Celery将会是一个非常好的选择。</p>
-<p>当把Celery作为一个任务队列用于很多项目中后，作者积累了一些最佳实践方式，譬如如何用合适的方式使用Celery，以及一些Celery提供的但是还未充分使用的特性。</p>
-<h2 id="1，不要使用数据库作为你的AMQP_Broker">1，不要使用数据库作为你的AMQP Broker</h2>
-<p>数据库并不是天生设计成能用于AMQP broker的，在生产环境下，它很有可能在某时候当机（PS，当掉这点我觉得任何系统都不能保证不当吧！！！）。</p>
-<p>作者猜想为啥很多人使用数据库作为broker主要是因为他们已经有一个数据库用来给web app提供数据存储了，于是干脆直接拿来使用，设置成Celery的broker是很容易的，并且不需要再安装其他组件（譬如RabbitMQ）。</p>
-<p>假设有如下场景：你有4个后端workers去获取并处理放入到数据库里面的任务，这意味着你有4个进程为了获取最新任务，需要频繁地去轮询数据库，没准每个worker同时还有多个自己的并发线程在干这事情。</p>
-<p>某一天，你发现因为太多的任务产生，4个worker不够用了，处理任务的速度已经大大落后于生产任务的速度，于是你不停去增加worker的数量。突然，你的数据库因为大量进程轮询任务而变得响应缓慢，磁盘IO一直处于高峰值状态，你的web应用也开始受到影响。这一切，都因为workers在不停地对数据库进行DDOS。</p>
-<p>而当你使用一个合适的AMQP（譬如RabbitMQ）的时候，这一切都不会发生，以RabbitMQ为例，首先，它将任务队列放到内存里面，你不需要去访问硬盘。其次，consumers（也就是上面的worker）并不需要频繁地去轮询因为RabbitMQ能将新的任务推送给consumers。当然，如果RabbitMQ真出现问题了，至少也不会影响到你的web应用。</p>
-<p>这也就是作者说的不用数据库作为broker的原因，而且很多地方都提供了编译好的RabbitMQ镜像，你都能直接使用，譬如<a href="https://registry.hub.docker.com/search?q=rabbitmq" target="_blank" rel="external">这些</a>。</p>
-<p>对于这点，我是深表赞同的。我们系统大量使用Celery处理异步任务，大概平均一天几百万的异步任务，以前我们使用的mysql，然后总会出现任务处理延时太严重的问题，即使增加了worker也不管用。于是我们使用了redis，性能提升了很多。至于为啥使用mysql很慢，我们没去深究，没准也还真出现了DDOS的问题。</p>
-<h2 id="2，使用更多的queue（不要只用默认的）">2，使用更多的queue（不要只用默认的）</h2>
-<p>Celery非常容易设置，通常它会使用默认的queue用来存放任务（除非你显示指定其他queue）。通常写法如下：</p>
-<pre><code>@app.task()
-def my_taskA(a, b, c):
-    print(&quot;doing something here...&quot;)
-
-@app.task()
-def my_taskB(x, y):
-    print(&quot;doing something here...&quot;)
-</code></pre><p>这两个任务都会在同一个queue里面执行，这样写其实很有吸引力的，因为你只需要使用一个decorator就能实现一个异步任务。作者关心的是taskA和taskB没准是完全两个不同的东西，或者一个可能比另一个更加重要，那么为什么要把它们放到一个篮子里面呢？（鸡蛋都不能放到一个篮子里面，是吧！）没准taskB其实不怎么重要，但是量太多，以至于重要的taskA反而不能快速地被worker进行处理。增加workers也解决不了这个问题，因为taskA和taskB仍然在一个queue里面执行。</p>
-<h2 id="3，使用具有优先级的workers">3，使用具有优先级的workers</h2>
-<p>为了解决2里面出现的问题，我们需要让taskA在一个队列Q1，而taskB在另一个队列Q2执行。同时指定<strong>x</strong> workers去处理队列Q1的任务，然后使用其它的workers去处理队列Q2的任务。使用这种方式，taskB能够获得足够的workers去处理，同时一些优先级workers也能很好地处理taskA而不需要进行长时间的等待。</p>
-<p>首先手动定义queue</p>
-<pre><code>CELERY_QUEUES = (
-    Queue(&#39;default&#39;, Exchange(&#39;default&#39;), routing_key=&#39;default&#39;),
-    Queue(&#39;for_task_A&#39;, Exchange(&#39;for_task_A&#39;), routing_key=&#39;for_task_A&#39;),
-    Queue(&#39;for_task_B&#39;, Exchange(&#39;for_task_B&#39;), routing_key=&#39;for_task_B&#39;),
-)
-</code></pre><p>然后定义routes用来决定不同的任务去哪一个queue</p>
-<pre><code>CELERY_ROUTES = {
-    &#39;my_taskA&#39;: {&#39;queue&#39;: &#39;for_task_A&#39;, &#39;routing_key&#39;: &#39;for_task_A&#39;},
-    &#39;my_taskB&#39;: {&#39;queue&#39;: &#39;for_task_B&#39;, &#39;routing_key&#39;: &#39;for_task_B&#39;},
-}
-</code></pre><p>最后再为每个task启动不同的workers</p>
-<pre><code>celery worker -E -l INFO -n workerA -Q for_task_A
-celery worker -E -l INFO -n workerB -Q for_task_B
-</code></pre><p>在我们项目中，会涉及到大量文件转换问题，有大量小于1mb的文件转换，同时也有少量将近20mb的文件转换，小文件转换的优先级是最高的，同时不用占用很多时间，但大文件的转换很耗时。如果将转换任务放到一个队列里面，那么很有可能因为出现转换大文件，导致耗时太严重造成小文件转换延时的问题。</p>
-<p>所以我们按照文件大小设置了3个优先队列，并且每个队列设置了不同的workers，很好地解决了我们文件转换的问题。</p>
-<h2 id="4，使用Celery的错误处理机制">4，使用Celery的错误处理机制</h2>
-<p>大多数任务并没有使用错误处理，如果任务失败，那就失败了。在一些情况下这很不错，但是作者见到的多数失败任务都是去调用第三方API然后出现了网络错误，或者资源不可用这些错误，而对于这些错误，最简单的方式就是重试一下，也许就是第三方API临时服务或者网络出现问题，没准马上就好了，那么为什么不试着重试一下呢？</p>
-<pre><code>@app.task(bind=True, default_retry_delay=300, max_retries=5)
-def my_task_A():
-    try:
-        print(&quot;doing stuff here...&quot;)
-    except SomeNetworkException as e:
-        print(&quot;maybe do some clenup here....&quot;)
-        self.retry(e)
-</code></pre><p>作者喜欢给每一个任务定义一个等待多久重试的时间，以及最大的重试次数。当然还有更详细的参数设置，自己看文档去。</p>
-<p>对于错误处理，我们因为使用场景特殊，例如一个文件转换失败，那么无论多少次重试都会失败，所以没有加入重试机制。</p>
-<h2 id="5，使用Flower">5，使用Flower</h2>
-<p><a href="http://celery.readthedocs.org/en/latest/userguide/monitoring.html#flower-real-time-celery-web-monitor" target="_blank" rel="external">Flower</a>是一个非常强大的工具，用来监控celery的tasks和works。</p>
-<p>这玩意我们也没怎么使用，因为多数时候我们都是直接连接redis去查看celery相关情况了。貌似挺傻逼的对不，尤其是celery在redis里面存放的数据并不能方便的取出来。</p>
-<h2 id="6，没事别太关注任务退出状态">6，没事别太关注任务退出状态</h2>
-<p>一个任务状态就是该任务结束的时候成功还是失败信息，没准在一些统计场合，这很有用。但我们需要知道，任务退出的状态并不是该任务执行的结果，该任务执行的一些结果因为会对程序有影响，通常会被写入数据库（例如更新一个用户的朋友列表）。</p>
-<p>作者见过的多数项目都将任务结束的状态存放到sqlite或者自己的数据库，但是存这些真有必要吗，没准可能影响到你的web服务的，所以作者通常设置<strong>CELERY_IGNORE_RESULT = True</strong>去丢弃。</p>
-<p>对于我们来说，因为是异步任务，知道任务执行完成之后的状态真没啥用，所以果断丢弃。</p>
-<h2 id="7，不要给任务传递_Database/ORM_对象">7，不要给任务传递 Database/ORM 对象</h2>
-<p>这个其实就是不要传递Database对象（例如一个用户的实例）给任务，因为没准序列化之后的数据已经是过期的数据了。所以最好还是直接传递一个user id，然后在任务执行的时候实时的从数据库获取。</p>
-<p>对于这个，我们也是如此，给任务只传递相关id数据，譬如文件转换的时候，我们只会传递文件的id，而其它文件信息的获取我们都是直接通过该id从数据库里面取得。</p>
-<h2 id="最后">最后</h2>
-<p>后面就是我们自己的感触了，上面作者提到的Celery的使用，真的可以算是很好地实践方式，至少现在我们的Celery没出过太大的问题，当然小坑还是有的。至于RabbitMQ，这玩意我们是真没用过，效果怎么样不知道，至少比mysql好用吧。</p>
-<p>最后，附上作者的一个Celery Talk <a href="https://denibertovic.com/talks/celery-best-practices/" target="_blank" rel="external">https://denibertovic.com/talks/celery-best-practices/</a>。</p>
-]]></content>
-    
-    
-      <category term="python" scheme="http://siddontang.com/tags/python/"/>
-    
-      <category term="celery" scheme="http://siddontang.com/tags/celery/"/>
-    
-      <category term="python" scheme="http://siddontang.com/categories/python/"/>
     
   </entry>
   

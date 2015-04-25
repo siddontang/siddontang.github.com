@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>http://siddontang.com/2015/04/25/build-up-a-tiny-lock-service/</loc>
+    <lastmod>2015-04-25T08:35:54.000Z</lastmod>
+  </url>
+  
+  <url>
     <loc>http://siddontang.com/2015/03/28/dive-into-mysql-replication/</loc>
     <lastmod>2015-03-28T08:49:15.000Z</lastmod>
   </url>

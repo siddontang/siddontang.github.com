@@ -1,0 +1,260 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>构建一个简易的中心化锁服务 | Siddon&#39;s Blog</title>
+  <meta name="author" content="SiddonTang">
+  
+  <meta name="description" content="My thought for program">
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+  <meta property="og:title" content="构建一个简易的中心化锁服务"/>
+  <meta property="og:site_name" content="Siddon&#39;s Blog"/>
+
+  
+    <meta property="og:image" content="undefined"/>
+  
+
+  <link href="/favicon.png" rel="icon">
+  <link rel="alternate" href="/atom.xml" title="Siddon&#39;s Blog" type="application/atom+xml">
+  <link rel="stylesheet" href="/css/style.css" media="screen" type="text/css">
+  <!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-27956076-1']);
+  
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+
+</head>
+
+
+<body>
+  <header id="header" class="inner"><div class="alignleft">
+  <h1><a href="/">Siddon&#39;s Blog</a></h1>
+  <h2><a href="/">My thought for program</a></h2>
+</div>
+<nav id="main-nav" class="alignright">
+  <ul>
+    
+      <li><a href="/">Home</a></li>
+    
+      <li><a href="/Presentations">Presentations</a></li>
+    
+      <li><a href="/About">About</a></li>
+    
+      <li><a href="/atom.xml">RSS</a></li>
+    
+  </ul>
+  <div class="clearfix"></div>
+</nav>
+<div class="clearfix"></div></header>
+  <div id="content" class="inner">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2015-04-25T08:35:15.000Z"><a href="/2015/04/25/build-up-a-tiny-lock-service/">04-25-2015</a></time>
+      
+      
+  
+    <h1 class="title">构建一个简易的中心化锁服务</h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h2 id="为什么需要锁服务？">为什么需要锁服务？</h2>
+<p>有时候，在分布式系统中，不同的服务实例需要操作同一份资源，所以我们需要一套机制保证对该资源并发操作的数据一致性。</p>
+<p>最通常的做法，就是lock。各个服务在操作资源之前，首先lock住该资源，处理完成之后在释放lock。也就是说，我们通过lock使得并行操作串行化，保证了资源的数据一致性。</p>
+<h2 id="为什么要实现重新实现一个？">为什么要实现重新实现一个？</h2>
+<p>虽然现在有很多不错的锁服务实现，譬如基于Zookeeper，Etcd，甚至Redis，但这里我仍然想自己实现一个简易的lock服务，主要有以下几点原因：</p>
+<h3 id="Multi_Lock">Multi Lock</h3>
+<p>同时获取多个lock，有时候我们想同时对多个资源进行操作，所以需要多把lock，但是无论是Zookeeper还是Redis，我们都需要对其进行多次调用，影响整体性能。</p>
+<h3 id="Hierarchical_Lock">Hierarchical Lock</h3>
+<p>支持hierarchical lock，我称之为path lock，我们的系统是有类似文件夹的概念的，假设现在我们需要往文件夹a/b/c下面增加一个文件，我们就必须得保证另一个进程不会同时操作该文件夹以及其祖先和后继（譬如删除a，或者a/b，或者也往a/b/c下面增加文件），但是允许操作其兄弟（譬如在a/b/d下面增加文件）。</p>
+<p>仍然是上面那个例子，假设我们需要操作a/b/c，首先我们需要对a加read lock，然后对a/b加read lock，最后在对a/b/c加write lock，如果这个通过Zookeeper来实现，真心很麻烦，而且性能存疑。</p>
+<h2 id="TLock">TLock</h2>
+<p>tlock是一个简单的中心化lock service，现阶段为了性能没有High Availability支持，所以如果当掉了后果还是有点严重的。:-)</p>
+<p>tlock支持两种模式，key和path，key就是最通常的对某个资源进行操作，而path则是我上面说的Hierarchical Lock。同时tlock支持Multi Lock。</p>
+<p>tlock提供Restful API以及RESP(Redis Serialization Protocol) API，所以你可以通过任意HTTP客户端或者Redis客户端使用。</p>
+<p>一个简单的HTTP例子：</p>
+<pre><code>// shell1
+
+// 同时lock a，b，c三个资源，如果30s之后仍没lock成功，返回超时错误
+// 返回lockid供后续unlock使用
+POST http://localhost/lock?names=a,b,c&amp;type=key&amp;timeout=30
+
+// Unlock
+DELETE http://localhost/lock?id=lockid
+
+// shell2
+POST http://localhost/lock?names=a,b,c&amp;type=key&amp;timeout=30
+
+DELETE http://localhost/lock?id=lockid
+</code></pre><p>一个简单的RESP例子：</p>
+<pre><code># shell1 redis-cli
+redis&gt;LOCK abc TYPE key TIMEOUT 10
+redis&gt;lockid
+redis&gt;UNLOCK lockid
+redis&gt;OK
+
+# shell2 redis-cli 
+redis&gt;LOCK abc TYPE key TIMEOUT 10
+// 一直挂起直到shell1 unlock 
+redis&gt;lockid
+redis&gt;UNLOCK lockid
+redis&gt;OK
+</code></pre><p>tlock同时提供了RESP的客户端：</p>
+<pre><code>import &quot;github.com/siddontang/tlock&quot;
+
+client := NewRESPClient(addr)
+locker, _ := client.GetLocker(&quot;key&quot;, &quot;abc&quot;)
+locker.Lock()
+locker.Unlock()
+</code></pre><h2 id="Todo">Todo</h2>
+<p>可以看到，tlock是一个非常简单的服务，虽然是一个单点并且没有HA支持，但是已经能满足我们项目的需求，毕竟我们只是需要一个简单的锁服务。</p>
+<p>后续，我可能会基于Zookeeper尝试实现path lock，虽然这样HA能够保证，但是性能怎样，到时候压测了再说吧。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+<section id="comment">
+  <h1 class="title">留言</h1>
+
+  
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
+  
+</section>
+
+</div></div>
+    <aside id="sidebar" class="alignright">
+  <div class="search">
+  <form action="//google.com/search" method="get" accept-charset="utf-8">
+    <input type="search" name="q" results="0" placeholder="搜索">
+    <input type="hidden" name="q" value="site:siddontang.com">
+  </form>
+</div>
+
+  <div class="widget tag">
+  <h3 class="title">Github</h3>
+  <ul class="entry">
+  <li><a href="https://github.com/siddontang/ledisdb" target="_blank">LedisDB</a><small>Fast NoSQL</small></li>
+  <li><a href="https://github.com/siddontang/mixer" target="_blank">Mixer</a><small>MySQL Proxy with Go</small></li>
+  <li><a href="https://github.com/siddontang/libtnet" target="_blank">Libtnet</a><small>High Performance EventLoop</small></li>
+  <li><a href="https://github.com/siddontang/moonmq" target="_blank">MoonMQ</a><small>Fast Message Queue</small></li>
+  <li><a href="https://github.com/siddontang" target="_blank">More...</a></li>
+  </ul>
+</div>
+
+
+  
+<div class="widget tag">
+  <h3 class="title">分类</h3>
+  <ul class="entry">
+  
+    <li><a href="/categories/c++/">c++</a><small>7</small></li>
+  
+    <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
+  
+    <li><a href="/categories/go/">go</a><small>30</small></li>
+  
+    <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
+  
+    <li><a href="/categories/lua/">lua</a><small>2</small></li>
+  
+    <li><a href="/categories/mysql/">mysql</a><small>5</small></li>
+  
+    <li><a href="/categories/nginx/">nginx</a><small>2</small></li>
+  
+    <li><a href="/categories/program/">program</a><small>16</small></li>
+  
+    <li><a href="/categories/python/">python</a><small>6</small></li>
+  
+  </ul>
+</div>
+
+
+  
+<div class="widget tagcloud">
+  <h3 class="title">标签云</h3>
+  <div class="entry">
+    <a href="/tags/algorithm/" style="font-size: 10.00px;">algorithm</a><a href="/tags/c++/" style="font-size: 18.75px;">c++</a><a href="/tags/celery/" style="font-size: 10.00px;">celery</a><a href="/tags/docker/" style="font-size: 10.00px;">docker</a><a href="/tags/go/" style="font-size: 20.00px;">go</a><a href="/tags/gopkg/" style="font-size: 10.00px;">gopkg</a><a href="/tags/goroutine/" style="font-size: 10.00px;">goroutine</a><a href="/tags/json/" style="font-size: 10.00px;">json</a><a href="/tags/ledisdb/" style="font-size: 17.50px;">ledisdb</a><a href="/tags/leetcode/" style="font-size: 10.00px;">leetcode</a><a href="/tags/leveldb/" style="font-size: 10.00px;">leveldb</a><a href="/tags/libtnet/" style="font-size: 16.25px;">libtnet</a><a href="/tags/log/" style="font-size: 10.00px;">log</a><a href="/tags/lua/" style="font-size: 13.75px;">lua</a><a href="/tags/message-queue/" style="font-size: 10.00px;">message queue</a><a href="/tags/mixer/" style="font-size: 12.50px;">mixer</a><a href="/tags/moonmq/" style="font-size: 11.25px;">moonmq</a><a href="/tags/mysql/" style="font-size: 18.75px;">mysql</a><a href="/tags/nginx/" style="font-size: 11.25px;">nginx</a><a href="/tags/nosql/" style="font-size: 15.00px;">nosql</a><a href="/tags/polaris/" style="font-size: 11.25px;">polaris</a><a href="/tags/pprof/" style="font-size: 10.00px;">pprof</a><a href="/tags/proxy/" style="font-size: 10.00px;">proxy</a><a href="/tags/python/" style="font-size: 17.50px;">python</a><a href="/tags/reflect/" style="font-size: 10.00px;">reflect</a><a href="/tags/restful/" style="font-size: 10.00px;">restful</a><a href="/tags/rpc/" style="font-size: 10.00px;">rpc</a><a href="/tags/timer/" style="font-size: 11.25px;">timer</a><a href="/tags/timingwheel/" style="font-size: 10.00px;">timingwheel</a><a href="/tags/tornado/" style="font-size: 12.50px;">tornado</a><a href="/tags/xcodis/" style="font-size: 11.25px;">xcodis</a><a href="/tags/zookeeper/" style="font-size: 10.00px;">zookeeper</a>
+  </div>
+</div>
+
+</aside>
+    <div class="clearfix"></div>
+  </div>
+  <footer id="footer" class="inner"><div class="alignleft">
+  
+  &copy; 2015 SiddonTang
+  
+</div>
+<div class="clearfix"></div></footer>
+  <script src="//ajax.useso.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+
+<script type="text/javascript">
+var disqus_shortname = 'siddontang';
+
+(function(){
+  var dsq = document.createElement('script');
+  dsq.type = 'text/javascript';
+  dsq.async = true;
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+  (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+}());
+</script>
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+  $('.fancybox').fancybox();
+})(jQuery);
+</script>
+
+</body>
+</html>

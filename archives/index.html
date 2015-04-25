@@ -72,6 +72,89 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2015-04-25T08:35:15.000Z"><a href="/2015/04/25/build-up-a-tiny-lock-service/">04-25-2015</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2015/04/25/build-up-a-tiny-lock-service/">构建一个简易的中心化锁服务</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h2 id="为什么需要锁服务？">为什么需要锁服务？</h2>
+<p>有时候，在分布式系统中，不同的服务实例需要操作同一份资源，所以我们需要一套机制保证对该资源并发操作的数据一致性。</p>
+<p>最通常的做法，就是lock。各个服务在操作资源之前，首先lock住该资源，处理完成之后在释放lock。也就是说，我们通过lock使得并行操作串行化，保证了资源的数据一致性。</p>
+<h2 id="为什么要实现重新实现一个？">为什么要实现重新实现一个？</h2>
+<p>虽然现在有很多不错的锁服务实现，譬如基于Zookeeper，Etcd，甚至Redis，但这里我仍然想自己实现一个简易的lock服务，主要有以下几点原因：</p>
+<h3 id="Multi_Lock">Multi Lock</h3>
+<p>同时获取多个lock，有时候我们想同时对多个资源进行操作，所以需要多把lock，但是无论是Zookeeper还是Redis，我们都需要对其进行多次调用，影响整体性能。</p>
+<h3 id="Hierarchical_Lock">Hierarchical Lock</h3>
+<p>支持hierarchical lock，我称之为path lock，我们的系统是有类似文件夹的概念的，假设现在我们需要往文件夹a/b/c下面增加一个文件，我们就必须得保证另一个进程不会同时操作该文件夹以及其祖先和后继（譬如删除a，或者a/b，或者也往a/b/c下面增加文件），但是允许操作其兄弟（譬如在a/b/d下面增加文件）。</p>
+<p>仍然是上面那个例子，假设我们需要操作a/b/c，首先我们需要对a加read lock，然后对a/b加read lock，最后在对a/b/c加write lock，如果这个通过Zookeeper来实现，真心很麻烦，而且性能存疑。</p>
+<h2 id="TLock">TLock</h2>
+<p>tlock是一个简单的中心化lock service，现阶段为了性能没有High Availability支持，所以如果当掉了后果还是有点严重的。:-)</p>
+<p>tlock支持两种模式，key和path，key就是最通常的对某个资源进行操作，而path则是我上面说的Hierarchical Lock。同时tlock支持Multi Lock。</p>
+<p>tlock提供Restful API以及RESP(Redis Serialization Protocol) API，所以你可以通过任意HTTP客户端或者Redis客户端使用。</p>
+<p>一个简单的HTTP例子：</p>
+<pre><code>// shell1
+
+// 同时lock a，b，c三个资源，如果30s之后仍没lock成功，返回超时错误
+// 返回lockid供后续unlock使用
+POST http://localhost/lock?names=a,b,c&amp;type=key&amp;timeout=30
+
+// Unlock
+DELETE http://localhost/lock?id=lockid
+
+// shell2
+POST http://localhost/lock?names=a,b,c&amp;type=key&amp;timeout=30
+
+DELETE http://localhost/lock?id=lockid
+</code></pre><p>一个简单的RESP例子：</p>
+<pre><code># shell1 redis-cli
+redis&gt;LOCK abc TYPE key TIMEOUT 10
+redis&gt;lockid
+redis&gt;UNLOCK lockid
+redis&gt;OK
+
+# shell2 redis-cli 
+redis&gt;LOCK abc TYPE key TIMEOUT 10
+// 一直挂起直到shell1 unlock 
+redis&gt;lockid
+redis&gt;UNLOCK lockid
+redis&gt;OK
+</code></pre><p>tlock同时提供了RESP的客户端：</p>
+<pre><code>import &quot;github.com/siddontang/tlock&quot;
+
+client := NewRESPClient(addr)
+locker, _ := client.GetLocker(&quot;key&quot;, &quot;abc&quot;)
+locker.Lock()
+locker.Unlock()
+</code></pre><h2 id="Todo">Todo</h2>
+<p>可以看到，tlock是一个非常简单的服务，虽然是一个单点并且没有HA支持，但是已经能满足我们项目的需求，毕竟我们只是需要一个简单的锁服务。</p>
+<p>后续，我可能会基于Zookeeper尝试实现path lock，虽然这样HA能够保证，但是性能怎样，到时候压测了再说吧。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2015-03-28T08:48:35.000Z"><a href="/2015/03/28/dive-into-mysql-replication/">03-28-2015</a></time>
       
       
@@ -1204,104 +1287,6 @@ CMD [&quot;/start.sh&quot;]
 <h2 id="后记">后记</h2>
 <p>总的来说，Docker还是很容易上手的，只要我们熟悉了它的命令，Dockerfile的编写以及相应的运行机制，就能很方便的用Docker来进行团队的持续集成开发。而在生产环境中使用Docker，笔者还没有相关的经验，没准后续私有云会采用Docker进行部署。</p>
 <p>后续，对于多个Container的交互，以及服务发现，扩容等，笔者也还需要好好研究，CoreOS没准是一个方向，或者研究下<a href="https://github.com/coreos/rocket" target="_blank" rel="external">rocket</a> :-)</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2015-01-03T13:20:27.000Z"><a href="/2015/01/03/mysql-ha/">01-03-2015</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2015/01/03/mysql-ha/">MySQL高可用浅析</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>对于多数应用来说，MySQL都是作为最关键的数据存储中心的，所以，如何让MySQL提供HA服务，是我们不得不面对的一个问题。当master当机的时候，我们如何保证数据尽可能的不丢失，如何保证快速的获知master当机并进行相应的故障转移处理，都是需要我们好好思考的。这里，笔者将结合这段时间做的MySQL proxy以及toolsets相关工作，说说我们现阶段以及后续会在项目中采用的MySQL HA方案。</p>
-<h2 id="Replication">Replication</h2>
-<p>要保证MySQL数据不丢失，replication是一个很好的解决方案，而MySQL也提供了一套强大的replication机制。只是我们需要知道，为了性能考量，replication是采用的asynchronous模式，也就是写入的数据并不会同步更新到slave上面，如果这时候master当机，我们仍然可能会面临数据丢失的风险。</p>
-<p>为了解决这个问题，我们可以使用semi-synchronous replication，semi-synchronous replication的原理很简单，当master处理完一个事务，它会等待至少一个支持semi-synchronous的slave确认收到了该事件并将其写入relay-log之后，才会返回。这样即使master当机，最少也有一个slave获取到了完整的数据。</p>
-<p>但是，semi-synchronous并不是100%的保证数据不会丢失，如果master在完成事务并将其发送给slave的时候崩溃，仍然可能造成数据丢失。只是相比于传统的异步复制，semi-synchronous replication能极大地提升数据安全。更为重要的是，它并不慢，MHA的作者都说他们在facebook的生产环境中使用了semi-synchronous（<a href="http://yoshinorimatsunobu.blogspot.ca/2014/04/semi-synchronous-replication-at-facebook.html" target="_blank" rel="external">这里</a>），所以我觉得真心没必要担心它的性能问题，除非你的业务量级已经完全超越了facebook或者google。</p>
-<p>如果真的想完全保证数据不会丢失，现阶段一个比较好的办法就是使用<a href="http://galeracluster.com/" target="_blank" rel="external">gelera</a>，一个MySQL集群解决方案，它通过同时写三份的策略来保证数据不会丢失。笔者没有任何使用gelera的经验，只是知道业界已经有公司将其用于生产环境中，性能应该也不是问题。但gelera对MySQL代码侵入性较强，可能对某些有代码洁癖的同学来说不合适了:-)</p>
-<p>我们还可以使用<a href="http://drbd.linbit.com/" target="_blank" rel="external">drbd</a>来实现MySQL数据复制，MySQL官方文档有一篇文档有详细<a href="http://dev.mysql.com/doc/refman/5.6/en/ha-drbd.html" target="_blank" rel="external">介绍</a>，但笔者并未采用这套方案，MHA的作者写了一些采用drdb的问题，<a href="https://code.google.com/p/mysql-master-ha/wiki/Other_HA_Solutions#Pacemaker_+_DRBD" target="_blank" rel="external">在这里</a>，仅供参考。</p>
-<p>在后续的项目中，笔者会优先使用semi-synchronous replication的解决方案，如果数据真的非常重要，则会考虑使用gelera。</p>
-<h2 id="Monitor">Monitor</h2>
-<p>前面我们说了使用replication机制来保证master当机之后尽可能的数据不丢失，但是我们不能等到master当了几分钟才知道出现问题了。所以一套好的监控工具是必不可少的。</p>
-<p>当master当掉之后，monitor能快速的检测到并做后续处理，譬如邮件通知管理员，或者通知守护程序快速进行failover。</p>
-<p>通常，对于一个服务的监控，我们采用keepalived或者heartbeat的方式，这样当master当机之后，我们能很方便的切换到备机上面。但他们仍然不能很即时的检测到服务不可用。笔者的公司现阶段使用的是keepalived的方式，但后续笔者更倾向于使用zookeeper来解决整个MySQL集群的monitor以及failover。</p>
-<p>对于任何一个MySQL实例，我们都有一个对应的agent程序，agent跟该MySQL实例放到同一台机器上面，并且定时的对MySQL实例发送ping命令检测其可用性，同时该agent通过ephemeral的方式挂载到zookeeper上面。这样，我们可以就能知道MySQL是否当机，主要有以下几种情况：</p>
-<ol>
-<li>机器当机，这样MySQL以及agent都会当掉，agent与zookeeper连接自然断开</li>
-<li>MySQL当掉，agent发现ping不通，主动断开与zookeeper的连接</li>
-<li>Agent当掉，但MySQL未当</li>
-</ol>
-<p>上面三种情况，我们都可以认为MySQL机器出现了问题，并且zookeeper能够立即感知。agent与zookeeper断开了连接，zookeeper触发相应的children changed事件，监控到该事件的管控服务就可以做相应的处理。譬如如果是上面前两种情况，管控服务就能自动进行failover，但如果是第三种，则可能不做处理，等待机器上面crontab或者supersivord等相关服务自动重启agent。</p>
-<p>使用zookeeper的好处在于它能很方便的对整个集群进行监控，并能即时的获取整个集群的变化信息并触发相应的事件通知感兴趣的服务，同时协调多个服务进行相关处理。而这些是keepalived或者heartbeat做不到或者做起来太麻烦的。</p>
-<p>使用zookeeper的问题在于部署起来较为复杂，同时如果进行了failover，如何让应用程序获取到最新的数据库地址也是一个比较麻烦的问题。</p>
-<p>对于部署问题，我们要保证一个MySQL搭配一个agent，幸好这年头有了docker，所以真心很简单。而对于第二个数据库地址更改的问题，其实并不是使用了zookeeper才会有的，我们可以通知应用动态更新配置信息，或者使用proxy来解决。</p>
-<p>虽然zookeeper的好处很多，但如果你的业务不复杂，譬如只有一个master，一个slave，zookeeper可能并不是最好的选择，没准keepalived就够了。</p>
-<h2 id="Failover">Failover</h2>
-<p>通过monitor，我们可以很方便的进行MySQL监控，同时在MySQL当机之后通知相应的服务做failover处理，假设现在有这样的一个MySQL集群，a为master，b，c为其slave，当a当掉之后，我们需要做failover，那么我们选择b，c中的哪一个作为新的master呢？</p>
-<p>原则很简单，哪一个slave拥有最近最多的原master数据，就选哪一个作为新的master。我们可以通过<code>show slave status</code>这个命令来获知哪一个slave拥有最新的数据。我们只需要比较两个关键字段<code>Master_Log_File</code>以及<code>Read_Master_Log_Pos</code>，这两个值代表了slave读取到master哪一个binlog文件的哪一个位置，binlog的索引值越大，同时pos越大，则那一个slave就是能被提升为master。这里我们不讨论多个slave可能会被提升为master的情况。</p>
-<p>在前面的例子中，假设b被提升为master了，我们需要将c重新指向新的master b来开始复制。我们通过<code>CHANGE MASTER TO</code>来重新设置c的master，但是我们怎么知道要从b的binlog的哪一个文件，哪一个position开始复制呢？</p>
-<h3 id="GTID">GTID</h3>
-<p>为了解决这一个问题，MySQL 5.6之后引入了GTID的概念，即uuid:gid，uuid为MySQL server的uuid，是全局唯一的，而gid则是一个递增的事务id，通过这两个东西，我们就能唯一标示一个记录到binlog中的事务。使用GTID，我们就能非常方便的进行failover的处理。</p>
-<p>仍然是前面的例子，假设b此时读取到的a最后一个GTID为<code>3E11FA47-71CA-11E1-9E33-C80AA9429562:23</code>，而c的为<code>3E11FA47-71CA-11E1-9E33-C80AA9429562:15</code>，当c指向新的master b的时候，我们通过GTID就可以知道，只要在b中的binlog中找到GTID为<code>3E11FA47-71CA-11E1-9E33-C80AA9429562:15</code>这个event，那么c就可以从它的下一个event的位置开始复制了。虽然查找binlog的方式仍然是顺序查找，稍显低效暴力，但比起我们自己去猜测哪一个filename和position，要方便太多了。</p>
-<p>google很早也有了一个<a href="https://code.google.com/p/google-mysql-tools/wiki/GlobalTransactionIds" target="_blank" rel="external">Global Transaction ID</a>的补丁，不过只是使用的一个递增的整形，<a href="https://github.com/siddontang/ledisdb" target="_blank" rel="external">LedisDB</a>就借鉴了它的思路来实现failover，只不过google貌似现在也开始逐步迁移到MariaDB上面去了。</p>
-<p>MariaDB的GTID实现跟MySQL 5.6是不一样的，这点其实比较麻烦，对于我的MySQL工具集<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>来说，意味着要写两套不同的代码来处理GTID的情况了。后续是否支持MariaDB再看情况吧。</p>
-<h3 id="Pseudo_GTID">Pseudo GTID</h3>
-<p>GTID虽然是一个好东西，但是仅限于MySQL 5.6+，当前仍然有大部分的业务使用的是5.6之前的版本，笔者的公司就是5.5的，而这些数据库至少长时间也不会升级到5.6的。所以我们仍然需要一套好的机制来选择master binlog的filename以及position。</p>
-<p>最初，笔者打算研究<a href="https://code.google.com/p/mysql-master-ha/" target="_blank" rel="external">MHA</a>的实现，它采用的是首先复制relay log来补足缺失的event的方式，但笔者不怎么信任relay log，同时加之MHA采用的是perl，一个让我完全看不懂的语言，所以放弃了继续研究。</p>
-<p>幸运的是，笔者遇到了<a href="https://github.com/outbrain/orchestrator" target="_blank" rel="external">orchestrator</a>这个项目，这真的是一个非常神奇的项目，它采用了一种<a href="http://code.openark.org/blog/mysql/refactoring-replication-topology-with-pseudo-gtid" target="_blank" rel="external">Pseudo GTID</a>的方式，核心代码就是这个</p>
-<pre><code>create database if not exists meta;
-
-drop event if exists meta.create_pseudo_gtid_view_event;
-
-delimiter ;;
-create event if not exists
-  meta.create_pseudo_gtid_view_event
-  on schedule every 10 second starts current_timestamp
-  on completion preserve
-  enable
-  do
-    begin
-      set @pseudo_gtid := uuid();
-      set @_create_statement := concat(&#39;create or replace view meta.pseudo_gtid_view as select \&#39;&#39;, @pseudo_gtid, &#39;\&#39; as pseudo_gtid_unique_val from dual&#39;);
-      PREPARE st FROM @_create_statement;
-      EXECUTE st;
-      DEALLOCATE PREPARE st;
-    end
-;;
-
-delimiter ;
-
-set global event_scheduler := 1;
-</code></pre><p>它在MySQL上面创建了一个事件，每隔1s，就将一个uuid写入到一个view里面，而这个是会记录到binlog中的，虽然我们仍然不能像GTID那样直接定位到一个event，但也能定位到一个1s的区间了，这样我们就能在很小的一个区间里面对比两个MySQL的binlog了。</p>
-<p>继续上面的例子，假设c最后一次出现uuid的位置为s1，我们在b里面找到该uuid，位置为s2，然后依次对比后续的event，如果不一致，则可能出现了问题，停止复制。当遍历到c最后一个binlog event之后，我们就能得到此时b下一个event对应的filename以及position了，然后让c指向这个位置开始复制。</p>
-<p>使用Pseudo GTID需要slave打开<code>log-slave-update</code>的选项，考虑到GTID也必须打开该选项，所以个人感觉完全可以接受。</p>
-<p>后续，笔者自己实现的failover工具，将会采用这种Pseudo GTID的方式实现。</p>
-<p>在《MySQL High Availability》这本书中，作者使用了另一种GTID的做法，每次commit的时候，需要在一个表里面记录gtid，然后就通过这个gtid来找到对应的位置信息，只是这种方式需要业务MySQL客户端的支持，笔者不很喜欢，就不采用了。</p>
-<h2 id="后记">后记</h2>
-<p>MySQL HA一直是一个水比较深的领域，笔者仅仅列出了一些最近研究的东西，有些相关工具会尽量在<a href="https://github.com/siddontang/go-mysql" target="_blank" rel="external">go-mysql</a>中实现。</p>
 
       
     </div>
