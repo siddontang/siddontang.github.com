@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>http://siddontang.com/2015/05/03/use-hashicorp-raft-to-build-a-redis-sentinel/</loc>
+    <lastmod>2015-05-03T02:56:41.000Z</lastmod>
+  </url>
+  
+  <url>
     <loc>http://siddontang.com/2015/04/25/build-up-a-tiny-lock-service/</loc>
     <lastmod>2015-04-25T08:35:54.000Z</lastmod>
   </url>

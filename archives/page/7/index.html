@@ -72,6 +72,143 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2013-12-28T08:46:53.000Z"><a href="/2013/12/28/learn-tornado-asynchronous/">12-28-2013</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2013/12/28/learn-tornado-asynchronous/">学习Tornado：异步</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="why_asynchronous">why asynchronous</h1>
+<p>tornado是一个异步web framework，说是异步，是因为tornado server与client的网络交互是异步的，底层基于io event loop。但是如果client请求server处理的handler里面有一个阻塞的耗时操作，那么整体的server性能就会下降。</p>
+<pre><code>def MainHandler(tornado.web.RequestHandler):
+    def get(self):
+        client = tornado.httpclient.HttpClient()
+        response = client.fetch(&quot;http://www.google.com/&quot;)
+        self.write(&#39;Hello World&#39;)
+</code></pre><p>在上面的例子中，tornado server的整体性能依赖于访问google的时间，如果访问google的时间比较长，就会导致整体server的阻塞。所以，为了提升整体的server性能，我们需要一套机制，使得handler处理都能够通过异步的方式实现。</p>
+<p>幸运的是，tornado提供了一套异步机制，方便我们实现自己的异步操作。当handler处理需要进行其余的网络操作的时候，tornado提供了一个async http client用来支持异步。</p>
+<pre><code>def MainHandler(tornado.web.RequestHandler):
+    @tornado.web.asynchronous
+    def get(self):
+        client = tornado.httpclient.AsyncHTTPClient()
+        def callback(response):
+            self.write(&quot;Hello World&quot;)
+            self.finish()
+
+        client.fetch(&quot;http://www.google.com/&quot;, callback)
+</code></pre><p>上面的例子，主要有几个变化：</p>
+<ul>
+<li>使用asynchronous decorator，它主要设置_auto_finish为false，这样handler的get函数返回的时候tornado就不会关闭与client的连接。</li>
+<li>使用AsyncHttpClient，fetch的时候提供callback函数，这样当fetch http请求完成的时候才会去调用callback，而不会阻塞。</li>
+<li>callback调用完成之后通过finish结束与client的连接。</li>
+</ul>
+<h1 id="asynchronous_flaw">asynchronous flaw</h1>
+<p>异步操作是一个很强大的操作，但是它也有一些缺陷。最主要的问题就是在于callback导致了代码逻辑的拆分。对于程序员来说，同步顺序的想法是一个很自然的习惯，但是异步打破了这种顺序性，导致代码编写的困难。这点，对于写nodejs的童鞋来说，可能深有体会，如果所有的操作都是异步，那么最终我们的代码可能写成这样:</p>
+<pre><code>def MainHandler(tornado.web.RequestHandler):
+    @tornado.web.asynchronous
+    def get(self):
+        client = tornado.httpclient.AsyncHTTPClient()
+        def callback1(response):
+
+            def callback2(response):
+                self.write(&quot;Hello World&quot;)
+                self.finish()
+            client.fetch(&quot;http://www.google.com&quot;, callback2)
+
+        client.fetch(&quot;http://www.google.com/&quot;, callback1)
+</code></pre><p>也就是说，我们可能会写出callback嵌套callback的情况，这个极大的会影响代码的阅读与流程的实现。</p>
+<h1 id="synchronous">synchronous</h1>
+<p>我个人认为，异步拆散了代码流程这个问题不大，毕竟如果一个逻辑需要过多的嵌套callback来实现的话，那么我们就需要考虑这个逻辑是否合理了，所以异步一般也不会有过多的嵌套层次。</p>
+<p>虽然我认为异步的callback问题不大，但是如果仍然能够有一套机制，使得异步能够顺序化，那么对于代码逻辑的编写来说，会方便很多。tornado有一些机制来实现。</p>
+<h2 id="yield">yield</h2>
+<p>在python里面如果一个函数内部实现了yield，那么这个函数就不是函数了，而是一个生成器，它的整个运行机制也跟普通函数不一样，举一个例子:</p>
+<pre><code>def test_yield():
+    print &#39;yield 1&#39;
+    a = yield &#39;yielded&#39;
+    print &#39;over&#39;, a
+
+t = test_yield()
+print &#39;main&#39;, type(t)
+ret = t.send(None)
+print ret
+try:
+    t.send(&#39;hello yield&#39;)
+except StopIteration:
+    print &#39;yield over&#39;
+</code></pre><p>输出结果如下：</p>
+<pre><code>main &lt;type &#39;generator&#39;&gt;
+yield 1
+yielded
+over hello yield
+yield over
+</code></pre><p>从上面可以看到，test_yield是一个生成器，当它第一次调用的时候，只是生成了一个Generator，不会执行。当第一次调用send的时候，生成器被resume，开始执行，然后碰到yield，就挂起，等待下一次被send唤醒。当生成器执行完毕，会抛出StopIteration异常，供外部send的地方知晓。</p>
+<p>因为yield很方便的提供了一套函数挂起，运行的机制，所以我们能够通过yield来将原本是异步的流程变成同步的。</p>
+<h2 id="gen">gen</h2>
+<p>tornado有一个gen模块，提供了Task和Callback/Wait机制用来支持同步模型，以task为例：</p>
+<pre><code>def MainHandler(tornado.web.RequestHandler):
+    @tornado.web.asynchronous
+    @tornado.gen.engine
+    def get(self):
+        client = tornado.httpclient.AsyncHTTPClient()
+        response = yield tornado.gen.Task(client.fetch, &quot;http://www.google.com/&quot;)
+        self.write(&quot;Hello World&quot;)
+        self.finish()
+</code></pre><p>可以看到，tornado的gen模块就是通过yield来进行同步化的。主要有如下需要注意的地方：</p>
+<ul>
+<li>使用gen.engine的decorator，该函数主要就是用来管理generator的流程控制。</li>
+<li>使用了gen.Task，在gen.Task内部，会生成一个callback函数，传给async fetch，并执行fetch，因为fetch是一个异步操作，所以会很快返回。</li>
+<li>在gen.Task返回之后使用yield，挂起</li>
+<li>当fetch的callback执行之后，唤醒挂起的流程继续执行。</li>
+</ul>
+<p>可以看到，使用gen和yield之后，原先的异步逻辑变成了同步流程，在代码的阅读性上面就有不错的提升，不过对于不熟悉yield的童鞋来说，开始反而会很迷惑，不过只要理解了yield，那就很容易了。</p>
+<h2 id="greenlet">greenlet</h2>
+<p>虽然yield很强大，但是它只能挂起当前函数，而无法挂起整个堆栈，这个怎么说呢，譬如我想实现下面的功能:</p>
+<pre><code>def a():
+    yield 1
+
+def b():
+    a()
+
+t = b()
+t.send(None)
+</code></pre><p>这个通过yield是无法实现的，也就是说，a里面使用yield，它是一个生成器，但是a的挂起无法将b也同时挂起。也就是说，我们需要一套机制，使得堆栈在任何地方都能够被挂起和恢复，能方便的进行栈切换，而这套机制就是coroutine。</p>
+<p>最开始使用coroutine是在lua里面，它原生提供了coroutine的支持。然后在使用luajit的时候，发现内部是基于fiber(win)和context(unix)，也就是说，不光lua，其实c/c++我们也能实现coroutine。现在研究了go，也是内置coroutine，并且这里极力推荐一篇<a href="http://concur.rspace.googlecode.com/hg/talk/concur.html#table-of-contents" target="_blank" rel="external">slide</a>。</p>
+<p>python没有原生提供coroutine，不知道以后会不会有。但有一个greenlet，能帮我们实现coroutine机制。而且还有人专门写好了tornado与greenlet结合的模块，叫做<a href="https://github.com/mopub/greenlet-tornado" target="_blank" rel="external">greenlet_tornado</a>，使用也很简单</p>
+<pre><code>class MainHandler(tornado.web.RequestHandler):
+    @greenlet_asynchronous
+    def get(self):
+        response = greenlet_fetch(&#39;http://www.google.com&#39;)
+        self.write(&quot;Hello World&quot;)
+        self.finish()
+</code></pre><p>可以看到，使用greenlet，能更方便的实现代码逻辑，这点比使用gen更方便，因为这些连写代码的童鞋都不用去纠结yield问题了。</p>
+<h1 id="总结">总结</h1>
+<p>这里只是简单的介绍了tornado的一些异步处理流程，以及将异步同步化的一些方法。另外，这里举得例子都是网络http请求方面的，但是server处理请求的时候，可能还需要进行数据库，本地文件的操作，而这些也是同步阻塞耗时操作，同样可以通过异步来解决的，这里就不详细说明了。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2013-12-28T08:33:15.000Z"><a href="/2013/12/28/learn-tornado-security/">12-28-2013</a></time>
       
       
@@ -871,147 +1008,6 @@ md.hexdigest()
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2013-05-05T13:23:20.000Z"><a href="/2013/05/05/think-for-web-server-architecture/">05-05-2013</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2013/05/05/think-for-web-server-architecture/">关于web服务器架构的思考</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>笔者最近一年都在从事企业私有云存储的开发，主导并推动了服务器架构的重构。在架构演化的过程中，有了很多的心得体会，这里记录一下，算是对自己架构成长的一个总结。 </p>
-<h2 id="原则">原则</h2>
-<p>对于笔者来说，设计一个web服务器架构方案，最先考虑的就是简单以及可扩展性。而这两个也是笔者设计架构的首要原则。</p>
-<h3 id="简单">简单</h3>
-<p>对于一个企业级web产品来说，它其实是由非常多的基础服务来组合起来的。以私有云产品来说，如果想实现一个简单的文件共享功能，至少需要共享服务，文件服务，账号服务三个服务来共同实现。</p>
-<ul>
-<li>共享服务，用来管理文件共享关系，如用户A给用户B共享了一个文件abc.txt</li>
-<li>文件服务，用来提供共享文件下载，如用户B需要在哪里以及如何下载abc.txt这个文件</li>
-<li>账号服务，用来提供共享人员的相关信息，如用户A和B的账号，姓名等信息</li>
-</ul>
-<p>上面三个服务，缺少了任何一个都不能实现共享功能。但是为了实现一个功能就要与3个服务进行交互，有些童鞋就觉得非常麻烦，简单起见，他们将其糅合在一起，这样就能很好的进行代码编写了。但是这样做的弊端也非常明显，可维护性非常的差，因为功能都是耦合在一起了，如果这时候我们想用另一套企业自己的账号数据，那么完全无法实现。</p>
-<p>上面说的只是笔者列举的一个例子，实际项目中，共享功能还是很好的进行了切分，但是仍然有很多功能过于耦合，以至于笔者的团队在很长的一段时间里面都在为以前的某些童鞋的错误设计买单。</p>
-<p>鉴于有了上面的经验教训，笔者在考虑架构方案的时候最先想的就是<strong>简单</strong>。 </p>
-<p>所谓简单，其实很好理解，就是一个服务就干一件事情，不同的功能逻辑别糅在一个服务里面实现。更上层的服务是通过集成底层的服务来实现。其实这个就跟程序设计里面模块化的思想一样，只不过这里的模块就是单个服务。</p>
-<p>一个服务一个模块，好处是很多的，但也不可能100%的完美，仍然很多问题需要考虑，譬如：</p>
-<ul>
-<li>服务的可用性问题，如何判断一个服务是否可用，以及当机服务的恢复。</li>
-<li>服务的运维管理问题，系统可能随着功能的增多而有了太多的服务，对这些服务的监控管理就是一个很难的问题，毕竟每个人都不希望凌晨因为服务当掉了这些问题被电话叫醒。</li>
-</ul>
-<p>上面的这些问题，笔者认为已经涉及到服务的高可用问题了，与是否采用简单服务方案无关。而对于服务的高可用，分布式这些问题，笔者反而认为在简单这个原则下面，反而能更好的处理解决。</p>
-<h3 id="可扩展性">可扩展性</h3>
-<p>对于大规模web系统来说，随时可能面临着突然大并发量访问而造成系统负载撑不住的问题。对于这种情况，我们就需要扩展我们的系统使其能够处理过载的情况。</p>
-<p>对于web系统的扩展，通常采用横向扩展的方式，当某一个服务出现性能瓶颈，我们只需要动态增加该服务就能减轻过载问题。因为服务是可以动态进行横向扩展的，所以服务提供的功能都应该是<strong>状态无关</strong>的。所谓无状态性，就是每一次服务器的请求都应该是独立的，如果服务是有状态的，为了维护调用的状态，我们会做非常多的事情，这非常不利于扩展，同时也增加了系统的复杂性。</p>
-<h2 id="stars">stars</h2>
-<p>stars是私有云项目开始的时候葱头写的一套web服务器框架。</p>
-<p>在项目开始的时候，大部分的开发同学都没有web服务器开发的经验，为了解决这个问题，葱头设计了stars，使得大家能够非常的使用python进行web服务器的开发。stars有很多设计巧妙以及值得学习的地方。虽然现在看来有些设计无法满足现有的需求。但是笔者一直认为<strong>没有最好的架构，只有合适的架构</strong>，作为一个架构师，即使你考虑了很多后续扩展的问题，但是仍然有一些需求变化是你考虑不到的。</p>
-<h3 id="rpc">rpc</h3>
-<p>stars最大的特点，就在于封装了复杂的http调用，使得开发的同学不需要关注底层http知识。而做到这一点，就是将http的调用封装变成了大家熟悉的函数调用RPC。譬如我们有如下的一个http请求：</p>
-<pre><code>http://domain.com/file/getFileInfo?fileId=1
-</code></pre><p>该HTTP请求获取一个fileId为1的文件相关信息，在stars里面，我们可以这样写：</p>
-<pre><code>remote = RPC(&quot;domain.com&quot;)
-remote.file.getFileInfo(fileId = 1)
-</code></pre><p>而stars不光封装了http调用，同时为了方便大家的开发，也定义了一套API规范，只要大家写的API满足一定规则，就自动能够被注册到stars里面，这样外面就能使用RPC来调用。</p>
-<p>对于web服务API的模式，笔者认为，通常有RPC以及Restful等几种方式：</p>
-<pre><code>RPC Pattern:
-GET http://domain.com/file/getFileInfo?fileId=1
-GET http://domain.com/file/deleteFile?fileId=1
-
-Restful Pattern:
-GET http://domain.com/file/1
-DELETE http://domain.com/file/1
-</code></pre><p>stars采用的是RPC Pattern，对于这种模式，它对于开发同学很好理解，因为它就跟普通的函数调用一样，使用起来则比较自然。反而Restful Pattern则对于开发同学不怎么好理解。只是随着现今系统规模的扩大，笔者越发觉得stars遇到了问题：</p>
-<ul>
-<li>每实现一个功能，就新增一个API，导致API越来越多，管理越来越复杂。</li>
-<li>第三方开发者难于对接。API过多，开发者不知道如何使用哪些API。</li>
-</ul>
-<p>对于这种情况，可能Restful是一个很好的解决方案，如果有机会，笔者可能会在后续的新的项目中考虑实施。</p>
-<h3 id="stub">stub</h3>
-<p>对于web服务来说，如何信任客户端的HTTP请求？如何高效的与客户端进行交互？这些都是需要考虑的问题。stars采用了stub方式，在高效交互的情况下也能保证不错的安全性。</p>
-<ul>
-<li>客户端首先通过username + password的方式登陆系统，使用https协议保证其安全性。</li>
-<li>登陆成功之后，服务器会下发一个stub作为后续客户端与服务器交互的凭证。</li>
-<li>客户端的任何HTTP请求都需要带上stub。</li>
-<li>stub不会一直有效，一段时间之后过期，客户端需要重新请求申请新的stub。</li>
-</ul>
-<p>因为使用了stub，客户端与服务器能高效的交互，但是stub有如下问题：</p>
-<ul>
-<li>因为每次请求都会带上stub，只要该stub被外部截获，那么就可能伪装成该用户进行访问了。所以stub在很短的一段时间之后就会过期，但即使过期也仍然有风险。</li>
-<li>stub是放到url的请求参数上面传递给服务器的，即使采用HTTPS方式，该stub也能在浏览器上面看到，无法保证安全。</li>
-<li>stub放置在web服务一个总控服务的内存中，无持久化策略，只要该服务重启，先前所有的stub都会失效。</li>
-<li>每个服务一个stub，随着服务的增多，客户需要关注过多的stub管理。</li>
-<li>对于服务的任何HTTP请求，都需要在该服务对应的总控服务中进行stub验证，造成单点问题。</li>
-</ul>
-<p>可以看到，stub虽然提供了很好的与web服务交互的方式，但是在web系统规模扩大之后，不利于后续的扩展，安全性也有漏洞。</p>
-<h3 id="信任链">信任链</h3>
-<p>stars另一个设计巧妙的地方在于其信任链机制。实际会遇到如下情况，假设现在客户端已经生成了一个服务的stub，可以与该服务交互，但这时候客户端需要访问另一个服务的某个API，可是这时候没有该服务的stub，那如何处理呢？</p>
-<p>信任链机制其实就是这样一种情况，服务相互之间是可信任的，因为这些服务都是我们部署的，同时我们也可以通过很多其他方法保证可信任。</p>
-<p>当客户端与服务A建立信任之后，如果客户端想访问服务B，客户端可以通过A向B申请一个stub，这样就可以通过该stub访问服务B。</p>
-<h2 id="resty">resty</h2>
-<p>通过上面可以看到，stars架构是项目初期为了解决服务器快速开发等问题而提出的一套实现方案，当web系统越来越复杂的时候，stars就有了一些局限性，这时候就需要有另一套架构来满足现有的情况。</p>
-<p>对于新架构的选择，笔者决定从如下几个方面考虑：</p>
-<ul>
-<li>吸收stars精华，以其为基础演化，而不是完全重来。架构可能跟进化论一样，是不断进化的。而推倒重来，就如同突然基因突变一样，你自认为变好了，没准可能更差。</li>
-<li>平滑升级，系统已经部署到很多企业里面，如何保证升级的平稳，以及升级数据的完整性，都是我们需要面临的问题。</li>
-<li>简单，参考业界最通用的解决方案，不需要引入复杂的自造轮子。</li>
-</ul>
-<h3 id="签名">签名</h3>
-<p>为了解决stars stub相关问题，笔者认为可以采用最通用的HTTP签名机制。</p>
-<ul>
-<li>客户端使用username + password登陆成功之后，服务器下发一对id和key，因为登陆采用HTTPS方式，所以id和key不会被外部截获。</li>
-<li>客户端发送HTTP请求，使用key对其签名，并带上id一起发送给服务器。</li>
-<li>任何外部的HTTP请求，首先会通过验证服务器对其验证，如果验证通过，则证明是一个合法的url。</li>
-<li>验证通过之后，系统将会把HTTP请求路由到实际处理的服务上处理。</li>
-</ul>
-<p>url签名可以算是一种非常通过的安全交互模式，amazon s3，阿里云等云存储服务都使用了该方式。虽然引入验证服务器，增加了处理HTTP请求的时间，但是将验证与逻辑分离解耦，笔者认为更好，同时，后续我们可以通过很多方法优化验证服务。</p>
-<h3 id="原子api">原子api</h3>
-<p>前面说了，stars的RPC模式会导致API越来越多，以至于开发者为了实现一个功能，可能会与多个API进行交互，这明显提升了第三方开发的复杂性。所以笔者提出了原子API的概念，其实就是在服务器级别整合API，使得开发者只需要通过调用简单的API就能实现相应的功能。</p>
-<p>对于如何提供原子级别的API，笔者觉得可以使用如下方法：</p>
-<ul>
-<li>如果某一个功能需要多个API顺序执行，每个API的执行结果都可能影响该功能的最终结果，这样的功能我们就需要提供一个原子API来整合。</li>
-<li>如果某一个功能只是需要调用多个API查询相关数据，那么我们只需要提供批量查询的API即可，不需要提供原子API整合。</li>
-</ul>
-<p>既然引入了原子级别的API，那么在哪里进行整合呢？譬如有一个功能，需要服务A和服务B的API，我们不可能写一个服务C来特意的整合这个功能，这样会导致服务越来越多。所以笔者决定在nginx这一层提供原子API功能的整合。使用nginx的好处在于只需要增多一个location，该location里面进行API的整合。</p>
-<p>不过，为nginx开发一个module去处理这一个location其实也是一件非常困难的事情，虽然nginx的module开发看起来很简单，但是实际做起来会发现非常的复杂。幸运的是，我们有openresty，直接可以使用lua进行nginx的开发。现在我们已经大量在使用openresty，这也是为什么笔者将这次的架构命名为resty的原因。</p>
-<h3 id="统一入口">统一入口</h3>
-<p>stars有一个比较严重的问题，在于各个服务之间都是互相知道地址的，这样就有几个问题：</p>
-<ul>
-<li>对外暴漏的入口地址太多，客户端知道太多的服务地址。</li>
-<li>不利于动态部署，服务之间地址固定，重启某一个服务，相关服务都需要重启。</li>
-</ul>
-<p>为了解决这个问题，笔者决定在nginx这一层做统一入口，所有的服务地址由nginx这边进行管理，这样有如下几个好处：</p>
-<ul>
-<li>地址解耦，配置统一，只有nginx知道所有服务的地址，便于集中管理 </li>
-<li>隔离，服务与服务之间，服务与客户端之间完全隔离 </li>
-<li>动态部署，任何服务的动态变更，只需要nginx处理，该服务的相关服务完全不用重启。</li>
-</ul>
-<h2 id="总结">总结</h2>
-<p>以上只是简单的记录进来服务的架构演化，虽然现有的架构能满足系统的需求，但是没准一段时间之后就又会出现局限性。笔者一直认为，没有最好的架构，只有合适的架构。但是无论怎样，保持简单就可以了。</p>
-<p>版权声明：自由转载-非商用-非衍生-保持署名 <a href="http://creativecommons.org/licenses/by-nc-nd/3.0/deed.zh" target="_blank" rel="external">Creative Commons BY-NC-ND 3.0</a></p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1052,7 +1048,7 @@ DELETE http://domain.com/file/1
   
     <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
   
-    <li><a href="/categories/go/">go</a><small>30</small></li>
+    <li><a href="/categories/go/">go</a><small>31</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   

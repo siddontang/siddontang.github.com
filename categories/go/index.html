@@ -72,6 +72,86 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2015-05-03T02:56:11.000Z"><a href="/2015/05/03/use-hashicorp-raft-to-build-a-redis-sentinel/">05-03-2015</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2015/05/03/use-hashicorp-raft-to-build-a-redis-sentinel/">Use Hashicorp Raft to build a Redis sentinel</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h2 id="Redis_Sentinel">Redis Sentinel</h2>
+<p>We use Redis not only for cache, but also storing important data, and we build up a Master/Slave replication topology to guarantee data security.</p>
+<p>Master/Slave architecture works well, but sometimes we need a more powerful high availability solution. If master is down, we must check this immediately, reselect a new master from the slaves and do failover.</p>
+<p>The official Redis supplies a solution named redis-sentinel, which is very powerful to use. But I still want to build my own sentinel solution, why?</p>
+<ul>
+<li>I want to monitor not only Redis but also LedisDB, maybe other services using Redis serialization Protocol too.</li>
+<li>I want to embed it into xcodis or other go service easily.</li>
+<li>I want to study some consensus algorithms and use them in practice.<br>Sentinel Cluster and Election</li>
+</ul>
+<p>Building a single sentinel application is easy: checking master every second, and do failover when master is down. But if the sentinel is down too, how do we do?</p>
+<p>Using sentinel cluster is a good choice, if one sentinel is down, other sentinel will still work. But let’s consider below scenario, if two sentinels in the cluster both see the master is down, and do failover at same time, sentinel1 may select slave1 as master, but sentinel2 may select slave2 as master, this may be a horrible thing for us.</p>
+<p>A common use way is to elect a leader sentinel in the cluster and let it monitor and do failover. So we need a consensus algorithm helping us do this thing.</p>
+<h2 id="Paxos_and_Raft">Paxos and Raft</h2>
+<p>Paxos may be the most famous consensus algorithm in the world, many companies use it in their distributed system. However, Paxos is very hard to understand and if you write a paxos lib by yourself, you even cann’t testify its correctness easily. Luckly, we have zookeeper, an open source centralized service based on Paxos. We can use zookeeper to manage our clusters like electing a leader.</p>
+<p>Raft was born on 2013 in Stanford, it’s very new but awesome. Raft is easy to understand, everyone reading the Raft paper can write its own Raft implentation easily than Paxos. Now many projects use Raft, like Etcd, InfluxDB, CockroachDB, etc…</p>
+<p>The above projects I list using Raft all use Go, and I will develop my own redis sentinel with Go too, so I decide to use Raft.</p>
+<h2 id="Use_Hashicorp_Raft">Use Hashicorp Raft</h2>
+<p>There are some Go raft projects, but I prefer Hashicorp Raft which is easy to be integrated in other project, and this package is used in Consul product and has already been tested in production environment (maybe!).</p>
+<p>The create raft function declaration is below:</p>
+<pre><code>func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps SnapshotStore, peerStore PeerStore, trans Transport) (*Raft, error)
+</code></pre><p>Although it looks a little complex, it’s still easy to use, we only need do following things:</p>
+<ul>
+<li>Create a configuration using raft own DefaultConfig function. We should know that raft should be used with at least three nodes, but if we just want to try it with only one node, or first start a raft node, than add others later, we must set EnableSingleNode to true.</li>
+<li>Define our own FSM struct, FSM is a state machine applying replicated log, generating point-in-time snapshot, and restoring from a snapshot. In our sentinel, the only data need to care is all Redis masters, whenever we add a master, remove a master or reset all masters, we should let all sentinels know. So my FSM struct is very easy, like below:</li>
+</ul>
+<pre><code>type masterFSM struct {
+    sync.Mutex
+
+    // below holding all Redis master addresses
+    masters map[string]struct{}
+}
+</code></pre><ul>
+<li>Define our own FSMSnapshot struct. In our sentinel, this is a list of masters at some point. The struct like this:</li>
+</ul>
+<pre><code>type masterSnapshot struct {
+    masters []string
+}
+</code></pre><ul>
+<li>Create a log storage storing and retrieving logs and a stable storage storing key configurations. Hashicorp supplies a LMDB lib and a BoltDB lib for both storage, we use BoltDB because of the pure Go implementation.</li>
+<li>Create a snapshot storage saving FSM snapshot, we use raft own NewFileSnapshotStore generating a file saving this.</li>
+<li>Create a peer storage storing all raft nodes, we use raft own NewJSONPeers generating a file saving all nodes with JSON format.</li>
+<li>Create a transport allowing a raft node to communicate with other nodes, we use raft own NewTCPTransport generating a TCP transport.</li>
+</ul>
+<p>After do that, we can create a raft, we can use LeaderCh and Leader function to check whether a raft node is leader or not. Only the leader node can handle operations. If the leader is down, raft can re-elect a new leader.</p>
+<p>You can see the source <a href="https://github.com/siddontang/redis-failover/blob/master/failover/raft.go" target="_blank" rel="external">here</a> for more information.</p>
+<h2 id="Summary">Summary</h2>
+<p>Our redis sentinel is named redis-failover, although it looks a little simple and needs improvement, it still the first trial and later we will use raft in more projects, maybe instead of zookeeper.</p>
+<p>redis-failover: <a href="https://github.com/siddontang/redis-failover" target="_blank" rel="external">https://github.com/siddontang/redis-failover</a></p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2015-02-10T13:39:57.000Z"><a href="/2015/02/10/learn-redis-sort/">02-10-2015</a></time>
       
       
@@ -905,202 +985,6 @@ db.ZCount(key, member1)
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-05-13T05:06:27.000Z"><a href="/2014/05/13/golang-in-procution-review/">05-13-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/05/13/golang-in-procution-review/">Go语言最佳实践</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>最近看了一篇关于go产品开发最佳实践的文章，<a href="http://peter.bourgon.org/go-in-production/" target="_blank" rel="external">go-in-procution</a>。作者总结了他们在用go开发过程中的很多实际经验，我们很多其实也用到了，鉴于此，这里就简单的写写读后感，后续我也争取能将这篇文章翻译出来。后面我用soundcloud来指代原作者。</p>
-<h2 id="开发环境">开发环境</h2>
-<p>在soundcloud，每个人使用一个独立的GOPATH，并且在GOPATH直接按照go规定的代码路径方式clone代码。</p>
-<pre><code>$ mkdir -p $GOPATH/src/github.com/soundcloud
-$ cd $GOPATH/src/github.com/soundcloud
-$ git clone git@github.com:soundcloud/roshi
-</code></pre><p>对于go来说，通常的工程管理应该是如下的目录结构：</p>
-<pre><code>proj/
-    src/
-        modulea/
-            a.go
-        moudleb/
-            b.go
-        app/
-            main.go
-    pkg/
-    bin/
-</code></pre><p>然后我们在GOPATH里面将proj的路径设置上去，这样就可以进行编译运行了。这本来没啥，但是如果我们要将其代码提交到github，并允许另外的开发者使用，我们就不能将整个proj的东西提交上面，如果提交了，就很蛋疼了。外面的开发者可能这么引用：</p>
-<pre><code>import &quot;github.com/yourname/proj/src/modulea&quot;
-</code></pre><p>但是我们自己在代码里面就可以直接：</p>
-<pre><code>import &quot;github.com/yourname/proj/modulea&quot;
-</code></pre><p>如果外面的开发者需要按照去掉src的引用方式，只能把GOPATH设置到proj目录，如果import的多了，会让人崩溃的。</p>
-<p>我曾今也被这事情给折腾了好久，终于再看了vitess的代码之后，发现了上面这种方式，觉得非常不错。</p>
-<h2 id="工程目录结构">工程目录结构</h2>
-<p>如果一个项目中文件数量不是很多，直接放在main包里面就行了，不需要在拆分成多个包了，譬如：</p>
-<pre><code>github.com/soundcloud/simple/
-    README.md
-    Makefile
-    main.go
-    main_test.go
-    support.go
-    support_test.go
-</code></pre><p>如果真的有公共的类库，在拆分成单独的包处理。</p>
-<p>有时候，一个工程可能会包括多个二进制应用。譬如，一个job可能需要一个server，一个worker或者一个janitor，在这种情况下，建立多个子目录作为不同的main包，分别放置不同的二进制应用。同时使用另外的子目录实现公共的函数。</p>
-<pre><code>github.com/soundcloud/complex/
-README.md
-Makefile
-complex-server/
-    main.go
-    main_test.go
-    handlers.go
-    handlers_test.go
-complex-worker/
-    main.go
-    main_test.go
-    process.go
-    process_test.go
-shared/
-    foo.go
-    foo_test.go
-    bar.go
-    bar_test.go
-</code></pre><p>这点我的做法稍微有一点不一样，主要是参考vitess，我喜欢建立一个总的cmd目录，然后再在里面设置不同的子目录，这样外面就不需要猜测这个目录是库还是应用。</p>
-<h2 id="代码风格">代码风格</h2>
-<p>代码风格这没啥好说的，直接使用gofmt解决，通常我们也约定gofmt的时候不带任何其他参数。</p>
-<p>最好将你的编辑器配置成保存代码的时候自动进行gofmt处理。</p>
-<p>Google最近发布了go的<a href="https://code.google.com/p/go-wiki/wiki/CodeReviewComments" target="_blank" rel="external">代码规范</a>，soundcloud做了一些改进：</p>
-<ul>
-<li>避免命名函数返回值，除非能明确的表明含义。</li>
-<li>尽量少用make和new，除非真有必要，或者预先知道需要分配的大小。</li>
-<li>使用struct{}作为标记值，而不是bool或者interface{}。譬如set我们就用map[string]struct{}来实现，而不是map[string]bool。</li>
-</ul>
-<p>如果一个函数有多个参数，并且单行长度很长，需要拆分，最好不用java的方式：</p>
-<pre><code>// Don&#39;t do this.
-func process(dst io.Writer, readTimeout,
-    writeTimeout time.Duration, allowInvalid bool,
-    max int, src &lt;-chan util.Job) {
-    // ...
-}
-</code></pre><p>而是使用：</p>
-<pre><code>func process(
-    dst io.Writer,
-    readTimeout, writeTimeout time.Duration,
-    allowInvalid bool,
-    max int,
-    src &lt;-chan util.Job,
-) {
-    // ...
-}
-</code></pre><p>类似的，当构造一个对象的时候，最好在初始化的时候就传入相关参数，而不是在后面设置：</p>
-<pre><code>f := foo.New(foo.Config{    
-    Site: &quot;zombo.com&quot;,            
-    Out:  os.Stdout,
-    Dest: conference.KeyPair{
-        Key:   &quot;gophercon&quot;,
-        Value: 2014,
-    },
-})
-
-// Don&#39;t do this.
-f := &amp;Foo{} // or, even worse: new(Foo)
-f.Site = &quot;zombo.com&quot;
-f.Out = os.Stdout
-f.Dest.Key = &quot;gophercon&quot;
-f.Dest.Value = 2014
-</code></pre><p>如果一些变量是后续通过其他操作才能获取的，我觉得就可以在后续设置了。</p>
-<h2 id="配置">配置</h2>
-<p>soundcloud使用go的flag包来进行配置参数的传递，而不是通过配置文件或者环境变量。</p>
-<p>flag的配置是在main函数里面定义的，而不是在全局范围内。</p>
-<pre><code>func main() {
-    var (
-        payload = flag.String(&quot;payload&quot;, &quot;abc&quot;, &quot;payload data&quot;)
-        delay   = flag.Duration(&quot;delay&quot;, 1*time.Second, &quot;write delay&quot;)
-    )
-    flag.Parse()
-    // ...
-}
-</code></pre><p>关于使用flag作为配置参数的传递，我持保留意见。如果一个应用需要特别多的配置参数，使用flag比较让人蛋疼了。这时候，使用配置文件反而比较好，我个人倾向于使用json作为配置，原因在<a href="http://blog.csdn.net/siddontang/article/details/23595817" target="_blank" rel="external">这里</a>。</p>
-<h2 id="日志">日志</h2>
-<p>soundcloud使用的是go的log日志，他们也说明了他们的log并不需要太多的其他功能，譬如log分级等。对于log，我参考python的log写了一个，在<a href="https://github.com/siddontang/golib/tree/master/log" target="_blank" rel="external">这里</a>。该log支持log级别，支持自定义loghandler。</p>
-<p>soundcloud还提到了一个telemetry的概念，我真没好的办法进行翻译，据我的了解可能就是程序的信息收集，包括响应时间，QPS，内存运行错误等。</p>
-<p>通常telemetry有两种方式，推和拉。</p>
-<p>推模式就是主动的将信息发送给特定的外部系统，而拉模式则是将其写入到某一个地方，允许外部系统来获取该数据。</p>
-<p>这两种方式都有不同的定位，如果需要及时，直观的看到数据，推模式是一个很好的选择，但是该模式可能会占用过多的资源，尤其是在数据量大的情况下面，会很消耗CPU和带宽。</p>
-<p>soundcloud貌似采用的是拉模型。</p>
-<p>关于这点我是深表赞同，我们有一个服务，需要将其信息发送到一个统计平台共后续的信息，开始的时候，我们使用推模式，每产生一条记录，我们直接通过http推给后面的统计平台，终于，随着压力的增大，整个统计平台被我们发挂了，拒绝服务。最终，我们采用了将数据写到本地，然后通过另一个程序拉取再发送的方式解决。</p>
-<h2 id="测试">测试</h2>
-<p>soundcloud使用go的testing包进行测试，然后也使用flag的方式来进行集成测试，如下：</p>
-<pre><code>// +build integration
-
-var fooAddr = flag.String(...)
-
-func TestToo(t *testing.T) {
-    f, err := foo.Connect(*fooAddr)
-    // ...
-}
-</code></pre><p>因为go test也支持类似go build那种flag传递，它会默认合成一个main package，然后在里面进行flag parse处理。</p>
-<p>这种方式我现在没有采用，我都是在测试用例里面直接写死了一个全局的配置，主要是为了方便的在根目录进行 go test ./…处理。不过使用flag的方式我觉得灵活性很大，后面如果有可能会考虑。</p>
-<p>go的testing包提供的功能并不强，譬如没有提供assert_equal这类东西，但是我们可以通过reflect.DeepEqual来解决。</p>
-<h2 id="依赖管理">依赖管理</h2>
-<p>这块其实也是我非常想解决的。现在我们的代码就是很暴力的用go get来解决依赖问题，这个其实很有风险的，如果某一个依赖包更改了接口，那么我们go get的时候可能会出问题了。</p>
-<p>soundcloud使用了一种vendor的方式进行依赖管理。其实很简单，就是把依赖的东西全部拷贝到自己的工程下面，当做自己的代码来使用。不过这个就需要定期的维护依赖包的更新了。</p>
-<p>如果引入的是一个可执行包，在自己的工程目录下面建立一个_vendor文件夹（这样go的相关tool例如go test就会忽略该文件夹的东西）。把_vendor作为单独的GOPATH，例如，拷贝github.com/user/dep到_vendor/src/github.com/user/dep下面。然后将_vendor加入自己的GOPATH中，如下：</p>
-<pre><code>GO ?= go
-GOPATH := $(CURDIR)/_vendor:$(GOPATH)
-
-all: build
-
-build:
-    $(GO) build
-</code></pre><p>如果引入的是一个库，那么将其放入vendor目录中，将vendor作为package的前缀，例如拷贝github.com/user/dep到vendor/user/dep，并更改所有的相关import语句。</p>
-<p>因为我们并不需要频繁的对这些引入的工程进行go get更新处理，所以大多数时候这样做都很值。</p>
-<p>我开始的时候也采用的是类似的做法，只不过我不叫vendor，而叫做3rd，后来为了方便还是决定改成直接go get，虽然知道这样风险比较大。没准后续使用godep可能是一个不错的解决办法。</p>
-<h2 id="构建和部署">构建和部署</h2>
-<p>soundcloud在开发过程中直接使用go build来构建系统，然后使用一个Makefile来处理正式的构建。</p>
-<p>因为soundcloud主要部署很多无状态的服务，类似Heroku提供了很简单的一种方式：</p>
-<pre><code>$ git push bazooka master
-$ bazooka scale -r &lt;new&gt; -n 4 ...
-$ # validate
-$ bazooka scale -r &lt;old&gt; -n 0 ...
-</code></pre><p>这方面，我们直接使用一个简单的Makefile来构建系统，如下：</p>
-<pre><code>all: build 
-
-build:
-    go install ${SRC}
-
-clean:
-    go clean -i ${SRC}
-
-test:
-    go test ${SRC} 
-</code></pre><p>应用程序的发布采用最原始的scp到目标机器在重启的方式，不过现在正在测试使用salt来发布应用。而对于应用程序的启动，停止这些，我们则使用supervisor来进行管理。</p>
-<h2 id="总结">总结</h2>
-<p>总的来说，这篇文章很详细的讲解了用go进行产品开发过程中的很多经验，希望对大家有帮助。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1139,7 +1023,7 @@ test:
   
     <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
   
-    <li><a href="/categories/go/">go</a><small>30</small></li>
+    <li><a href="/categories/go/">go</a><small>31</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   

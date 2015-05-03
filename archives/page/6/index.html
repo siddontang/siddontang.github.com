@@ -72,6 +72,81 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-01-16T08:22:05.000Z"><a href="/2014/01/16/golang-mylib-timingwheel/">01-16-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/01/16/golang-mylib-timingwheel/">Go实现简易的TimingWheel</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="Ticker">Ticker</h1>
+<p>最近的项目用go实现的服务器需要挂载大量的socket连接。如何判断连接是否还存活就是我们需要考虑的一个问题了。</p>
+<p>通常情况下面，socket如果被客户端正常close，服务器是能检测到的，但是如果客户端突然拔掉网线，或者是断电，那么socket的状态在服务器看来可能仍然是established。而实际上该socket已经不可用了。</p>
+<p>为了判断连接是否可用，通常我们会用timer机制来定时检测，在go里面，这非常容易实现，如下：</p>
+<pre><code>ticker := time.NewTicker(60 * time.Second)
+
+for {
+    select {
+        case &lt;-ticker.C:
+            if err := ping(); err != nil {
+                close()
+            }
+    }
+}
+</code></pre><p>上面我们使用一个60s的ticker，定时去ping，如果ping失败了，证明连接已经断开了，这时候就需要close了。</p>
+<p>这套机制比较简单，也运行的很好，直到我们的服务器连上了10w+的连接。因为每一个连接都有一个ticker，所以同时会有大量的ticker运行，cpu一直在30%左右徘徊，性能不能让人接受。</p>
+<p>其实，我们只需要的是一套高效的超时通知机制。</p>
+<h1 id="Close_channel_to_broadcast">Close channel to broadcast</h1>
+<p>在go里面，channel是一个很不错的东西，我们可以通过close channel来进行broadcast。如下：</p>
+<pre><code>ch := make(bool)
+
+for i := 0; i &lt; 10; i++ {
+    go func() {
+        println(&quot;begin&quot;)
+        &lt;-ch
+        println(&quot;end&quot;)
+    }
+}
+
+time.Sleep(10 * time.Second)
+
+close(ch)
+</code></pre><p>上面，我们启动了10个goroutine，它们都会因为等待ch的数据而block，10s之后close这个channel，那么所有等待该channel的goroutine就会继续往下执行。</p>
+<h1 id="TimingWheel">TimingWheel</h1>
+<p>通过channel这种close broadcast机制，我们可以非常方便的实现一个timer，timer有一个channel ch，所有需要在某一个时间 “T” 收到通知的goroutine都可以尝试读该ch，当T到达时候，close该ch，那么所有的goroutine都能收到该事件了。</p>
+<p>timingwheel的使用很简单，首先我们创建一个wheel</p>
+<pre><code>//这里我们创建了一个timingwheel，精度是1s，最大的超时等待时间为3600s
+w := timingwheel.NewTimingWheel(1 * time.Second, 3600)
+
+//等待10s
+&lt;-w.After(10 * time.Second)
+</code></pre><p>因为timingwheel只有一个1s的ticker，并且只创建了3600个channel，系统开销很小。当我们程序换上timingwheel之后，10w+连接cpu开销在10%以下，达到了优化效果。</p>
+<p>timingwheel的代码在<a href="https://github.com/siddontang/golib/tree/master/timingwheel" target="_blank" rel="external">这里</a>。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-01-16T07:33:02.000Z"><a href="/2014/01/16/lua-function-register/">01-16-2014</a></time>
       
       
@@ -1122,143 +1197,6 @@ select entid from t1 inner join (select fileid from t1 order by opver limit 1000
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2013-12-28T08:46:53.000Z"><a href="/2013/12/28/learn-tornado-asynchronous/">12-28-2013</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2013/12/28/learn-tornado-asynchronous/">学习Tornado：异步</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="why_asynchronous">why asynchronous</h1>
-<p>tornado是一个异步web framework，说是异步，是因为tornado server与client的网络交互是异步的，底层基于io event loop。但是如果client请求server处理的handler里面有一个阻塞的耗时操作，那么整体的server性能就会下降。</p>
-<pre><code>def MainHandler(tornado.web.RequestHandler):
-    def get(self):
-        client = tornado.httpclient.HttpClient()
-        response = client.fetch(&quot;http://www.google.com/&quot;)
-        self.write(&#39;Hello World&#39;)
-</code></pre><p>在上面的例子中，tornado server的整体性能依赖于访问google的时间，如果访问google的时间比较长，就会导致整体server的阻塞。所以，为了提升整体的server性能，我们需要一套机制，使得handler处理都能够通过异步的方式实现。</p>
-<p>幸运的是，tornado提供了一套异步机制，方便我们实现自己的异步操作。当handler处理需要进行其余的网络操作的时候，tornado提供了一个async http client用来支持异步。</p>
-<pre><code>def MainHandler(tornado.web.RequestHandler):
-    @tornado.web.asynchronous
-    def get(self):
-        client = tornado.httpclient.AsyncHTTPClient()
-        def callback(response):
-            self.write(&quot;Hello World&quot;)
-            self.finish()
-
-        client.fetch(&quot;http://www.google.com/&quot;, callback)
-</code></pre><p>上面的例子，主要有几个变化：</p>
-<ul>
-<li>使用asynchronous decorator，它主要设置_auto_finish为false，这样handler的get函数返回的时候tornado就不会关闭与client的连接。</li>
-<li>使用AsyncHttpClient，fetch的时候提供callback函数，这样当fetch http请求完成的时候才会去调用callback，而不会阻塞。</li>
-<li>callback调用完成之后通过finish结束与client的连接。</li>
-</ul>
-<h1 id="asynchronous_flaw">asynchronous flaw</h1>
-<p>异步操作是一个很强大的操作，但是它也有一些缺陷。最主要的问题就是在于callback导致了代码逻辑的拆分。对于程序员来说，同步顺序的想法是一个很自然的习惯，但是异步打破了这种顺序性，导致代码编写的困难。这点，对于写nodejs的童鞋来说，可能深有体会，如果所有的操作都是异步，那么最终我们的代码可能写成这样:</p>
-<pre><code>def MainHandler(tornado.web.RequestHandler):
-    @tornado.web.asynchronous
-    def get(self):
-        client = tornado.httpclient.AsyncHTTPClient()
-        def callback1(response):
-
-            def callback2(response):
-                self.write(&quot;Hello World&quot;)
-                self.finish()
-            client.fetch(&quot;http://www.google.com&quot;, callback2)
-
-        client.fetch(&quot;http://www.google.com/&quot;, callback1)
-</code></pre><p>也就是说，我们可能会写出callback嵌套callback的情况，这个极大的会影响代码的阅读与流程的实现。</p>
-<h1 id="synchronous">synchronous</h1>
-<p>我个人认为，异步拆散了代码流程这个问题不大，毕竟如果一个逻辑需要过多的嵌套callback来实现的话，那么我们就需要考虑这个逻辑是否合理了，所以异步一般也不会有过多的嵌套层次。</p>
-<p>虽然我认为异步的callback问题不大，但是如果仍然能够有一套机制，使得异步能够顺序化，那么对于代码逻辑的编写来说，会方便很多。tornado有一些机制来实现。</p>
-<h2 id="yield">yield</h2>
-<p>在python里面如果一个函数内部实现了yield，那么这个函数就不是函数了，而是一个生成器，它的整个运行机制也跟普通函数不一样，举一个例子:</p>
-<pre><code>def test_yield():
-    print &#39;yield 1&#39;
-    a = yield &#39;yielded&#39;
-    print &#39;over&#39;, a
-
-t = test_yield()
-print &#39;main&#39;, type(t)
-ret = t.send(None)
-print ret
-try:
-    t.send(&#39;hello yield&#39;)
-except StopIteration:
-    print &#39;yield over&#39;
-</code></pre><p>输出结果如下：</p>
-<pre><code>main &lt;type &#39;generator&#39;&gt;
-yield 1
-yielded
-over hello yield
-yield over
-</code></pre><p>从上面可以看到，test_yield是一个生成器，当它第一次调用的时候，只是生成了一个Generator，不会执行。当第一次调用send的时候，生成器被resume，开始执行，然后碰到yield，就挂起，等待下一次被send唤醒。当生成器执行完毕，会抛出StopIteration异常，供外部send的地方知晓。</p>
-<p>因为yield很方便的提供了一套函数挂起，运行的机制，所以我们能够通过yield来将原本是异步的流程变成同步的。</p>
-<h2 id="gen">gen</h2>
-<p>tornado有一个gen模块，提供了Task和Callback/Wait机制用来支持同步模型，以task为例：</p>
-<pre><code>def MainHandler(tornado.web.RequestHandler):
-    @tornado.web.asynchronous
-    @tornado.gen.engine
-    def get(self):
-        client = tornado.httpclient.AsyncHTTPClient()
-        response = yield tornado.gen.Task(client.fetch, &quot;http://www.google.com/&quot;)
-        self.write(&quot;Hello World&quot;)
-        self.finish()
-</code></pre><p>可以看到，tornado的gen模块就是通过yield来进行同步化的。主要有如下需要注意的地方：</p>
-<ul>
-<li>使用gen.engine的decorator，该函数主要就是用来管理generator的流程控制。</li>
-<li>使用了gen.Task，在gen.Task内部，会生成一个callback函数，传给async fetch，并执行fetch，因为fetch是一个异步操作，所以会很快返回。</li>
-<li>在gen.Task返回之后使用yield，挂起</li>
-<li>当fetch的callback执行之后，唤醒挂起的流程继续执行。</li>
-</ul>
-<p>可以看到，使用gen和yield之后，原先的异步逻辑变成了同步流程，在代码的阅读性上面就有不错的提升，不过对于不熟悉yield的童鞋来说，开始反而会很迷惑，不过只要理解了yield，那就很容易了。</p>
-<h2 id="greenlet">greenlet</h2>
-<p>虽然yield很强大，但是它只能挂起当前函数，而无法挂起整个堆栈，这个怎么说呢，譬如我想实现下面的功能:</p>
-<pre><code>def a():
-    yield 1
-
-def b():
-    a()
-
-t = b()
-t.send(None)
-</code></pre><p>这个通过yield是无法实现的，也就是说，a里面使用yield，它是一个生成器，但是a的挂起无法将b也同时挂起。也就是说，我们需要一套机制，使得堆栈在任何地方都能够被挂起和恢复，能方便的进行栈切换，而这套机制就是coroutine。</p>
-<p>最开始使用coroutine是在lua里面，它原生提供了coroutine的支持。然后在使用luajit的时候，发现内部是基于fiber(win)和context(unix)，也就是说，不光lua，其实c/c++我们也能实现coroutine。现在研究了go，也是内置coroutine，并且这里极力推荐一篇<a href="http://concur.rspace.googlecode.com/hg/talk/concur.html#table-of-contents" target="_blank" rel="external">slide</a>。</p>
-<p>python没有原生提供coroutine，不知道以后会不会有。但有一个greenlet，能帮我们实现coroutine机制。而且还有人专门写好了tornado与greenlet结合的模块，叫做<a href="https://github.com/mopub/greenlet-tornado" target="_blank" rel="external">greenlet_tornado</a>，使用也很简单</p>
-<pre><code>class MainHandler(tornado.web.RequestHandler):
-    @greenlet_asynchronous
-    def get(self):
-        response = greenlet_fetch(&#39;http://www.google.com&#39;)
-        self.write(&quot;Hello World&quot;)
-        self.finish()
-</code></pre><p>可以看到，使用greenlet，能更方便的实现代码逻辑，这点比使用gen更方便，因为这些连写代码的童鞋都不用去纠结yield问题了。</p>
-<h1 id="总结">总结</h1>
-<p>这里只是简单的介绍了tornado的一些异步处理流程，以及将异步同步化的一些方法。另外，这里举得例子都是网络http请求方面的，但是server处理请求的时候，可能还需要进行数据库，本地文件的操作，而这些也是同步阻塞耗时操作，同样可以通过异步来解决的，这里就不详细说明了。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
@@ -1299,7 +1237,7 @@ t.send(None)
   
     <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
   
-    <li><a href="/categories/go/">go</a><small>30</small></li>
+    <li><a href="/categories/go/">go</a><small>31</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   

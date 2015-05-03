@@ -72,6 +72,116 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2014-04-03T10:30:17.000Z"><a href="/2014/04/03/moonmq-introduction/">04-03-2014</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2014/04/03/moonmq-introduction/">MoonMQ 高性能消息队列介绍</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <h1 id="介绍">介绍</h1>
+<p>moonmq是一个用go实现的高性能消息队列系统，后续准备用于我们消息推送服务以及各个后台的异步任务。</p>
+<p>在设计上面，moonmq主要借鉴了rabbitmq以及rocketmq相关的思想，但是做了很多减法，毕竟我不是要设计成一个非常通用的mq。</p>
+<h1 id="名词解释">名词解释</h1>
+<ul>
+<li>publisher，消息生产者</li>
+<li>consumer，消息消费者</li>
+<li>broker，消息中转站</li>
+<li>queue，消息存储队列</li>
+</ul>
+<p>publisher给一个命名的queue发送消息msg，broker负责将msg存放在queue里面。</p>
+<p>consumer可以关注自己感兴趣的queue，这样当queue里面有消息的时候，broker就会将该消息推送给该consumer。</p>
+<h1 id="推拉模型">推拉模型</h1>
+<p>在rocketmq里面，支持的是pull msg，而rabbitmq则是支持push和pull msg。moonmq只支持push msg。主要有如下考量：</p>
+<ul>
+<li>当consumer在线的时候，push是最及时的，因为这时候铁定能把msg push成功。</li>
+<li>当consumer离线，broker会保存离线消息，当consumer上线之后，broker仍然按照push的方式将离线消息进行推送。</li>
+</ul>
+<p>另外，因为moonmq后续会支持我们的消息推送系统，如果采用pull模型，几十万的consumer定期的pull，我有点担心moonmq会吃不消。</p>
+<h1 id="消息类型">消息类型</h1>
+<p>moonmq将msg分为direct和fanout，fanout就是广播消息，moonmq会将任何订阅了该queue的consumer进行msg push。</p>
+<p>如果msg的type为direct，moonmq将会采用轮询的方式，选择一个consumer进行msg push。</p>
+<h1 id="消息优先级">消息优先级</h1>
+<p>moonmq不支持消息优先级，处理起来会很麻烦，而且通常我们并不需要特别精细的优先级控制。</p>
+<p>可以通过一个简单的方式实现粗粒度的优先级控制：</p>
+<ul>
+<li>设置queue1，queue2，queue3三个队列，queue1用来处理保存优先级最高的消息，queue2次之，queue3最低</li>
+<li>publisher发送消息的时候根据优先级发送到指定的queue上面去</li>
+<li>我们可以有多个consumer处理queue1的消息，譬如3个，然后用2个处理queue2的，1个处理queue1的，这样实现优先级控制。</li>
+</ul>
+<h1 id="消息过滤">消息过滤</h1>
+<p>moonmq通过routing key来进行消息过滤。</p>
+<p>publisher在给特定queue发送msg的时候，还可以指定对应的routing key，只有关注了该queue同时也指定了相同的routing key的consumer才会收到该msg。</p>
+<h1 id="Ack">Ack</h1>
+<p>moonmq支持ack机制，当push一个msg到consumer的时候，consumer必须回应一个ack，moonmq才认为msg push成功。如果长时间没有ack，则moonmq会重新选择一个consumer再次发送。</p>
+<p>ack能够很大程度的保证消息推送的成功率，但是对于消息的快速推送会有影响，所以moonmq也支持no ack模式，这种模式下moonmq只要发送成功了msg，就认为push成功，无需等待ack的回执。</p>
+<h1 id="延迟消息">延迟消息</h1>
+<p>这个现在还没支持，后续是情况而定</p>
+<h1 id="定时消息">定时消息</h1>
+<p>难度比较大，不会实现</p>
+<h1 id="协议">协议</h1>
+<p>moonmq采用的是类似rocketmq的协议，如下：</p>
+<pre><code>|total length(4 bytes)|header length(4 bytes)|header json|body|
+
+total length = 4 + len(header json) + len(body)
+header length = len(header json)
+</code></pre><p>在moonmq里面，我们使用Proto来定义协议</p>
+<pre><code>type Proto struct {
+    Method uint32 `json:&quot;method&quot;`
+
+    Fields map[string]string `json:&quot;fields&quot;`
+
+    Body []byte `json:&quot;-&quot;`
+}
+</code></pre><p>moonmq的任何协议，都需要带上method，我们通过method进行实际的消息处理。</p>
+<p>moonmq的method参考rabbitmq，有如下几种类型的method：</p>
+<ul>
+<li>同步request method，客户端在发送request method之后必须等待对应的response method，在等待的过程中也能够处理push，error等异步method。</li>
+<li>同步response method，对应特定的request method。</li>
+<li>异步method，发送之后无需等待。</li>
+</ul>
+<p>现阶段，moonmq支持如下同步method：</p>
+<ul>
+<li>auth, auth_ok</li>
+<li>publish, publish_o</li>
+<li>bind, bind_ok</li>
+<li>unbind, unbind_ok</li>
+</ul>
+<p>同时支持如下异步method:</p>
+<ul>
+<li>push</li>
+<li>error</li>
+<li>heartbeat</li>
+<li>ack</li>
+</ul>
+<h1 id="后续">后续</h1>
+<p>这只是moonmq的一个简单介绍，后续我们会不断完善moonmq，争取也能成为一个不错的mq产品。</p>
+<p>moonmq的代码在这里<a href="https://github.com/siddontang/moonmq" target="_blank" rel="external">https://github.com/siddontang/moonmq</a>，期待大家的反馈。</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2014-03-30T13:50:44.000Z"><a href="/2014/03/30/golang-linked-channel/">03-30-2014</a></time>
       
       
@@ -1042,86 +1152,13 @@ if !b {
 
 
   
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2014-01-16T08:22:05.000Z"><a href="/2014/01/16/golang-mylib-timingwheel/">01-16-2014</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2014/01/16/golang-mylib-timingwheel/">Go实现简易的TimingWheel</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h1 id="Ticker">Ticker</h1>
-<p>最近的项目用go实现的服务器需要挂载大量的socket连接。如何判断连接是否还存活就是我们需要考虑的一个问题了。</p>
-<p>通常情况下面，socket如果被客户端正常close，服务器是能检测到的，但是如果客户端突然拔掉网线，或者是断电，那么socket的状态在服务器看来可能仍然是established。而实际上该socket已经不可用了。</p>
-<p>为了判断连接是否可用，通常我们会用timer机制来定时检测，在go里面，这非常容易实现，如下：</p>
-<pre><code>ticker := time.NewTicker(60 * time.Second)
-
-for {
-    select {
-        case &lt;-ticker.C:
-            if err := ping(); err != nil {
-                close()
-            }
-    }
-}
-</code></pre><p>上面我们使用一个60s的ticker，定时去ping，如果ping失败了，证明连接已经断开了，这时候就需要close了。</p>
-<p>这套机制比较简单，也运行的很好，直到我们的服务器连上了10w+的连接。因为每一个连接都有一个ticker，所以同时会有大量的ticker运行，cpu一直在30%左右徘徊，性能不能让人接受。</p>
-<p>其实，我们只需要的是一套高效的超时通知机制。</p>
-<h1 id="Close_channel_to_broadcast">Close channel to broadcast</h1>
-<p>在go里面，channel是一个很不错的东西，我们可以通过close channel来进行broadcast。如下：</p>
-<pre><code>ch := make(bool)
-
-for i := 0; i &lt; 10; i++ {
-    go func() {
-        println(&quot;begin&quot;)
-        &lt;-ch
-        println(&quot;end&quot;)
-    }
-}
-
-time.Sleep(10 * time.Second)
-
-close(ch)
-</code></pre><p>上面，我们启动了10个goroutine，它们都会因为等待ch的数据而block，10s之后close这个channel，那么所有等待该channel的goroutine就会继续往下执行。</p>
-<h1 id="TimingWheel">TimingWheel</h1>
-<p>通过channel这种close broadcast机制，我们可以非常方便的实现一个timer，timer有一个channel ch，所有需要在某一个时间 “T” 收到通知的goroutine都可以尝试读该ch，当T到达时候，close该ch，那么所有的goroutine都能收到该事件了。</p>
-<p>timingwheel的使用很简单，首先我们创建一个wheel</p>
-<pre><code>//这里我们创建了一个timingwheel，精度是1s，最大的超时等待时间为3600s
-w := timingwheel.NewTimingWheel(1 * time.Second, 3600)
-
-//等待10s
-&lt;-w.After(10 * time.Second)
-</code></pre><p>因为timingwheel只有一个1s的ticker，并且只创建了3600个channel，系统开销很小。当我们程序换上timingwheel之后，10w+连接cpu开销在10%以下，达到了优化效果。</p>
-<p>timingwheel的代码在<a href="https://github.com/siddontang/golib/tree/master/timingwheel" target="_blank" rel="external">这里</a>。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
 
   <nav id="pagination">
   
     <a href="/categories/go/page/2/" class="alignleft prev">上一页</a>
   
+  
+    <a href="/categories/go/page/4/" class="alignright next">下一页</a>
   
   <div class="clearfix"></div>
 </nav>
@@ -1155,7 +1192,7 @@ w := timingwheel.NewTimingWheel(1 * time.Second, 3600)
   
     <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
   
-    <li><a href="/categories/go/">go</a><small>30</small></li>
+    <li><a href="/categories/go/">go</a><small>31</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   
