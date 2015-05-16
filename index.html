@@ -68,6 +68,116 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2015-05-16T08:13:34.000Z"><a href="/2015/05/16/why-python-to-go/">05-16-2015</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2015/05/16/why-python-to-go/">我为什么从python转向go</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>应puppet大拿刘宇的邀请，我去西山居运维团队做了一个简短分享，谈谈为什么我要将我们的项目从python转向go。</p>
+<p>坦白的讲，在一帮python用户面前讲为什么放弃python转而用go其实是一件压力蛮大的事情，语言之争就跟vim和emacs之争一样，是一个永恒的无解话题，稍微不注意就可能导致粉丝强烈地反击。所以我只会从我们项目实际情况出发，来讲讲为什么我最终选择了go。</p>
+<h2 id="为什么放弃python">为什么放弃python</h2>
+<p>首先，我其实得说说为什么我们会选择python。在我加入企业快盘团队之前，整个项目包括更早的金山快盘都是采用python进行开发的。至于为什么这么选择，当时的架构师葱头告诉我，主要是因为python上手简单，开发迅速。对于团队里面大部分完全没服务端开发经验的同学来说，python真的是一个很好的选择。</p>
+<p>python的简单高效，我是深有体会的。当时私有云项目也就几个程序员，但是我们要服务多家大型企业，进行定制化的开发，多亏了python，我们才能快速出活。后来企业快盘挂掉之后，我们启动轻办公项目，自然也使用python进行了原始版本的构建。</p>
+<p>python虽然很强大，但我们在使用的时候也碰到了一些问题，主要由如下几个方面：</p>
+<ul>
+<li><p>动态语言</p>
+<p>  python是一门动态语言，不是强类型系统。对于一个变量，我们有时候压根不知道它是什么类型，然后就可能出现int + string这样的运行时错误。</p>
+<p>  在python里面，可以允许同名函数的出现，后一个函数会覆盖前一个函数，有一次我们系统一个很严重的错误就是因为这个导致的。</p>
+<p>  上面说到的这些，静态语言在编译的时候就能帮我们检测出来，而不需要等到运行时出问题才知道。虽然我们有很完善的测试用例，但总有case遗漏的情况。所以每次出现运行时错误，我心里都想着如果能在编译的时候就发现该多好。</p>
+</li>
+<li><p>性能</p>
+<p>  其实这个一直是很多人吐槽python的地方，不过想想，python最开始是为了解决啥问题而被开发出来的？我们硬是要将他用到高性能服务器开发上面，其实也是有点难为它。</p>
+<p>  python的GIL导致导致无法真正的多线程，大家可能会说我用多进程不就完了。但如果一些计算需要涉及到多进程交互，进程之间的通讯开销也是不得不考虑的。</p>
+<p>  无状态的分布式处理使用多进程很方便，譬如处理http请求，我们就是在nginx后面挂载了200多个django server来处理http的,但这么多个进程自然导致整体机器负载偏高。</p>
+<p>  但即使我们使用了多个django进程来处理http请求，对于一些超大量请求，python仍然处理不过来。所以我们使用openresty，将高频次的http请求使用lua来实现。可这样又导致使用两种开发语言，而且一些逻辑还得写两份不同的代码。</p>
+</li>
+<li><p>同步网络模型</p>
+<p>  django的网络是同步阻塞的，也就是说，如果我们需要访问外部的一个服务，在等待结果返回这段时间，django不能处理任何其他的逻辑（当然，多线程的除外）。如果访问外部服务需要很长时间，那就意味着我们的整个服务几乎在很长一段时间完全不可用。</p>
+<p>  为了解决这个问题，我们只能不断的多开django进程，同时需要保证所有服务都能快速的处理响应，但想想这其实是一件很不靠谱的事情。</p>
+</li>
+<li><p>异步网络模型</p>
+<p>  tornado的网络模型是异步的，这意味着它不会出现django那样因为外部服务不可用导致这个服务无法响应的问题。话说，比起django，我可是非常喜欢tornado的，小巧简单，以前还写过几篇深入剖析tornado的文章了。</p>
+<p>  虽然tornado是异步的，但是python的mysql库都不支持异步，这也就意味着如果我们在tornado里面访问数据库，我们仍然可能面临因为数据库问题造成的整个服务不可用。</p>
+<p>  其实异步模型最大的问题在于代码逻辑的割裂，因为是事件触发的，所以我们都是通过callback进行相关处理，于是代码里面就经常出现干一件事情，传一个callback，然后callback里面又传callback的情况，这样的结果就是整个代码逻辑非常混乱。</p>
+<p>  python没有原生的协程支持，虽然可以通过gevent，greenlet这种的上patch方式来支持协程，但毕竟更改了python源码。另外，python的yield也可以进行简单的协程模拟，但毕竟不能跨堆栈，局限性很大，不知道3.x的版本有没有改进。</p>
+</li>
+<li><p>开发运维部署</p>
+<p>  当我第一次使用python开发项目，我是没成功安装上项目需要的包的，光安装成功mysql库就弄了很久。后来，是一位同事将他整个python目录打包给我用，我才能正常的将项目跑起来。话说，现在有了docker，是多么让人幸福的一件事情。</p>
+<p>  而部署python服务的时候，我们需要在服务器上面安装一堆的包，光是这一点就让人很麻烦，虽然可以通过puppet，salt这些自动化工具解决部署问题，但相比而言，静态编译语言只用扔一个二进制文件，可就方便太多了。</p>
+</li>
+<li><p>代码失控</p>
+<p>  python非常灵活简单，写c几十行代码才能搞定的功能，python一行代码没准就能解决。但是太简单，反而导致很多同学无法对代码进行深层次的思考，对整个架构进行细致的考量。来了一个需求，啪啪啪，键盘敲完开速实现，结果就是代码越来越混乱，最终导致了整个项目代码失控。</p>
+<p>  虽然这也有我们自身的原因，譬如没好的代码review机制，没有好的项目规范，但个人感觉，如果一个程序员没经过良好的编码训练，用python很容易就写出烂的代码，因为太自由了。</p>
+<p>  当然，我这里并不是说用python无法进行大型项目的开发，豆瓣，dropbox都是很好的例子，只是在我们项目中，我们的python代码失控了。</p>
+</li>
+</ul>
+<p>上面提到的都是我们在实际项目中使用python遇到的问题，虽然最终都解决了，但是让我愈发的觉得，随着项目复杂度的增大，流量性能压力的增大，python并不是一个很好的选择。</p>
+<h2 id="为什么选择go">为什么选择go</h2>
+<p>说完了python，现在来说说为什么我们选择go。其实除了python，我们也有其他的选择，java，php，lua(openresty)，但最终我们选择了go。</p>
+<p>虽然java和php都是最好的编程语言（大家都这么争的），但我更倾向一门更简单的语言。而openresty，虽然性能强悍，但lua仍然是动态语言，也会碰到前面说的动态语言一些问题。最后，前金山许式伟用的go，前快盘架构师葱头也用的go，所以我们很自然地选择了go。</p>
+<p>go并不是完美，一堆值得我们吐槽的地方。</p>
+<ul>
+<li><p>error，好吧，如果有语言洁癖的同学可能真的受不了go的语法，尤其是约定的最后一个返回值是error。项目里面经常会充斥这样的代码:</p>
+<pre><code class="go">  if err := doA(); err != nil {
+      if _, err := doB(); err != nil {
+      }
+  }
+</code></pre>
+<p>  难怪有个梗是对于一个需求，java的程序员在写配置的时候，go程序员已经写了大部分代码，但是当java的程序员写完的时候，go程序员还在写<code>err != nil</code>。</p>
+</li>
+<li><p>包管理，go的包管理太弱了，只有一个go get，也就是如果不小心更新了一个外部库，很有可能就导致现有的代码编译不过了。虽然已经有很多开源方案，譬如godep以及现在才出来的gb等，但毕竟不是官方的。貌似google也是通过vendor机制来管理第三方库的。希望go 1.5或者之后的版本能好好处理下这个问题。</p>
+</li>
+<li><p>GC，java的GC发展20年了，go才这么点时间，gc铁定不完善。所以我们仍然不能随心所欲的写代码，不然在大请求量下面gc可能会卡顿整个服务。所以有时候，该用对象池，内存池的一定要用，虽然代码丑了点，但好歹性能上去了。</p>
+</li>
+<li><p>泛型，虽然go有inteface，但泛型的缺失会让我们在实现一个功能的时候写大量的重复代码，譬如int32和int64类型的sort，我们得为分别写两套代码，好冗余。go 1.4之后有了go generate的支持，但这种的仍然需要自己根据go的AST库来手动写相关的parser，难度也挺大的。虽然也有很多开源的generate实现，但毕竟不是官方的。</p>
+</li>
+</ul>
+<p>当然还有很多值得吐槽的地方，就不一一列举了，但是go仍旧有它的优势。</p>
+<ul>
+<li>静态语言，强类型。静态编译能帮我们检查出来大量的错误，go的强类型甚至变态到不支持隐式的类型转换。虽然写代码感觉很别扭，但减少了犯错的可能。</li>
+<li>gofmt，应该这是我知道的第一个官方提供统一格式化代码工具的语言了。有了gofmt，大家的代码长一个样了，也就没有花括号到底放到结尾还是新开一行这种蛋疼的代码风格讨论了。因为大家的代码风格一样，所以看go的代码很容易。</li>
+<li>天生的并行支持，因为goroutine以及channel，用go写分布式应用，写并发程序异常的容易。没有了蛋疼的callback导致的代码逻辑割裂，代码逻辑都是顺序的。</li>
+<li>性能，go的性能可能赶不上c，c++以及openresty，但真的也挺强悍的。在我们的项目中，现在单机就部署了一个go的进程，就完全能够胜任以前200个python进程干的事情，而且CPU和MEM占用更低。</li>
+<li>运维部署，直接编译成二进制，扔到服务器上面就成，比python需要安装一堆的环境那是简单的太多了。当然，如果有cgo，我们也需要将对应的动态库给扔过去。</li>
+<li>开发效率，虽然go是静态语言，但我个人感觉开发效率真的挺高，直觉上面跟python不相上下。对于我个人来说，最好的例子就是我用go快速开发了非常多的开源组件，譬如ledisdb，go-mysql等，而这些最开始的版本都是在很短的时间里面完成的。对于我们项目来说，我们也是用go在一个月就重构完成了第一个版本，并发布。</li>
+</ul>
+<h2 id="实际项目中一些Go_Tips">实际项目中一些Go Tips</h2>
+<p>到现在为止，我们几乎所有的服务端项目都已经转向go，当然在使用的时候也遇到了一些问题，列出来算是经验分享吧。</p>
+<ul>
+<li>godep，我们使用godep进行第三方库管理，但是godep我碰到的最大的坑就是build tag问题，如果一个文件有build tag，godep很有可能就会忽略这个文件。</li>
+<li>IO deadline，如果能自己在应用层处理的都自己处理，go的deadline内部是timer来控制，但timer内部采用一个array来实现的heap，全局共用一个锁，如果大并发量，并且timer数量过多，timeout变动太频繁，很容易就引起性能问题。</li>
+<li>GC，这个前面也说了，多用内存池，对象池，另外，我还发现，如果对象的生命周期跟goroutine一致，对性能的提升也不错，也在go的group问过相关问题，大家猜测可能是因为一些对象其实是在goroutine的8k栈上面分配的，所以一起回收没有额外GC了。</li>
+<li>Go gob，如果要做RPC服务，gob并不是一个很好的选择，首先就跟python的pickle不通用，然后为了做不同系统的数据传入，任何包都必须带上类型的详细信息，size太大。go里面现在还没一套官方的RPC方案，gRPC貌似有上位的可能。</li>
+</ul>
+<h2 id="总结">总结</h2>
+<p>虽然我现在选择了go，但是并不表示我以后不会尝试其他的语言。语言没有好坏，能帮我解决问题的就是好语言。但至少在很长的一段时间，我都会用go来进行开发。Let’ go!!!</p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+
+  <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2015-05-03T02:56:11.000Z"><a href="/2015/05/03/use-hashicorp-raft-to-build-a-redis-sentinel/">05-03-2015</a></time>
       
       
@@ -1102,182 +1212,6 @@ svr.Serve(l)
 
 
 
-  <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2015-01-18T06:58:47.000Z"><a href="/2015/01/18/elasticsearch-note/">01-18-2015</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2015/01/18/elasticsearch-note/">Elasticsearch学习笔记</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h2 id="Why_Elasticsearch？">Why Elasticsearch？</h2>
-<p>由于需要提升项目的搜索质量，最近研究了一下Elasticsearch，一款非常优秀的分布式搜索程序。最开始的一些笔记放到<a href="https://github.com/siddontang/elasticsearch-note" target="_blank" rel="external">github</a>，这里只是归纳总结一下。</p>
-<p>首先，为什么要使用Elasticsearch？最开始的时候，我们的项目仅仅使用MySQL进行简单的搜索，然后一个不能索引的like语句，直接拉低MySQL的性能。后来，我们曾考虑过sphinx，并且sphinx也在之前的项目中成功实施过，但想想现在的数据量级，多台MySQL，以及搜索服务本身HA，还有后续扩容的问题，我们觉得sphinx并不是一个最优的选择。于是自然将目光放到了Elasticsearch上面。</p>
-<p>根据官网自己的介绍，Elasticsearch是一个分布式搜索服务，提供Restful API，底层基于Lucene，采用多shard的方式保证数据安全，并且提供自动resharding的功能，加之github等大型的站点也采用Elasticsearch作为其搜索服务，我们决定在项目中使用Elasticsearch。</p>
-<p>对于Elasticsearch，如果要在项目中使用，需要解决如下问题：</p>
-<ol>
-<li>索引，对于需要搜索的数据，如何建立合适的索引，还需要根据特定的语言使用不同的analyzer等。</li>
-<li>搜索，Elasticsearch提供了非常强大的搜索功能，如何写出高效的搜索语句？</li>
-<li>数据源，我们所有的数据是存放到MySQL的，MySQL是唯一数据源，如何将MySQL的数据导入到Elasticsearch？</li>
-</ol>
-<p>对于1和2，因为我们的数据都是从MySQL生成，index的field是固定的，主要做的工作就是根据业务场景设计好对应的mapping以及search语句就可以了，当然实际不可能这么简单，需要我们不断的调优。</p>
-<p>而对于3，则是需要一个工具将MySQL的数据导入Elasticsearch，因为我们对搜索实时性要求很高，所以需要将MySQL的增量数据实时导入，笔者唯一能想到的就是通过row based binlog来完成。而近段时间的工作，也就是实现一个MySQL增量同步到Elasticsearch的服务。</p>
-<h2 id="Lucene">Lucene</h2>
-<p>Elasticsearch底层是基于Lucene的，Lucene是一款优秀的搜索lib，当然，笔者以前仍然没有接触使用过。:-)</p>
-<p>Lucene关键概念：</p>
-<ul>
-<li>Document：用来索引和搜索的主要数据源，包含一个或者多个Field，而这些Field则包含我们跟Lucene交互的数据。</li>
-<li>Field：Document的一个组成部分，有两个部分组成，name和value。</li>
-<li>Term：不可分割的单词，搜索最小单元。</li>
-<li>Token：一个Term呈现方式，包含这个Term的内容，在文档中的起始位置，以及类型。</li>
-</ul>
-<p>Lucene使用<a href="http://en.wikipedia.org/wiki/Inverted_index" target="_blank" rel="external">Inverted index</a>来存储term在document中位置的映射关系。<br>譬如如下文档：</p>
-<ul>
-<li>Elasticsearch Server 1.0 （document 1）</li>
-<li>Mastring Elasticsearch （document 2）</li>
-<li>Apache Solr 4 Cookbook （document 3）</li>
-</ul>
-<p>使用inverted index存储，一个简单地映射关系：</p>
-<table>
-<thead>
-<tr>
-<th>Term</th>
-<th>Count</th>
-<th>Docuemnt</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1.0</td>
-<td>1</td>
-<td><1></1></td>
-</tr>
-<tr>
-<td>4</td>
-<td>1</td>
-<td><3></3></td>
-</tr>
-<tr>
-<td>Apache</td>
-<td>1</td>
-<td><3></3></td>
-</tr>
-<tr>
-<td>Cookbook</td>
-<td>1</td>
-<td><3></3></td>
-</tr>
-<tr>
-<td>Elasticsearch</td>
-<td>2</td>
-<td><1>.<2></2></1></td>
-</tr>
-<tr>
-<td>Mastering</td>
-<td>1</td>
-<td><2></2></td>
-</tr>
-<tr>
-<td>Server</td>
-<td>1</td>
-<td><1></1></td>
-</tr>
-<tr>
-<td>Solr</td>
-<td>1</td>
-<td><3></3></td>
-</tr>
-</tbody>
-</table>
-<p>对于上面例子，我们首先通过分词算法将一个文档切分成一个一个的token，再得到该token与document的映射关系，并记录token出现的总次数。这样就得到了一个简单的inverted index。</p>
-<h2 id="Elasticsearch关键概念">Elasticsearch关键概念</h2>
-<p>要使用Elasticsearch，笔者认为，只需要理解几个基本概念就可以了。</p>
-<p>在数据层面，主要有：</p>
-<ul>
-<li>Index：Elasticsearch用来存储数据的逻辑区域，它类似于关系型数据库中的table概念。一个index可以在一个或者多个shard上面，同时一个shard也可能会有多个replicas。</li>
-<li>Document：Elasticsearch里面存储的实体数据，类似于关系数据中一个table里面的一行数据。<br>document由多个field组成，不同的document里面同名的field一定具有相同的类型。document里面field可以重复出现，也就是一个field会有多个值，即multivalued。</li>
-<li>Document type：为了查询需要，一个index可能会有多种document，也就是document type，但需要注意，不同document里面同名的field一定要是相同类型的。</li>
-<li>Mapping：存储field的相关映射信息，不同document type会有不同的mapping。</li>
-</ul>
-<p>对于熟悉MySQL的童鞋，我们只需要大概认为Index就是一个table，document就是一行数据，field就是table的column，mapping就是table的定义就可以了。</p>
-<p>Document type这个概念其实最开始也把笔者给弄糊涂了，其实它就是为了更好的查询，举个简单的例子，一个index，可能一部分数据我们想使用一种查询方式，而另一部分数据我们想使用另一种查询方式，于是就有了两种type了。不过这种情况应该在我们的项目中不会出现，所以通常一个index下面仅会有一个type。</p>
-<p>在服务层面，主要有：</p>
-<ul>
-<li>Node: 一个server实例。</li>
-<li>Cluster：多个node组成cluster。</li>
-<li>Shard：数据分片，一个index可能会存在于多个shards，不同shards可能在不同nodes。</li>
-<li>Replica：shard的备份，有一个primary shard，其余的叫做replica shards。</li>
-</ul>
-<p>Elasticsearch之所以能动态resharding，主要在于它最开始就预先分配了多个shards（貌似是1024），然后以shard为单位进行数据迁移。这个做法其实在分布式领域非常的普遍，<a href="github.com/wandoulabs/codis">codis</a>就是使用了1024个slot来进行数据迁移。</p>
-<p>因为任意一个index都可配置多个replica，通过冗余备份的方式保证了数据的安全性，同时replica也能分担读压力，类似于MySQL中的slave。</p>
-<h2 id="Restful_API">Restful API</h2>
-<p>Elasticsearch提供了Restful API，使用json格式，这使得它非常利于与外部交互，虽然Elasticsearch的客户端很多，但笔者仍然很容易的就写出了一个简易客户端用于项目中，再次印证了Elasticsearch的使用真心很容易。</p>
-<p>Restful的接口很简单，一个url表示一个特定的资源，譬如<code>/blog/article/1</code>，就表示一个index为blog，type为aritcle，id为1的document。</p>
-<p>而我们使用http标准method来操作这些资源，POST新增，PUT更新，GET获取，DELETE删除，HEAD判断是否存在。</p>
-<p>这里，友情推荐<a href="https://github.com/jakubroztocil/httpie" target="_blank" rel="external">httpie</a>，一个非常强大的http工具，个人感觉比curl还用，几乎是命令行调试Elasticsearch的绝配。</p>
-<p>一些使用httpie的例子:</p>
-<pre><code># create
-http POST :9200/blog/article/1 title=&quot;hello elasticsearch&quot; tags:=&#39;[&quot;elasticsearch&quot;]&#39;
-
-# get
-http GET :9200/blog/article/1
-
-# update
-http PUT :9200/blog/article/1 title=&quot;hello elasticsearch&quot; tags:=&#39;[&quot;elasticsearch&quot;, &quot;hello&quot;]&#39;
-
-# delete
-http DELETE :9200/blog/article/1
-
-# exists
-http HEAD :9200/blog/article/1
-</code></pre><h2 id="索引和搜索">索引和搜索</h2>
-<p>虽然Elasticsearch能自动判断field类型并建立合适的索引，但笔者仍然推荐自己设置相关索引规则，这样才能更好为后续的搜索服务。</p>
-<p>我们通过定制mapping的方式来设置不同field的索引规则。</p>
-<p>而对于搜索，Elasticsearch提供了太多的搜索选项，就不一一概述了。</p>
-<p>索引和搜索是Elasticsearch非常重要的两个方面，直接关系到产品的搜索体验，但笔者现阶段也仅仅是大概了解了一点，后续在详细介绍。</p>
-<h2 id="同步MySQL数据">同步MySQL数据</h2>
-<p>Elasticsearch是很强大，但要建立在有足量数据情况下面。我们的数据都在MySQL上面，所以如何将MySQL的数据导入Elasticsearch就是笔者最近研究的东西了。</p>
-<p>虽然现在有一些实现，譬如<a href="https://github.com/jprante/elasticsearch-river-jdbc" target="_blank" rel="external">elasticsearch-river-jdbc</a>，或者<a href="https://github.com/scharron/elasticsearch-river-mysql" target="_blank" rel="external">elasticsearch-river-mysql</a>，但笔者并不打算使用。</p>
-<p>elasticsearch-river-jdbc的功能是很强大，但并没有很好的支持增量数据更新的问题，它需要对应的表只增不减，而这个几乎在项目中是不可能办到的。</p>
-<p>elasticsearch-river-mysql倒是做的很不错，采用了<a href="https://github.com/noplay/python-mysql-replication" target="_blank" rel="external">python-mysql-replication</a>来通过binlog获取变更的数据，进行增量更新，但它貌似处理MySQL dump数据导入的问题，不过这个笔者真的好好确认一下？话说，python-mysql-replication笔者还提交过<a href="https://github.com/noplay/python-mysql-replication/pull/103" target="_blank" rel="external">pull</a>解决了minimal row image的问题，所以对elasticsearch-river-mysql这个项目很有好感。只是笔者决定自己写一个出来。</p>
-<p>为什么笔者决定自己写一个，不是因为笔者喜欢造轮子，主要原因在于对于这种MySQL syncer服务（增量获取MySQL数据更新到相关系统），我们不光可以用到Elasticsearch上面，而且还能用到其他服务，譬如cache上面。所以笔者其实想实现的是一个通用MySQL syncer组件，只是现在主要关注Elasticsearch罢了。</p>
-<p>项目代码在这里<a href="https://github.com/siddontang/go-mysql-elasticsearch" target="_blank" rel="external">go-mysql-elasticsearch</a>，仍然处于开发状态，预计下周能基本完成。</p>
-<p>go-mysql-elasticsearch的原理很简单，首先使用mysqldump获取当前MySQL的数据，然后在通过此时binlog的name和position获取增量数据。</p>
-<p>一些限制：</p>
-<ul>
-<li>binlog一定要变成row-based format格式，其实我们并不需要担心这种格式的binlog占用太多的硬盘空间，MySQL 5.6之后GTID模式都推荐使用row-based format了，而且通常我们都会把控SQL语句质量，不允许一次性更改过多行数据的。</li>
-<li>需要同步的table最好是innodb引擎，这样mysqldump的时候才不会阻碍写操作。</li>
-<li>需要同步的table一定要有主键，好吧，如果一个table没有主键，笔者真心会怀疑设计这个table的同学编程水平了。多列主键也是不推荐的，笔者现阶段不打算支持。</li>
-<li>一定别动态更改需要同步的table结构，Elasticsearch只能支持动态增加field，并不支持动态删除和更改field。通常来说，如果涉及到alter table，很多时候已经证明前期设计的不合理以及对于未来扩展的预估不足了。</li>
-</ul>
-<p>更详细的说明，等到笔者完成了go-mysql-elasticsearch的开发，再进行补充。</p>
-<h2 id="总结">总结</h2>
-<p>最近一周，笔者花了不少时间在Elasticsearch上面，现在算是基本入门了。其实笔者觉得，对于一门不懂的技术，找一份靠谱的资料（官方文档或者入门书籍），蛋疼的对着资料敲一遍代码，不懂的再问google，最后在将其用到实际项目，这门技术就算是初步掌握了，当然精通还得在下点功夫。</p>
-<p>现在笔者只是觉得Elasticsearch很美好，上线之后铁定会有坑的，那时候只能慢慢填了。话说，笔者是不是要学习下java了，省的到时候看不懂代码就惨了。:-)</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-
 
 <nav id="pagination">
   
@@ -1315,7 +1249,7 @@ http HEAD :9200/blog/article/1
   
     <li><a href="/categories/elasticsearch/">elasticsearch</a><small>1</small></li>
   
-    <li><a href="/categories/go/">go</a><small>31</small></li>
+    <li><a href="/categories/go/">go</a><small>32</small></li>
   
     <li><a href="/categories/leetcode/">leetcode</a><small>1</small></li>
   

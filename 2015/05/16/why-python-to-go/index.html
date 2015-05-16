@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   
-  <title>归档：2015/5 | Siddon&#39;s Blog</title>
+  <title>我为什么从python转向go | Siddon&#39;s Blog</title>
   <meta name="author" content="SiddonTang">
   
   <meta name="description" content="My thought for program">
@@ -11,7 +11,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 
-  
+  <meta property="og:title" content="我为什么从python转向go"/>
   <meta property="og:site_name" content="Siddon&#39;s Blog"/>
 
   
@@ -61,12 +61,7 @@
 </nav>
 <div class="clearfix"></div></header>
   <div id="content" class="inner">
-    <div id="main-col" class="alignleft"><div id="wrapper">
-<h2 class="archive-title">2015/5</h2>
-
-
-  
-    <article class="post">
+    <div id="main-col" class="alignleft"><div id="wrapper"><article class="post">
   
   <div class="post-content">
     <header>
@@ -76,7 +71,7 @@
       
       
   
-    <h1 class="title"><a href="/2015/05/16/why-python-to-go/">我为什么从python转向go</a></h1>
+    <h1 class="title">我为什么从python转向go</h1>
   
 
     </header>
@@ -166,85 +161,11 @@
     <footer>
       
         
-        
-      
-      <div class="clearfix"></div>
-    </footer>
+  
+  <div class="categories">
+    <a href="/categories/go/">go</a>
   </div>
-</article>
 
-
-
-  
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2015-05-03T02:56:11.000Z"><a href="/2015/05/03/use-hashicorp-raft-to-build-a-redis-sentinel/">05-03-2015</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2015/05/03/use-hashicorp-raft-to-build-a-redis-sentinel/">Use Hashicorp Raft to build a Redis sentinel</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <h2 id="Redis_Sentinel">Redis Sentinel</h2>
-<p>We use Redis not only for cache, but also storing important data, and we build up a Master/Slave replication topology to guarantee data security.</p>
-<p>Master/Slave architecture works well, but sometimes we need a more powerful high availability solution. If master is down, we must check this immediately, reselect a new master from the slaves and do failover.</p>
-<p>The official Redis supplies a solution named redis-sentinel, which is very powerful to use. But I still want to build my own sentinel solution, why?</p>
-<ul>
-<li>I want to monitor not only Redis but also LedisDB, maybe other services using Redis serialization Protocol too.</li>
-<li>I want to embed it into xcodis or other go service easily.</li>
-<li>I want to study some consensus algorithms and use them in practice.<br>Sentinel Cluster and Election</li>
-</ul>
-<p>Building a single sentinel application is easy: checking master every second, and do failover when master is down. But if the sentinel is down too, how do we do?</p>
-<p>Using sentinel cluster is a good choice, if one sentinel is down, other sentinel will still work. But let’s consider below scenario, if two sentinels in the cluster both see the master is down, and do failover at same time, sentinel1 may select slave1 as master, but sentinel2 may select slave2 as master, this may be a horrible thing for us.</p>
-<p>A common use way is to elect a leader sentinel in the cluster and let it monitor and do failover. So we need a consensus algorithm helping us do this thing.</p>
-<h2 id="Paxos_and_Raft">Paxos and Raft</h2>
-<p>Paxos may be the most famous consensus algorithm in the world, many companies use it in their distributed system. However, Paxos is very hard to understand and if you write a paxos lib by yourself, you even cann’t testify its correctness easily. Luckly, we have zookeeper, an open source centralized service based on Paxos. We can use zookeeper to manage our clusters like electing a leader.</p>
-<p>Raft was born on 2013 in Stanford, it’s very new but awesome. Raft is easy to understand, everyone reading the Raft paper can write its own Raft implentation easily than Paxos. Now many projects use Raft, like Etcd, InfluxDB, CockroachDB, etc…</p>
-<p>The above projects I list using Raft all use Go, and I will develop my own redis sentinel with Go too, so I decide to use Raft.</p>
-<h2 id="Use_Hashicorp_Raft">Use Hashicorp Raft</h2>
-<p>There are some Go raft projects, but I prefer Hashicorp Raft which is easy to be integrated in other project, and this package is used in Consul product and has already been tested in production environment (maybe!).</p>
-<p>The create raft function declaration is below:</p>
-<pre><code>func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps SnapshotStore, peerStore PeerStore, trans Transport) (*Raft, error)
-</code></pre><p>Although it looks a little complex, it’s still easy to use, we only need do following things:</p>
-<ul>
-<li>Create a configuration using raft own DefaultConfig function. We should know that raft should be used with at least three nodes, but if we just want to try it with only one node, or first start a raft node, than add others later, we must set EnableSingleNode to true.</li>
-<li>Define our own FSM struct, FSM is a state machine applying replicated log, generating point-in-time snapshot, and restoring from a snapshot. In our sentinel, the only data need to care is all Redis masters, whenever we add a master, remove a master or reset all masters, we should let all sentinels know. So my FSM struct is very easy, like below:</li>
-</ul>
-<pre><code>type masterFSM struct {
-    sync.Mutex
-
-    // below holding all Redis master addresses
-    masters map[string]struct{}
-}
-</code></pre><ul>
-<li>Define our own FSMSnapshot struct. In our sentinel, this is a list of masters at some point. The struct like this:</li>
-</ul>
-<pre><code>type masterSnapshot struct {
-    masters []string
-}
-</code></pre><ul>
-<li>Create a log storage storing and retrieving logs and a stable storage storing key configurations. Hashicorp supplies a LMDB lib and a BoltDB lib for both storage, we use BoltDB because of the pure Go implementation.</li>
-<li>Create a snapshot storage saving FSM snapshot, we use raft own NewFileSnapshotStore generating a file saving this.</li>
-<li>Create a peer storage storing all raft nodes, we use raft own NewJSONPeers generating a file saving all nodes with JSON format.</li>
-<li>Create a transport allowing a raft node to communicate with other nodes, we use raft own NewTCPTransport generating a TCP transport.</li>
-</ul>
-<p>After do that, we can create a raft, we can use LeaderCh and Leader function to check whether a raft node is leader or not. Only the leader node can handle operations. If the leader is down, raft can re-elect a new leader.</p>
-<p>You can see the source <a href="https://github.com/siddontang/redis-failover/blob/master/failover/raft.go" target="_blank" rel="external">here</a> for more information.</p>
-<h2 id="Summary">Summary</h2>
-<p>Our redis sentinel is named redis-failover, although it looks a little simple and needs improvement, it still the first trial and later we will use raft in more projects, maybe instead of zookeeper.</p>
-<p>redis-failover: <a href="https://github.com/siddontang/redis-failover" target="_blank" rel="external">https://github.com/siddontang/redis-failover</a></p>
-
-      
-    </div>
-    <footer>
-      
         
         
       
@@ -254,14 +175,27 @@
 </article>
 
 
+<section id="comment">
+  <h1 class="title">留言</h1>
 
   
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'siddontang'; // required: replace example with your forum shortname
 
-  <nav id="pagination">
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>  
   
-  
-  <div class="clearfix"></div>
-</nav>
+</section>
+
 </div></div>
     <aside id="sidebar" class="alignright">
   <div class="search">
@@ -339,7 +273,7 @@ var disqus_shortname = 'siddontang';
   var dsq = document.createElement('script');
   dsq.type = 'text/javascript';
   dsq.async = true;
-  dsq.src = '//' + disqus_shortname + '.disqus.com/count.js';
+  dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
   (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
 }());
 </script>

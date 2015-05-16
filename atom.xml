@@ -4,7 +4,7 @@
   <subtitle><![CDATA[My thought for program]]></subtitle>
   <link href="/atom.xml" rel="self"/>
   <link href="http://siddontang.com/"/>
-  <updated>2015-05-03T02:56:59.212Z</updated>
+  <updated>2015-05-16T08:14:14.258Z</updated>
   <id>http://siddontang.com/</id>
   
   <author>
@@ -15,11 +15,102 @@
   <generator uri="http://zespia.tw/hexo/">Hexo</generator>
   
   <entry>
+    <title><![CDATA[我为什么从python转向go]]></title>
+    <link href="http://siddontang.com/2015/05/16/why-python-to-go/"/>
+    <id>http://siddontang.com/2015/05/16/why-python-to-go/</id>
+    <published>2015-05-16T08:13:34.000Z</published>
+    <updated>2015-05-16T08:14:11.000Z</updated>
+    <content type="html"><![CDATA[<p>应puppet大拿刘宇的邀请，我去西山居运维团队做了一个简短分享，谈谈为什么我要将我们的项目从python转向go。</p>
+<p>坦白的讲，在一帮python用户面前讲为什么放弃python转而用go其实是一件压力蛮大的事情，语言之争就跟vim和emacs之争一样，是一个永恒的无解话题，稍微不注意就可能导致粉丝强烈地反击。所以我只会从我们项目实际情况出发，来讲讲为什么我最终选择了go。</p>
+<h2 id="为什么放弃python">为什么放弃python</h2>
+<p>首先，我其实得说说为什么我们会选择python。在我加入企业快盘团队之前，整个项目包括更早的金山快盘都是采用python进行开发的。至于为什么这么选择，当时的架构师葱头告诉我，主要是因为python上手简单，开发迅速。对于团队里面大部分完全没服务端开发经验的同学来说，python真的是一个很好的选择。</p>
+<p>python的简单高效，我是深有体会的。当时私有云项目也就几个程序员，但是我们要服务多家大型企业，进行定制化的开发，多亏了python，我们才能快速出活。后来企业快盘挂掉之后，我们启动轻办公项目，自然也使用python进行了原始版本的构建。</p>
+<p>python虽然很强大，但我们在使用的时候也碰到了一些问题，主要由如下几个方面：</p>
+<ul>
+<li><p>动态语言</p>
+<p>  python是一门动态语言，不是强类型系统。对于一个变量，我们有时候压根不知道它是什么类型，然后就可能出现int + string这样的运行时错误。</p>
+<p>  在python里面，可以允许同名函数的出现，后一个函数会覆盖前一个函数，有一次我们系统一个很严重的错误就是因为这个导致的。</p>
+<p>  上面说到的这些，静态语言在编译的时候就能帮我们检测出来，而不需要等到运行时出问题才知道。虽然我们有很完善的测试用例，但总有case遗漏的情况。所以每次出现运行时错误，我心里都想着如果能在编译的时候就发现该多好。</p>
+</li>
+<li><p>性能</p>
+<p>  其实这个一直是很多人吐槽python的地方，不过想想，python最开始是为了解决啥问题而被开发出来的？我们硬是要将他用到高性能服务器开发上面，其实也是有点难为它。</p>
+<p>  python的GIL导致导致无法真正的多线程，大家可能会说我用多进程不就完了。但如果一些计算需要涉及到多进程交互，进程之间的通讯开销也是不得不考虑的。</p>
+<p>  无状态的分布式处理使用多进程很方便，譬如处理http请求，我们就是在nginx后面挂载了200多个django server来处理http的,但这么多个进程自然导致整体机器负载偏高。</p>
+<p>  但即使我们使用了多个django进程来处理http请求，对于一些超大量请求，python仍然处理不过来。所以我们使用openresty，将高频次的http请求使用lua来实现。可这样又导致使用两种开发语言，而且一些逻辑还得写两份不同的代码。</p>
+</li>
+<li><p>同步网络模型</p>
+<p>  django的网络是同步阻塞的，也就是说，如果我们需要访问外部的一个服务，在等待结果返回这段时间，django不能处理任何其他的逻辑（当然，多线程的除外）。如果访问外部服务需要很长时间，那就意味着我们的整个服务几乎在很长一段时间完全不可用。</p>
+<p>  为了解决这个问题，我们只能不断的多开django进程，同时需要保证所有服务都能快速的处理响应，但想想这其实是一件很不靠谱的事情。</p>
+</li>
+<li><p>异步网络模型</p>
+<p>  tornado的网络模型是异步的，这意味着它不会出现django那样因为外部服务不可用导致这个服务无法响应的问题。话说，比起django，我可是非常喜欢tornado的，小巧简单，以前还写过几篇深入剖析tornado的文章了。</p>
+<p>  虽然tornado是异步的，但是python的mysql库都不支持异步，这也就意味着如果我们在tornado里面访问数据库，我们仍然可能面临因为数据库问题造成的整个服务不可用。</p>
+<p>  其实异步模型最大的问题在于代码逻辑的割裂，因为是事件触发的，所以我们都是通过callback进行相关处理，于是代码里面就经常出现干一件事情，传一个callback，然后callback里面又传callback的情况，这样的结果就是整个代码逻辑非常混乱。</p>
+<p>  python没有原生的协程支持，虽然可以通过gevent，greenlet这种的上patch方式来支持协程，但毕竟更改了python源码。另外，python的yield也可以进行简单的协程模拟，但毕竟不能跨堆栈，局限性很大，不知道3.x的版本有没有改进。</p>
+</li>
+<li><p>开发运维部署</p>
+<p>  当我第一次使用python开发项目，我是没成功安装上项目需要的包的，光安装成功mysql库就弄了很久。后来，是一位同事将他整个python目录打包给我用，我才能正常的将项目跑起来。话说，现在有了docker，是多么让人幸福的一件事情。</p>
+<p>  而部署python服务的时候，我们需要在服务器上面安装一堆的包，光是这一点就让人很麻烦，虽然可以通过puppet，salt这些自动化工具解决部署问题，但相比而言，静态编译语言只用扔一个二进制文件，可就方便太多了。</p>
+</li>
+<li><p>代码失控</p>
+<p>  python非常灵活简单，写c几十行代码才能搞定的功能，python一行代码没准就能解决。但是太简单，反而导致很多同学无法对代码进行深层次的思考，对整个架构进行细致的考量。来了一个需求，啪啪啪，键盘敲完开速实现，结果就是代码越来越混乱，最终导致了整个项目代码失控。</p>
+<p>  虽然这也有我们自身的原因，譬如没好的代码review机制，没有好的项目规范，但个人感觉，如果一个程序员没经过良好的编码训练，用python很容易就写出烂的代码，因为太自由了。</p>
+<p>  当然，我这里并不是说用python无法进行大型项目的开发，豆瓣，dropbox都是很好的例子，只是在我们项目中，我们的python代码失控了。</p>
+</li>
+</ul>
+<p>上面提到的都是我们在实际项目中使用python遇到的问题，虽然最终都解决了，但是让我愈发的觉得，随着项目复杂度的增大，流量性能压力的增大，python并不是一个很好的选择。</p>
+<h2 id="为什么选择go">为什么选择go</h2>
+<p>说完了python，现在来说说为什么我们选择go。其实除了python，我们也有其他的选择，java，php，lua(openresty)，但最终我们选择了go。</p>
+<p>虽然java和php都是最好的编程语言（大家都这么争的），但我更倾向一门更简单的语言。而openresty，虽然性能强悍，但lua仍然是动态语言，也会碰到前面说的动态语言一些问题。最后，前金山许式伟用的go，前快盘架构师葱头也用的go，所以我们很自然地选择了go。</p>
+<p>go并不是完美，一堆值得我们吐槽的地方。</p>
+<ul>
+<li><p>error，好吧，如果有语言洁癖的同学可能真的受不了go的语法，尤其是约定的最后一个返回值是error。项目里面经常会充斥这样的代码:</p>
+<pre><code class="go">  if err := doA(); err != nil {
+      if _, err := doB(); err != nil {
+      }
+  }
+</code></pre>
+<p>  难怪有个梗是对于一个需求，java的程序员在写配置的时候，go程序员已经写了大部分代码，但是当java的程序员写完的时候，go程序员还在写<code>err != nil</code>。</p>
+</li>
+<li><p>包管理，go的包管理太弱了，只有一个go get，也就是如果不小心更新了一个外部库，很有可能就导致现有的代码编译不过了。虽然已经有很多开源方案，譬如godep以及现在才出来的gb等，但毕竟不是官方的。貌似google也是通过vendor机制来管理第三方库的。希望go 1.5或者之后的版本能好好处理下这个问题。</p>
+</li>
+<li><p>GC，java的GC发展20年了，go才这么点时间，gc铁定不完善。所以我们仍然不能随心所欲的写代码，不然在大请求量下面gc可能会卡顿整个服务。所以有时候，该用对象池，内存池的一定要用，虽然代码丑了点，但好歹性能上去了。</p>
+</li>
+<li><p>泛型，虽然go有inteface，但泛型的缺失会让我们在实现一个功能的时候写大量的重复代码，譬如int32和int64类型的sort，我们得为分别写两套代码，好冗余。go 1.4之后有了go generate的支持，但这种的仍然需要自己根据go的AST库来手动写相关的parser，难度也挺大的。虽然也有很多开源的generate实现，但毕竟不是官方的。</p>
+</li>
+</ul>
+<p>当然还有很多值得吐槽的地方，就不一一列举了，但是go仍旧有它的优势。</p>
+<ul>
+<li>静态语言，强类型。静态编译能帮我们检查出来大量的错误，go的强类型甚至变态到不支持隐式的类型转换。虽然写代码感觉很别扭，但减少了犯错的可能。</li>
+<li>gofmt，应该这是我知道的第一个官方提供统一格式化代码工具的语言了。有了gofmt，大家的代码长一个样了，也就没有花括号到底放到结尾还是新开一行这种蛋疼的代码风格讨论了。因为大家的代码风格一样，所以看go的代码很容易。</li>
+<li>天生的并行支持，因为goroutine以及channel，用go写分布式应用，写并发程序异常的容易。没有了蛋疼的callback导致的代码逻辑割裂，代码逻辑都是顺序的。</li>
+<li>性能，go的性能可能赶不上c，c++以及openresty，但真的也挺强悍的。在我们的项目中，现在单机就部署了一个go的进程，就完全能够胜任以前200个python进程干的事情，而且CPU和MEM占用更低。</li>
+<li>运维部署，直接编译成二进制，扔到服务器上面就成，比python需要安装一堆的环境那是简单的太多了。当然，如果有cgo，我们也需要将对应的动态库给扔过去。</li>
+<li>开发效率，虽然go是静态语言，但我个人感觉开发效率真的挺高，直觉上面跟python不相上下。对于我个人来说，最好的例子就是我用go快速开发了非常多的开源组件，譬如ledisdb，go-mysql等，而这些最开始的版本都是在很短的时间里面完成的。对于我们项目来说，我们也是用go在一个月就重构完成了第一个版本，并发布。</li>
+</ul>
+<h2 id="实际项目中一些Go_Tips">实际项目中一些Go Tips</h2>
+<p>到现在为止，我们几乎所有的服务端项目都已经转向go，当然在使用的时候也遇到了一些问题，列出来算是经验分享吧。</p>
+<ul>
+<li>godep，我们使用godep进行第三方库管理，但是godep我碰到的最大的坑就是build tag问题，如果一个文件有build tag，godep很有可能就会忽略这个文件。</li>
+<li>IO deadline，如果能自己在应用层处理的都自己处理，go的deadline内部是timer来控制，但timer内部采用一个array来实现的heap，全局共用一个锁，如果大并发量，并且timer数量过多，timeout变动太频繁，很容易就引起性能问题。</li>
+<li>GC，这个前面也说了，多用内存池，对象池，另外，我还发现，如果对象的生命周期跟goroutine一致，对性能的提升也不错，也在go的group问过相关问题，大家猜测可能是因为一些对象其实是在goroutine的8k栈上面分配的，所以一起回收没有额外GC了。</li>
+<li>Go gob，如果要做RPC服务，gob并不是一个很好的选择，首先就跟python的pickle不通用，然后为了做不同系统的数据传入，任何包都必须带上类型的详细信息，size太大。go里面现在还没一套官方的RPC方案，gRPC貌似有上位的可能。</li>
+</ul>
+<h2 id="总结">总结</h2>
+<p>虽然我现在选择了go，但是并不表示我以后不会尝试其他的语言。语言没有好坏，能帮我解决问题的就是好语言。但至少在很长的一段时间，我都会用go来进行开发。Let’ go!!!</p>
+]]></content>
+    
+    
+      <category term="go" scheme="http://siddontang.com/categories/go/"/>
+    
+  </entry>
+  
+  <entry>
     <title><![CDATA[Use Hashicorp Raft to build a Redis sentinel]]></title>
     <link href="http://siddontang.com/2015/05/03/use-hashicorp-raft-to-build-a-redis-sentinel/"/>
     <id>http://siddontang.com/2015/05/03/use-hashicorp-raft-to-build-a-redis-sentinel/</id>
     <published>2015-05-03T02:56:11.000Z</published>
-    <updated>2015-05-03T02:56:41.000Z</updated>
+    <updated>2015-05-03T02:56:59.000Z</updated>
     <content type="html"><![CDATA[<h2 id="Redis_Sentinel">Redis Sentinel</h2>
 <p>We use Redis not only for cache, but also storing important data, and we build up a Master/Slave replication topology to guarantee data security.</p>
 <p>Master/Slave architecture works well, but sometimes we need a more powerful high availability solution. If master is down, we must check this immediately, reselect a new master from the slaves and do failover.</p>
@@ -1644,70 +1735,6 @@ gopkg.in/user/pkg.v3 → github.com/user/pkg   (branch/tag v3, v3.N, or v3.N.M)
       <category term="gopkg" scheme="http://siddontang.com/tags/gopkg/"/>
     
       <category term="go" scheme="http://siddontang.com/categories/go/"/>
-    
-  </entry>
-  
-  <entry>
-    <title><![CDATA[LeetCode程序员面试技巧]]></title>
-    <link href="http://siddontang.com/2014/07/22/leetcode-interview-tips-for-programmers/"/>
-    <id>http://siddontang.com/2014/07/22/leetcode-interview-tips-for-programmers/</id>
-    <published>2014-07-22T15:01:29.000Z</published>
-    <updated>2014-08-08T16:11:39.000Z</updated>
-    <content type="html"><![CDATA[<h2 id="起因">起因</h2>
-<p>写在开头，脑袋铁定秀逗了，历时20多天，刷完了leetcode上面151道题目（当然很多是google的），感觉自己对算法和数据结构算是入门了，但仍然还有很多不清楚的地方，于是有了对于每道题目写分析的冲动。不过在看到leetcode上面的文章之后，决定先从翻译入手，顺带再写写自己做题的心得体会。今天是第一篇：程序员面试技巧。</p>
-<p>如果你主修计算机科学，那么在你工作的时候会碰到很多有难度的编程问题。当你去找工作的时候，你会有很多的面试，而面试官通常很喜欢问你很多技术性的问题，以下就是三类主要的题型：</p>
-<ul>
-<li>算法/数据结构</li>
-<li>特定编程语言/通用的计算机知识</li>
-<li>脑筋急转弯</li>
-</ul>
-<p>后续我将详细的讨论上面这几点：</p>
-<h2 id="算法/数据结构">算法/数据结构</h2>
-<p>你必须深刻的理解以下几种数据结构：数组，链表，二叉树，哈希表等。你必须明确地知道什么时候该使用数组或者链表，譬如在实现一个列表翻转的时候。</p>
-<p>面试官通常会问你一些算法问题用以检验你的编程解决问题能力，一些算法问题如下：</p>
-<ul>
-<li>在一个句子里面反转单词。</li>
-<li>在一个单词里面反转字母。（尝试使用迭代或者递归解决）</li>
-<li>如何在一个列表里面找到重复的数字。</li>
-<li>生成数字n的全排列。（小提示：递归）</li>
-<li>找到两个排好序数组的中间值。（小提示：分治法）</li>
-<li>如何进行拼写检查并验证单词。（小提示：编辑距离）</li>
-</ul>
-<p>（译者吐槽，说句实话，上面几个问题如果没做题大部分我还真答不出来。）</p>
-<h2 id="特定编程语言/通用的计算机知识">特定编程语言/通用的计算机知识</h2>
-<p>如果你应聘的是C++职位，需要准备好应对很多C++的问题，其它编程语言也一样。如果你应聘的职位不需要特定的编程语言，那么你可能会被问到通用的计算机知识，譬如在堆和栈上面创建对象的区别。</p>
-<p>我经常碰到的一些C++问题如下：</p>
-<ul>
-<li>什么是虚函数？怎么实现的？使用虚函数会有啥性能问题？</li>
-<li>什么是虚析构函数？为什么需要他们？如果你不实现成虚析构会出现什么问题？</li>
-<li>什么是拷贝构造函数？它什么时候被调用？</li>
-<li>malloc和new的区别是什么？</li>
-</ul>
-<p>（译者吐槽，上面这些感觉还算靠谱，至少没问虚拟继承是啥！我面试的时候通常还会问很多STL的东西，毕竟这在C++里面已经是很基础的了。Template这些的就算了，有时候都能把自己绕晕，还是别坑面试者了。）</p>
-<h2 id="脑筋急转弯">脑筋急转弯</h2>
-<p>一些面试官很喜欢用一个脑筋急转弯来结束面试。这个其实很坑爹的，不过还是老老实实的准备一些吧。</p>
-<p>一些经典的问题：</p>
-<ul>
-<li><p>两个鸡蛋问题：</p>
-<p>  你有两个相同的鸡蛋，然后还有100层楼等你去爬。你需要知道最高到哪一层扔下鸡蛋，鸡蛋不会摔碎。（鸡蛋语录：为啥受伤的总是蛋蛋？）。很有可能第一层就碎了，也可能到了100层才碎。你需要知道最多尝试几次就能找到答案。</p>
-</li>
-<li><p>尽可能快的在一个byte里面反转bit。</p>
-</li>
-<li><p>你有5个相同的罐子，都装着球，其中有4个里面每个球都是重10g，另一个灌每个球重9g，你有一台电子称，只称一次，找到那个重9g球的罐子。</p>
-</li>
-</ul>
-<p>（译者吐槽，上面这些脑筋急转弯问题感觉就是算法问题，哪里是脑筋急转弯，明显的忽悠！）</p>
-<h2 id="总结">总结</h2>
-<p>当然这是译者自己的，原文在上面就结束了，可以看到，作为一个程序员，我们其实是幸运的，因为我们能够接触如此多的挑战，并不断提升自己。可我们同时也是郁闷的，很多时候往往都有这样的错觉，数据结构和算法在很多工作中并不用到，但是为啥偏偏就面这个，linus貌似说过：“Bad programmers worry about the code. Good programmers worry about data structures and their relationships”，而在《大教堂与集市》这本书里面，作者直接说明“Smart data structures and dumb code works a lot better than the other way around”。有时候当写程序写多了，自然就发现算法和数据结构的重要性了。</p>
-<p>另外，现在无论哪个公司，除非你是大牛级别的，面试几乎不会脱离上面那些东西，所以还是老老实实的学习吧，骚年。</p>
-]]></content>
-    
-    
-      <category term="leetcode" scheme="http://siddontang.com/tags/leetcode/"/>
-    
-      <category term="algorithm" scheme="http://siddontang.com/tags/algorithm/"/>
-    
-      <category term="leetcode" scheme="http://siddontang.com/categories/leetcode/"/>
     
   </entry>
   
