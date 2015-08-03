@@ -72,6 +72,233 @@
     <header>
       
         <div class="icon"></div>
+        <time datetime="2015-08-03T05:39:03.000Z"><a href="/2015/08/03/smartstack-introduction/">08-03-2015</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2015/08/03/smartstack-introduction/"></a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>title: SmartStack: Airbnb的自动服务发现和注册框架<br>date: 2015-08-03 13:38:36<br>categories:</p>
+<h2 id="tags:">tags:</h2>
+<h2 id="Micro-service引发的问题">Micro-service引发的问题</h2>
+<p>在几年前做企业快盘的时候，为了构建一个高可用的分布式系统，我们采用了一个模块一个服务，不同服务之间通过HTTP交互的架构模型，除了数据存储服务（MySQL，Redis等），我们其他的服务都是无状态的，这样就能非常方便的进行水平扩展，满足不断增加的业务需求。现在才知道，这种架构模式就是俗称的micro-service，如果当初我们就能拿这些概念出去忽悠，没准能让自己的产品更加高大上一点的。:-)</p>
+<p>micro-service虽然方便，毕竟各个模块是相互独立，我们可以独立开发，独立部署，只要约定好相互之间的HTTP Restful API就成了。但是，随着服务的增多，我们会面临一个问题，就是某一个服务到底在哪里？我们如何才能发现该服务并进行调用。</p>
+<p>在项目初期，服务数量不多的情况下面，我们可以将所有服务的地址写到一个配置文件里面（或者更改hosts），部署升级的时候通过puppet或者其它工具进行整个系统的更新，但这样，就会面临一个问题，任何增加删除服务的操作，都可能引起整个系统的更新。随着系统规模的扩大，服务数量的增多，谁都知道不可行了。</p>
+<p>Airbnb的工程师一定也碰到了类似了问题，否则他们不会开发了SmartStack。关于SmartStack的详细介绍，可以参考这篇文章<a href="http://nerds.airbnb.com/smartstack-service-discovery-cloud/" target="_blank" rel="external">SmartStack: Service Discovery in the Cloud</a>，国内的oschina已经有相关翻译<a href="http://www.oschina.net/translate/smartstack-service-discovery-cloud" target="_blank" rel="external">SmartStack 介绍 —— 云端的服务发现</a>，所以我就不用考虑再将这篇文章重复翻译一遍了。下面我只是想说说我的一些理解。</p>
+<h2 id="不怎么好的解决方案">不怎么好的解决方案</h2>
+<p>Airbnb的这篇文章同时列出了一些不怎么好的解决方案，个人觉得对我们设计分布式系统也是很有借鉴意义的。</p>
+<h3 id="DNS">DNS</h3>
+<p>DNS应该是一个非常简单地解决方案了，一个服务配置一个Domain，通过DNS解析，客户端对某个服务的请求就能被路由到某一台具体的机器上面处理。</p>
+<p>虽然很简单，但是DNS也有很严重的问题，首先就是延时，如果我们更新了DNS，我们无法保证一些客户端能及时的收到DNS变更的消息。同时，在机器上面，DNS通常都有缓存，所以更加增大了变更DNS的延时。</p>
+<p>另外，DNS是随机路由的，我们不能自定义自己的路由算法，所以很有可能我们会面临一个服务里面，一些机器繁忙的在处理请求，而另一些机器则几乎被闲置。</p>
+<p>还有一个很严重的问题，一些应用程序譬如Nginx在程序启动的时候会缓存DNS的结果，也就是如果不做任何特殊处理，DNS的任何变更对当前运行中的Nginx是完全无效的。</p>
+<p>综上，如果服务的节点动态变更比较频繁，使用DNS来进行服务发现并不是一个很好的解决方案。但对于一些节点长时间不会变动的服务，譬如Zookeeper，使用DNS则是一个比较好的方式。</p>
+<h3 id="中心化的负载均衡">中心化的负载均衡</h3>
+<p>我们可以使用一个中心化的负载均衡器来进行服务的路由。所有的路由信息都存储到这个负载均衡器里面。但我们如何发现这个负载均衡器，通常的做法就是DNS，不过这又会出现上面DNS的问题。</p>
+<p>同时，因为这个负载均衡器是一个中心化的节点，必然面临单点性能问题，而且如果负载均衡器当掉了，我们就会面临整个系统不可用的问题了（这时候完全不知道其他服务在哪里了）。</p>
+<p>因为负载均衡器是一个单点，所以我们需要考虑将其做HA处理，另外，我们还需要考虑性能问题。如果有钱，考虑购入F5，不过这种硬件路由方案真心很贵。LVS, Nginx或者HAProxy也是一个不错的选择。如果在AWS上面，可以考虑使用ELB，但只能针对外网IP。</p>
+<p><strong>其实中心化的负载均衡方案，后续可以演化为无状态proxy方案，我们通过zookeeper或者其他coordinator来存储整个集群的路由信息，并通过2PC的方式同步更新到所有proxy上面，因为proxy是无状态，所以非常方便的进行水平扩展。当然proxy的发现也是一个问题，我们可以使用DNS，也可以使用LVS。</strong></p>
+<h3 id="服务自己内部注册并发现">服务自己内部注册并发现</h3>
+<p>其实依赖zookeeper等协调服务来处理的。服务会自己注册到zookeeper上面，其他的服务节点通过zookeeper的watch方式实时的感知到整个集群的变化。</p>
+<p>当然，使用这种方式也是有限制的。如果我们使用同一种语言进行开发，譬如java，那么每个服务嵌入一个zookeeper的client library是很容易的，但如果用了不同的语言，譬如有go，node.js，等等，让所有服务都能很好的跟zookeeper进行交互就比较困难了。</p>
+<p>同时，如果我们希望一些其他第三方应用（譬如Nginx）也能享受到zookeeper的好处，这就比较麻烦了，因为这些服务压根不支持zookeeper。</p>
+<p>另外，即使zookeeper存储了整个路由信息，我们仍然没有很好的办法定制路由算法，即使连最简单地round-robin都没法很好的支持，譬如一个客户端将第一个请求发给了第一个节点，如何将第二个请求发给第二个节点？</p>
+<p>总之，单纯地使用zookeeper是不可能的，但正如我在前面说的，<strong>我们可以引入一个无状态的proxy，由proxy负责跟zookeeper打交道。</strong></p>
+<h2 id="SmartStack:_Nerve_and_Synapse">SmartStack: Nerve and Synapse</h2>
+<p>Airbnb列出了通用的三种不可取的做法，我想他们应该是都尝试过并且踩了坑，所以才有了后续的SmartStack。:-）</p>
+<p>SmartStack由两个模块构成，nerve和synapse，当然还依赖zookeeper和haproxy。</p>
+<p>部署的时候，service跟nerve一起部署，client则跟synapse以及local haproxy一起部署。</p>
+<p>nerve负责管控其对应的service，并通过ephemeral的方式挂载到zookeeper上面，这样如果nerve所在的机器当掉，或者nerve负责的service挂掉了（nerve会每隔一段时间进行service存活检测），nerve与zookeeper的连接就会断开，外部就能感知节点的动态变更了。</p>
+<p>synapse负责watch zookeeper的变更，当获取到节点变更事件之后，将最新的路由信息更新到本机local haproxy上面，客户端要访问对应的service，都是通过local haproxy路由到相应节点进行访问。</p>
+<p>可以看到，SmartStack是一个非常简单地实现方式，但是它很好的解决了分布式系统中服务的发现与注册问题。SmartStack通过nerve进行服务的注册以及注销，通过synapse + local haproxy的方式进行服务的发现。如果一个client要访问对应的服务，只能通过local haproxy，这里local haproxy有点类似于中心化的负载均衡器，但是它仅仅限于本机，所以不存在DNS以及单点等问题。</p>
+<h2 id="SmartStack的不足">SmartStack的不足</h2>
+<p>SmartStack的实现是很巧妙的，并且非常的简单，但是它也有一些自身的问题，最主要的就是友好的可用性问题。这套系统依赖了zookeeper，需要额外部署nerve，synapse以及local haproxy，运维上面略显复杂，相比较而言，Consul（Hashicorp的分布式服务发现程序）就只有一个二进制文件，部署更加方便。（后续如果有时间，可以写写SmartStack vs Consul）</p>
+<p>为什么我特别关注运维，主要在于现在我们开发的一个分布式kv：RebornDB也存在同样的问题，运维步骤略显繁琐，导致很多时候我们开发自己都烦如何很好的构建一个可运行环境。</p>
+<p>不过，这年头，因为有了docker以及mesos，kubernate等技术，没准运维的复杂度会降低很多。</p>
+<h2 id="总结">总结</h2>
+<p>总的来说，SmartStack是一个很好的服务发现解决方案，原理非常简单，但功能却很强大。不过，如果我们将local haproxy往上提升变成一个haproxy cluster，这不就跟我前面说的无状态proxy差不多呢？没准后续也可以用go整一个出来，毕竟SmartStack的ruby代码看得我挺头大的。 </p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
+        <time datetime="2015-08-03T05:37:34.000Z"><a href="/2015/08/03/double-lexicographic-comparison/">08-03-2015</a></time>
+      
+      
+  
+    <h1 class="title"><a href="/2015/08/03/double-lexicographic-comparison/">浮点数字节序比较</a></h1>
+  
+
+    </header>
+    <div class="entry">
+      
+        <p>在开发LedisDB的时候，我曾考虑将zset的score使用跟redis一样的double类型，但是却没想好如何将double在底层LevelDB或者RocksDB下存储，使其能够支持zset中zrangebyscore等命令，所以只能考虑使用int64类型来代替。但在开发qdb的时候，最开始我们仍然只是支持int64，但最终通过努力，支持了double，使其能跟redis的zset api完全兼容。其实后来发现，实现很简单。</p>
+<h2 id="LevelDB和ZSet">LevelDB和ZSet</h2>
+<p>这里需要简单说明一下LevelDB（RocksDB只是它的一个衍生优化版本，但最核心基本的原理还是一样的）。</p>
+<p>LevelDB是一个高性能的KV存储库，数据在LevelDB里面是根据key来进行排序存储的，而key和value是任意的字节数组。在外部看来，LevelDB里面的数据就是一个有序map，map里面的key是顺序存储的，如下：</p>
+<pre><code>{
+    &quot;key1&quot; : &quot;value1&quot;,
+    &quot;key2&quot; : &quot;value2&quot;,
+    ...
+}
+</code></pre><p>在redis里面，zset是一个有序集合，每一个member都对应一个score，member是唯一的，score则可能重复。我们可以通过score进行很多处理，譬如获取<code>[score1, score2]</code>这个区间的所有元素，或者获取某个member对应的score再整个zset里面的rank。为了实现上面的需求，我们需要在内部用一个有序的数据结构来存储score以及其对应的member，redis使用skip list来进行处理，那如何将这样的映射关系在LevelDB里面很好的处理呢？</p>
+<p>因为LevelDB将数据是按照key顺序存储的，所以我们只需要将score的信息绑定到key上面，就能很容易的实现一个简易的skip list。对于一个zset里面的member，可能在LevelDB里面实际的key结构如下：</p>
+<p><code>key:score:member</code> </p>
+<p>对于一个zset来说，key和member都是arbitrary bytes array，可以很方便的绑定到LevelDB的key上面，但是score可是double的，如何绑定上去参与排序呢？</p>
+<h2 id="LedisDB_ZSet_int64_score">LedisDB ZSet int64 score</h2>
+<p>再说double之前，先来聊聊LedisDB的做法，LedisDB使用的score是int64，对于一个int64来说，计算机内部是使用8 bytes进行存储的，下面是例子，会打印不同int64数据在小端序和大端序下8字节array十六进制表现：</p>
+<pre><code class="go">import &quot;fmt&quot;
+import &quot;math&quot;
+import &quot;encoding/binary&quot;
+
+func p(a int64) {
+    b1 := make([]byte, 8)
+    b2 := make([]byte, 8)
+
+    binary.LittleEndian.PutUint64(b1, uint64(a))
+    binary.BigEndian.PutUint64(b2, uint64(a))
+
+    fmt.Printf(&quot;%0x\t%0x\n&quot;, b1, b2)
+}
+
+func main() {
+    p(0)
+    p(1)
+    p(0xFFFF0000)
+    p(math.MaxInt64)
+
+    p(-1)
+    p(-200)
+    p(-300)
+    p(math.MinInt64)
+}
+</code></pre>
+<p>输出结果如下：</p>
+<pre><code>0000000000000000    0000000000000000
+
+0100000000000000    0000000000000001
+0000ffff00000000    00000000ffff0000
+ffffffffffffff7f    7fffffffffffffff
+
+ffffffffffffffff    ffffffffffffffff
+38ffffffffffffff    ffffffffffffff38
+d4feffffffffffff    fffffffffffffed4
+0000000000000080    8000000000000000
+</code></pre><p>第一列是小端序打印的结果，第二列是大端序打印的结果。首先我们可以看到，对于0来说，无论什么端序，都是全0，对于正整数来说，我们可以看到，0xFFFF0000是铁定大于1的，但是在对应的小端序存储的bytes array里面，会发现如果按照字节序进行排序0100000000000000是大于0000ffff00000000的，而大端序的结果0000000000000001是小于00000000ffff0000的。对于负整数也是一样，-200是大于-300的，但是小端序的结果是小于，而大端序的结果是大于。</p>
+<p>所以我们可以知道，对于一个整数，我们需要使用大端序的方式将其绑定到LevelDB的key上面，这样才能参与正常的排序。但是我们又发现，如果直接这样处理，负数的大端序结果是铁定大于正数的，譬如-1的ffffffffffffffff就大于1的0000000000000001，所以为了正常的处理整数的排序，我们只需要在key上面加一个前缀标志就可以了。LedisDB里面做了如下处理：</p>
+<pre><code>key&lt;38ffffffffffffff:member
+key&lt;ffffffffffffffff:member
+key=0000000000000000:member
+key=0000000000000001:member
+</code></pre><p>因为<code>=</code>的ascii值大于<code>&lt;</code>，我们将正整数和0前面加上<code>=</code>，将负数前面加上<code>&lt;</code>，这样在进行字节序排序的时候，正数和0一定能排在负数的后面，也就是完全能满足从小到大排序的需求了。</p>
+<h2 id="QDB_ZSet_double_score">QDB ZSet double score</h2>
+<p>上面可以知道，我们使用大端序加上一个前缀标志，就能很好的处理int64类型的score的排序，但double可没有这么简单，不然LedisDB早就支持了。</p>
+<p>首先我们来看看double类型IEEE754规范，对于一个double来说，使用8 bytes存储，格式如下：</p>
+<ul>
+<li>符号: 1 bit （0为正，1为负）</li>
+<li>指数: 11 bits</li>
+<li>分数: 52 bits</li>
+</ul>
+<p><img src="http://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/IEEE_754_Double_Floating_Point_Format.svg/1236px-IEEE_754_Double_Floating_Point_Format.svg.png" alt="double format"></p>
+<p>对于一个64 bits的double，如果指数为e，那么它对应的值计算方式为:</p>
+<p><img src="http://upload.wikimedia.org/math/9/7/c/97c7aee4ad33a9763c30f49628648779.png" alt=""></p>
+<p>如果指数越大，那么double的值越大，如果分数越大，在相同指数的情况下面double值也越大。所以我们如果将double使用大端序存放到8字节array里面，我们就能直接进行字节序比较，但这个仅限于正的double情况下。因为对于负的double，它除了最高位bit为1这一点不一样之外，其余完全跟相反的正数底层存储方式一模一样，所以如果我们直接将其转为大端序比较，会发现结果是相反的。一个简单地例子:</p>
+<pre><code class="go">func d(a float64) {
+    b := make([]byte, 8)
+
+    binary.BigEndian.PutUint64(b, math.Float64bits(a))
+
+    fmt.Printf(&quot;%064b\n&quot;, binary.BigEndian.Uint64(b))
+}
+
+func main() {
+    d(0)
+
+    d(1)
+    d(2)
+
+    d(-1)
+    d(-2)
+}
+</code></pre>
+<p>结果如下：</p>
+<pre><code>0000000000000000000000000000000000000000000000000000000000000000
+0011111111110000000000000000000000000000000000000000000000000000
+0100000000000000000000000000000000000000000000000000000000000000
+1011111111110000000000000000000000000000000000000000000000000000
+1100000000000000000000000000000000000000000000000000000000000000
+</code></pre><p>这里在插入一片广告文章，推荐阅读，<a href="http://www.cygnus-software.com/papers/comparingfloats/comparingfloats.htm" target="_blank" rel="external">这里</a>。</p>
+<p>当初LedisDB就是因为没有办法很好的处理负double的排序比较问题，才采用了int64，但是真的没有办法吗？为啥int64类型的负数能通过大端序进行字节序比较呢？我们知道，在计算机内部，负数是使用补码存储的，也就是反码加1，负数的反码，就是在源码的基础上，符号位不变，其余各个位取反。对于-1来说，它的源码为[10000001]，反码为[11111110]，补码为[11111111]。（为了简单，使用int8表示的）。就因为它有了取反的这一步，我们才能直接用大端序字节序比较。</p>
+<p>所以对于double的负数，我们也仅仅需要干一件事情，就是取反，那么它的大端序字节序比较就是正常的了。在QDB里面，对于一个double，我们做了如下处理:</p>
+<pre><code class="go">// We can not use lexicographically bytes comparison for negative and positive float directly.
+// so here we will do a trick below.
+func float64ToUint64(f float64) uint64 {
+    u := math.Float64bits(f)
+    if f &gt;= 0 {
+        u |= 0x8000000000000000
+    } else {
+        u = ^u
+    }
+    return u
+}
+
+func uint64ToFloat64(u uint64) float64 {
+    if u&amp;0x8000000000000000 &gt; 0 {
+        u &amp;= ^uint64(0x8000000000000000)
+    } else {
+        u = ^u
+    }
+    return math.Float64frombits(u)
+}
+</code></pre>
+<p>如果一个double数据值大于等于0，那么我们将最高位bit设置为1，而对于负数，我们直接取反，就这一步简单的操作，就能让我们完美的支持double的score了。</p>
+<h2 id="总结">总结</h2>
+<p>让QDB的zset支持double score，其实很简单的一件事情，但我在开发LedisDB的时候竟然没有想到如何去解决。我们很多时候，往往追求高大上的东西，譬如架构，设计模式等，但忽略了计算机最基本的底层知识（上面这些其实也就是大小端序，补码，反码等），所以有时候还真的重新好好把最基本的东西给回顾一下。</p>
+<p>最后，在推荐一下QDB，QDB是一个类似Redis的KV数据库，底层使用LevelDB/RocksDB作为存储引擎，解决了Redis内存限制问题，同时能支持string，hash，list，set和zset这几种数据结构，性能卓越，你也可以认为它是LedisDB的升级版本。</p>
+<p>网址 <a href="https://github.com/reborndb/qdb" target="_blank" rel="external">https://github.com/reborndb/qdb</a>。 </p>
+
+      
+    </div>
+    <footer>
+      
+        
+        
+      
+      <div class="clearfix"></div>
+    </footer>
+  </div>
+</article>
+
+
+
+  
+    <article class="post">
+  
+  <div class="post-content">
+    <header>
+      
+        <div class="icon"></div>
         <time datetime="2015-05-16T08:13:34.000Z"><a href="/2015/05/16/why-python-to-go/">05-16-2015</a></time>
       
       
@@ -989,220 +1216,6 @@ string.var_len       value of each field as defined in table-map
 <h2 id="总结">总结</h2>
 <p>实现MySQL replication protocol的解析真心是一件很有挑战的事情，虽然辛苦，但是让笔者更加深入的学习了MySQL的源码，为后续笔者改进<a href="https://github.com/noplay/python-mysql-replication/pull/103" title="Add binlog row minimal and noblob image support" target="_blank" rel="external">LedisDB</a>的replication以及更深入的了解MySQL的replication打下了坚实的基础。</p>
 <p>话说，现在成果已经显现，不然<a href="https://github.com/siddontang/go-mysql-elasticsearch" title="Sync MySQL into Elasticsearch" target="_blank" rel="external">go-mysql-elasticsearch</a>不可能如此快速实现，后续笔者准备基于此做一个更新cache的服务，这样我们的代码里面就不会到处出现更新cache的代码了。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2015-01-25T13:06:26.000Z"><a href="/2015/01/25/two-mysql-problems/">01-25-2015</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2015/01/25/two-mysql-problems/">MySQL问题两则</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>这段时间处理了两个比较有意思的MySQL问题，一个死锁的，一个优化的，陡然发现其实自己对MySQL的理解还不深入，很多运行机制也是知其然但不知其所以然，后续还需要好好恶补一下底层知识。</p>
-<h2 id="一次不可思议的死锁">一次不可思议的死锁</h2>
-<p>假设有如下表结构：</p>
-<pre><code>mysql&gt; show create table tt \G;
-*************************** 1. row ***************************
-       Table: tt
-Create Table: CREATE TABLE `tt` (
-  `id` int(11) NOT NULL DEFAULT &#39;0&#39;,
-  `fileid` int(11) DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `fileid` (`fileid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8
-1 row in set (0.00 sec)
-</code></pre><p>启动三个shell，连接MySQL，然后<code>begin</code>开启一个事务，各个shell分别执行对应的更新语句，</p>
-<p>shell 1：</p>
-<pre><code>shell 1&gt; update tt set id = 2 where fileid = 1;
-</code></pre><p>shell 2：</p>
-<pre><code>shell 2&gt; update tt set id = 3 where fileid = 1;
-</code></pre><p>shell 3：</p>
-<pre><code>shell 3&gt; update tt set id = 4 where fileid = 1;
-</code></pre><p>假设shell 1先执行，这时候2和3会block，然后shell 1 commit提交，我们发现shell 2执行成功，但是3出现死锁错误，通过<code>show engine innodb status</code>我们得到如下死锁信息:</p>
-<pre><code>------------------------
-LATEST DETECTED DEADLOCK
-------------------------
-2015-01-23 14:24:16 10ceed000
-*** (1) TRANSACTION:
-TRANSACTION 24897, ACTIVE 3 sec starting index read
-mysql tables in use 1, locked 1
-LOCK WAIT 2 lock struct(s), heap size 360, 1 row lock(s)
-MySQL thread id 8, OS thread handle 0x10cea5000, query id 138 127.0.0.1 root updating
-update tt set id = 4 where fileid = 1
-*** (1) WAITING FOR THIS LOCK TO BE GRANTED:
-RECORD LOCKS space id 495 page no 4 n bits 72 index `fileid` of table `test`.`tt` trx id 24897 lock_mode X locks rec but not gap waiting
-Record lock, heap no 2 PHYSICAL RECORD: n_fields 2; compact format; info bits 32
- 0: len 4; hex 80000001; asc     ;;
- 1: len 4; hex 80000002; asc     ;;
-
-*** (2) TRANSACTION:
-TRANSACTION 24896, ACTIVE 8 sec updating or deleting
-mysql tables in use 1, locked 1
-4 lock struct(s), heap size 1184, 3 row lock(s), undo log entries 2
-MySQL thread id 7, OS thread handle 0x10ceed000, query id 136 127.0.0.1 root updating
-update tt set id = 3 where fileid = 1
-*** (2) HOLDS THE LOCK(S):
-RECORD LOCKS space id 495 page no 4 n bits 72 index `fileid` of table `test`.`tt` trx id 24896 lock_mode X locks rec but not gap
-Record lock, heap no 2 PHYSICAL RECORD: n_fields 2; compact format; info bits 32
- 0: len 4; hex 80000001; asc     ;;
- 1: len 4; hex 80000002; asc     ;;
-
-*** (2) WAITING FOR THIS LOCK TO BE GRANTED:
-RECORD LOCKS space id 495 page no 4 n bits 72 index `fileid` of table `test`.`tt` trx id 24896 lock mode S waiting
-Record lock, heap no 2 PHYSICAL RECORD: n_fields 2; compact format; info bits 32
- 0: len 4; hex 80000001; asc     ;;
- 1: len 4; hex 80000002; asc     ;;
-
-*** WE ROLL BACK TRANSACTION (1)
-------------
-</code></pre><p>刚开始碰到这个死锁问题，真心觉得很奇怪，每个事务一条语句，通过一个唯一索引去更新同一条记录，正常来说完全不可能发生死锁，但确确实实发生了。笔者百思不得其解，幸好有google，然后搜到了这篇，<a href="http://hedengcheng.com/?p=844" target="_blank" rel="external">一个最不可思议的MySQL死锁分析</a>，虽然触发情况不一样，但是死锁原理都应该类似的，后续如果有精力，笔者将好好深入研究一下。</p>
-<p>顺带再说一下，<a href="http://hedengcheng.com/?p=771" target="_blank" rel="external">MySQL 加锁处理分析</a>这篇文章也是干活满满，这两篇加起来深入理解了，对MySQL的deadlock就会有一个很全面的认识了。</p>
-<h2 id="一次坑爹的优化">一次坑爹的优化</h2>
-<p>我们需要在一张表里面删除某种类型的数据，大概的表结构类似这样:</p>
-<pre><code>CREATE TABLE t (
-    id INT,
-    tp ENUM (&quot;t1&quot;, &quot;t2&quot;),
-    PRIMARY KEY(id)
-) ENGINE=INNODB;
-</code></pre><p>假设我们需要删除类型为t2的数据，语句可能是这样<code>delete from t where tp = &quot;t2&quot;</code>，这样没啥问题，但我们这张表有5亿数据，好吧，真的是5亿，所以以后别再跟我说MySQL表存储百万级别数据就要分表了，百万太小case了。</p>
-<p>这事情我交给了一个小盆友去帮我搞定，他最开始写出了如下的语句<code>delete from t where tp = &quot;t2&quot; limit 1000</code>，使用limit来限制一次删除的个数，可以了，不过这有个很严重的问题，就是越往后，随着t2类型的减少，我们几乎都是全表遍历来删除，所以总的应该是O(n*n)的开销。</p>
-<p>于是我让他考虑主键，每次操作的时候，记录当前最大的主键，这样下次就可以从这个主键之后开始删除了，首先 <code>select id from t where id &gt; last_max_select_id and tp = &quot;t2&quot; limit 1000</code>，然后<code>delete from t where id in (ids)</code>，虽然这次优化采用了两条语句，但是通过主键，我们只需要遍历一次表就可以了，总的来说，性能要快的。</p>
-<p>但是，实际测试的时候，我们却发现，select这条语句耗时将近30s，太慢了。虽然我们使用了主键，但是MySQL仍然需要不停的读取数据判断条件，加之t2类型的数据在表里面比较少量，所以为了limit 1000这个条件，MySQL需要持续的进行IO读取操作，结果自然是太慢了。</p>
-<p>想清楚了这个，其实就好优化了，我们只需要让条件判断在应用层做，MySQL只查询数据返回，语句就是 <code>select id, tp from t where id &gt; last_max_select_id limit 1000</code>，得到结果集之后，自行判断需要删除的id，然后delete。看似我们需要额外处理逻辑，并且网络开销也增大了，但MySQL只是简单的IO读取，非常快，总的来说，性能提升很显著。当然笔者后续还需要更深入的分析。</p>
-<p>最后执行，很happy的是，非常快速的就删完了相关数据，而select的查询时间消耗几乎忽略不计。</p>
-
-      
-    </div>
-    <footer>
-      
-        
-        
-      
-      <div class="clearfix"></div>
-    </footer>
-  </div>
-</article>
-
-
-
-  
-    <article class="post">
-  
-  <div class="post-content">
-    <header>
-      
-        <div class="icon"></div>
-        <time datetime="2015-01-25T13:05:04.000Z"><a href="/2015/01/25/stop-server-gracefully/">01-25-2015</a></time>
-      
-      
-  
-    <h1 class="title"><a href="/2015/01/25/stop-server-gracefully/">Go中优雅的关闭HTTP服务</a></h1>
-  
-
-    </header>
-    <div class="entry">
-      
-        <p>虽然写出7x24小时不间断运行的服务是一件很酷的事情，但是我们仍然在某些时候，譬如服务升级，配置更新等，得考虑如何优雅的结束这个服务。</p>
-<p>当然，最暴力的做法直接就是<code>kill -9</code>，但这样直接导致的后果就是可能干掉了很多运行到一半的任务，最终导致数据不一致，这个苦果只有遇到过的人才能深深地体会，数据的修复真的挺蛋疼，有时候还得给用户赔钱啦。</p>
-<p>所以，通常我们都是给服务发送一个信号，SIGTERM也行，SIGINTERRUPT也成，反正要让服务知道该结束了。而服务收到结束信号之后，首先会拒绝掉所有外部新的请求，然后等待当前所有正在执行的请求完成之后，在结束。当然很有可能当前在执行一个很耗时间的任务，导致服务长时间不能结束，这时候就得决定是否强制结束了。</p>
-<p>具体到go的HTTP Server里面，如何优雅的结束一个HTTP Server呢？</p>
-<p>首先，我们需要显示的创建一个listener，让其循环不断的accept新的连接供server处理，为啥不用默认的http.ListenAndServe，主要就在于我们可以在结束的时候通过关闭这个listener来主动的拒绝掉外部新的连接请求。代码如下:</p>
-<pre><code>l, _ := net.Listen(&quot;tcp&quot;, address)
-svr := http.Server{Handler: handler}
-svr.Serve(l)
-</code></pre><p>Serve这个函数是个死循环，我们可以在外部通过close对应的listener来结束。</p>
-<p>当listener accept到新的请求之后，会开启一个新的goroutine来执行，那么在server结束的时候，我们怎么知道这个goroutine是否完成了呢？</p>
-<p>在很早之前，大概go1.2的时候，笔者通过在handler入口处使用sync WaitGroup来实现，因为我们有统一的一个入口handler，所以很容易就可以通过如下方式知道请求是否完成，譬如：</p>
-<pre><code>func (h *Handler) ServeHTTP(w ResponseWriter, r *Request) {
-    h.svr.wg.Add(1)
-    defer h.svr.wg.Done()
-
-    ......
-}
-</code></pre><p>但这样其实只是用来判断请求是否结束了，我们知道在HTTP 1.1中，connection是能够keepalived的，也就是请求处理完成了，但是connection仍是可用的，我们没有一个好的办法close掉这个connection。不过话说回来，我们只要保证当前请求能正常结束，connection能不能正常close真心无所谓，毕竟服务都结束了，connection自动就close了。但谁叫笔者是典型的处女座呢。</p>
-<p>在go1.3之后，提供了一个ConnState的hook，我们能通过这个来获取到对应的connection，这样在服务结束的时候我们就能够close掉这个connection了。该hook会在如下几种ConnState状态的时候调用。</p>
-<ul>
-<li>StateNew：新的连接，并且马上准备发送请求了</li>
-<li>StateActive：表明一个connection已经接收到一个或者多个字节的请求数据，在server调用实际的handler之前调用hook。</li>
-<li>StateIdle：表明一个connection已经处理完成一次请求，但因为是keepalived的，所以不会close，继续等待下一次请求。</li>
-<li>StateHijacked：表明外部调用了hijack，最终状态。</li>
-<li>StateClosed：表明connection已经结束掉了，最终状态。</li>
-</ul>
-<p>通常，我们不会进入hijacked的状态（如果是websocket就得考虑了），所以一个可能的hook函数如下，参考<a href="http://rcrowley.org/talks/gophercon-2014.html" target="_blank" rel="external">http://rcrowley.org/talks/gophercon-2014.html</a></p>
-<pre><code>s.ConnState = func(conn net.Conn, state http.ConnState) {
-    switch state {
-    case http.StateNew:
-        // 新的连接，计数加1
-        s.wg.Add(1)
-    case http.StateActive:
-        // 有新的请求，从idle conn pool中移除
-        s.mu.Lock()
-        delete(s.conns, conn.LocalAddr().String())
-        s.mu.Unlock()
-    case http.StateIdle:
-        select {
-        case &lt;-s.quit:
-            // 如果要关闭了，直接Close，否则加入idle conn pool中。
-            conn.Close()
-        default:
-            s.mu.Lock()
-            s.conns[conn.LocalAddr().String()] = conn
-            s.mu.Unlock()
-        }
-    case http.StateHijacked, http.StateClosed:
-        // conn已经closed了，计数减一
-        s.wg.Done()
-    }
-</code></pre><p>当结束的时候，会走如下流程：</p>
-<pre><code>func (s *Server) Close() error {
-    // close quit channel, 广播我要结束啦
-    close(s.quit)
-
-    // 关闭keepalived，请求返回的时候会带上Close header。客户端就知道要close掉connection了。
-    s.SetKeepAlivesEnabled(false)
-    s.mu.Lock()
-
-    // close listenser
-    if err := s.l.Close(); err != nil {
-        return err 
-    }
-
-    //将当前idle的connections设置read timeout，便于后续关闭。
-    t := time.Now().Add(100 * time.Millisecond)
-    for _, c := range s.conns {
-        c.SetReadDeadline(t)
-    }
-    s.conns = make(map[string]net.Conn)
-    s.mu.Unlock()
-
-    // 等待所有连接结束
-    s.wg.Wait()
-    return nil
-}
-</code></pre><p>好了，通过以上方法，我们终于能从容的关闭server了。但这里仅仅是针对跟客户端的连接，实际还有MySQL连接，Redis连接，打开的文件句柄，等等，总之，要实现优雅的服务关闭，真心不是一件很简单的事情。</p>
 
       
     </div>

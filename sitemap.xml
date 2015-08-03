@@ -2,6 +2,16 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>http://siddontang.com/2015/08/03/smartstack-introduction/</loc>
+    <lastmod>2015-08-03T05:39:03.000Z</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://siddontang.com/2015/08/03/double-lexicographic-comparison/</loc>
+    <lastmod>2015-08-03T05:38:20.000Z</lastmod>
+  </url>
+  
+  <url>
     <loc>http://siddontang.com/2015/05/16/why-python-to-go/</loc>
     <lastmod>2015-05-19T05:57:43.000Z</lastmod>
   </url>
