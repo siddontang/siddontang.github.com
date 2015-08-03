@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   
-  <title>Siddon&#39;s Blog</title>
+  <title>SmartStack Airbnb的自动服务发现和注册框架 | Siddon&#39;s Blog</title>
   <meta name="author" content="SiddonTang">
   
   <meta name="description" content="My thought for program">
@@ -11,7 +11,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 
-  
+  <meta property="og:title" content="SmartStack Airbnb的自动服务发现和注册框架"/>
   <meta property="og:site_name" content="Siddon&#39;s Blog"/>
 
   
@@ -67,19 +67,17 @@
     <header>
       
         <div class="icon"></div>
-        <time datetime="2015-08-03T05:39:03.000Z"><a href="/2015/08/03/smartstack-introduction/">08-03-2015</a></time>
+        <time datetime="2015-08-03T05:38:36.000Z"><a href="/2015/08/03/smartstack-introduction/">08-03-2015</a></time>
       
       
   
-    <h1 class="title"></h1>
+    <h1 class="title">SmartStack Airbnb的自动服务发现和注册框架</h1>
   
 
     </header>
     <div class="entry">
       
-        <p>title: SmartStack: Airbnb的自动服务发现和注册框架<br>date: 2015-08-03 13:38:36<br>categories:</p>
-<h2 id="tags:">tags:</h2>
-<h2 id="Micro-service引发的问题">Micro-service引发的问题</h2>
+        <h2 id="Micro-service引发的问题">Micro-service引发的问题</h2>
 <p>在几年前做企业快盘的时候，为了构建一个高可用的分布式系统，我们采用了一个模块一个服务，不同服务之间通过HTTP交互的架构模型，除了数据存储服务（MySQL，Redis等），我们其他的服务都是无状态的，这样就能非常方便的进行水平扩展，满足不断增加的业务需求。现在才知道，这种架构模式就是俗称的micro-service，如果当初我们就能拿这些概念出去忽悠，没准能让自己的产品更加高大上一点的。:-)</p>
 <p>micro-service虽然方便，毕竟各个模块是相互独立，我们可以独立开发，独立部署，只要约定好相互之间的HTTP Restful API就成了。但是，随着服务的增多，我们会面临一个问题，就是某一个服务到底在哪里？我们如何才能发现该服务并进行调用。</p>
 <p>在项目初期，服务数量不多的情况下面，我们可以将所有服务的地址写到一个配置文件里面（或者更改hosts），部署升级的时候通过puppet或者其它工具进行整个系统的更新，但这样，就会面临一个问题，任何增加删除服务的操作，都可能引起整个系统的更新。随着系统规模的扩大，服务数量的增多，谁都知道不可行了。</p>
